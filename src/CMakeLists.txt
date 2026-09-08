@@ -14,6 +14,10 @@ add_library(hungryeditor_core STATIC
     editor/Editor.h
     highlight/TreeSitterEngine.cpp
     highlight/TreeSitterEngine.h
+    highlight/HighlightWorker.cpp
+    highlight/HighlightWorker.h
+    highlight/HighlightController.cpp
+    highlight/HighlightController.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 
