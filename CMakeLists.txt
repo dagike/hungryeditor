@@ -26,6 +26,9 @@ include(CTest)  # defines BUILD_TESTING (ON by default)
 
 include(CompilerWarnings)
 
+# --- Vendored dependencies -----------------------------------------------
+add_subdirectory(third_party)
+
 # --- Targets ---------------------------------------------------------------
 add_subdirectory(src)
 
