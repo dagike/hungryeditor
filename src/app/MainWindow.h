@@ -2,9 +2,9 @@
 
 #include <QMainWindow>
 
-class ScintillaEditBase;
-
 namespace hungryeditor {
+
+class Editor;
 
 /// The application's single top-level window. For now it hosts a bare editor
 /// widget and a minimal menu bar; file handling, tabs and the preview pane
@@ -18,7 +18,7 @@ public:
     ~MainWindow() override;
 
     /// The editor widget filling the window. Exposed for tests.
-    ScintillaEditBase* editor() const { return editor_; }
+    Editor* editor() const { return editor_; }
 
 private slots:
     void showAbout();
@@ -26,7 +26,7 @@ private slots:
 private:
     void buildMenus();
 
-    ScintillaEditBase* editor_ = nullptr;
+    Editor* editor_ = nullptr;
 };
 
 } // namespace hungryeditor

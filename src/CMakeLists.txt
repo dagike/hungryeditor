@@ -10,6 +10,8 @@ qt_standard_project_setup()
 add_library(hungryeditor_core STATIC
     app/MainWindow.cpp
     app/MainWindow.h
+    editor/Editor.cpp
+    editor/Editor.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

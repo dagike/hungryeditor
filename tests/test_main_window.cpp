@@ -4,9 +4,8 @@
 #include <QMenuBar>
 #include <QtTest>
 
-#include <ScintillaEditBase.h>
-
 #include "app/MainWindow.h"
+#include "editor/Editor.h"
 
 class TestMainWindow : public QObject
 {

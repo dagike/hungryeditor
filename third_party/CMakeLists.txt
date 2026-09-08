@@ -36,7 +36,11 @@ set(_sci_qt
     "${_sci}/qt/ScintillaEditBase/ScintillaQt.cpp"
     "${_sci}/qt/ScintillaEditBase/ScintillaEditBase.cpp")
 
-add_library(scintilla STATIC ${_sci_core} ${_sci_qt})
+# Scintilla::ScintillaCall — the type-safe C++ wrapper over the message API,
+# used by src/editor/. Shipped separately from src/ upstream (in call/).
+set(_sci_call "${_sci}/call/ScintillaCall.cxx")
+
+add_library(scintilla STATIC ${_sci_core} ${_sci_qt} ${_sci_call})
 add_library(hungryeditor::scintilla ALIAS scintilla)
 
 set_target_properties(scintilla PROPERTIES AUTOMOC ON)

@@ -4,7 +4,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 
-#include <ScintillaEditBase.h>
+#include "editor/Editor.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -17,7 +17,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setWindowTitle(QStringLiteral("hungryeditor"));
     resize(1000, 720);
 
-    editor_ = new ScintillaEditBase(this);
+    editor_ = new Editor(this);
     setCentralWidget(editor_);
 
     buildMenus();

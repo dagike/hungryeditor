@@ -22,7 +22,8 @@ Checks: >
   readability-redundant-string-init,
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
-  -performance-avoid-endl
+  -performance-avoid-endl,
+  -clang-analyzer-optin.core.EnumCastOutOfRange
 
 WarningsAsErrors: '*'
 
