@@ -10,9 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  QT_VERSION: 6.4.2
-
 jobs:
   build:
     name: build (${{ matrix.os }})
@@ -21,10 +18,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Qt 6.4.2 matches the version in Ubuntu's apt repositories.
           - os: ubuntu-latest
             preset: linux-debug
+            qt_version: 6.4.2
+          # Qt 6.4.x headers don't compile with the MSVC toolchain currently
+          # on windows-latest (missing 'stdext' in qvarlengtharray.h, fixed
+          # upstream in 6.5.0); use the 6.5 LTS line there.
           - os: windows-latest
             preset: windows-release
+            qt_version: 6.5.3
 
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +35,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: ${{ env.QT_VERSION }}
+          version: ${{ matrix.qt_version }}
           modules: qtwebengine qtwebchannel qtpositioning qt5compat
           cache: true
 
@@ -83,7 +86,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: ${{ env.QT_VERSION }}
+          version: 6.4.2
           modules: qtwebengine qtwebchannel qtpositioning qt5compat
           cache: true
 
