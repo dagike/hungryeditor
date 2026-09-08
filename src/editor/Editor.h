@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFont>
 #include <QString>
 
 // Scintilla's headers are not self-contained and must be included in this
@@ -52,6 +53,11 @@ public:
     int cursorColumn() const;
     void setCursorPosition(int line, int column);
 
+    /// Monospace font used for the text area. Changing it re-applies all
+    /// derived styling (line-number margin width included).
+    QFont editorFont() const { return font_; }
+    void setEditorFont(const QFont& font);
+
     /// Escape hatch for code that needs the full Scintilla API.
     Scintilla::ScintillaCall& call() { return call_; }
     const Scintilla::ScintillaCall& call() const { return call_; }
@@ -64,8 +70,16 @@ signals:
 private:
     void onNotify(Scintilla::NotificationData* notification);
 
+    /// Apply fonts, colours, caret, tabs and margins from the current font
+    /// and the (currently hard-coded) palette.
+    void applyVisualDefaults();
+    /// Resize the line-number margin to fit the current line count.
+    void updateLineNumberMargin();
+
     mutable Scintilla::ScintillaCall call_;
+    QFont font_;
     bool modified_ = false;
+    int lineDigits_ = 0;
 };
 
 } // namespace hungryeditor
