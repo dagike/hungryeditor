@@ -49,6 +49,8 @@ add_library(hungryeditor_core STATIC
     highlight/HighlightWorker.h
     highlight/HighlightController.cpp
     highlight/HighlightController.h
+    io/TextFile.cpp
+    io/TextFile.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

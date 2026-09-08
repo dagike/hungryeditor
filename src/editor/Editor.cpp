@@ -106,6 +106,9 @@ void Editor::setText(const QString& text)
 {
     const QByteArray utf8 = text.toUtf8();
     call_.SetText(utf8.constData());
+    // The buffer is kept newline-only regardless of what the caller passed;
+    // the document's real line ending is tracked separately (see lineEnding()).
+    call_.ConvertEOLs(Scintilla::EndOfLine::Lf);
 }
 
 int Editor::length() const
@@ -193,6 +196,7 @@ void Editor::applyVisualDefaults()
     call_.SetCaretWidth(2);
     call_.SetCaretPeriod(500);
 
+    call_.SetEOLMode(Scintilla::EndOfLine::Lf);
     call_.SetTabWidth(kTabWidth);
     call_.SetUseTabs(false);
     call_.SetViewWS(Scintilla::WhiteSpace::Invisible);

@@ -39,6 +39,10 @@ hungryeditor_add_test(test_grammar_registry
     SOURCES test_grammar_registry.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_text_file
+    SOURCES test_text_file.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_main_window
     SOURCES test_main_window.cpp
     LIBS hungryeditor::core)

@@ -11,6 +11,8 @@
 #include <ScintillaEditBase.h>
 // clang-format on
 
+#include "io/TextFile.h" // Encoding, LineEnding
+
 namespace Scintilla {
 struct NotificationData;
 }
@@ -70,6 +72,14 @@ public:
     /// Style byte at a position — for tests to check colouring.
     int styleAt(int position) const;
 
+    /// Encoding and line ending carried with the document. The buffer always
+    /// holds "\n"; these record how the file was read and how it is written
+    /// back. Set them after loading; read them before saving.
+    Encoding encoding() const { return encoding_; }
+    void setEncoding(Encoding encoding) { encoding_ = encoding; }
+    LineEnding lineEnding() const { return lineEnding_; }
+    void setLineEnding(LineEnding eol) { lineEnding_ = eol; }
+
     /// How the buffer is being coloured. Large files drop from the
     /// tree-sitter highlighter to Lexilla's stock lexer and then to plain
     /// text, to keep editing responsive.
@@ -118,6 +128,8 @@ private:
     QFont font_;
     bool modified_ = false;
     int lineDigits_ = 0;
+    Encoding encoding_ = Encoding::Utf8;
+    LineEnding lineEnding_ = LineEnding::Lf;
     HighlightTier tier_ = HighlightTier::TreeSitter;
     int lexillaByteLimit_ = 2 * 1024 * 1024;
     int plainTextByteLimit_ = 20 * 1024 * 1024;
