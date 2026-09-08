@@ -61,9 +61,24 @@
     ],
     "testPresets": [
         {
-            "name": "linux-debug",
-            "configurePreset": "linux-debug",
+            "name": "base",
+            "hidden": true,
             "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "linux-debug",
+            "inherits": "base",
+            "configurePreset": "linux-debug"
+        },
+        {
+            "name": "linux-release",
+            "inherits": "base",
+            "configurePreset": "linux-release"
+        },
+        {
+            "name": "windows-release",
+            "inherits": "base",
+            "configurePreset": "windows-release"
         }
     ]
 }
