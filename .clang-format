@@ -21,5 +21,14 @@ AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 IncludeBlocks: Regroup
 SortIncludes: CaseInsensitive
+IncludeCategories:
+  - Regex: '^<Q[A-Za-z]'          # Qt headers
+    Priority: 3
+  - Regex: '^<[a-z_]+>$'          # C++ standard library
+    Priority: 2
+  - Regex: '^".*"$'               # project headers
+    Priority: 5
+  - Regex: '.*'                   # other third-party (Scintilla, tree-sitter, ...)
+    Priority: 4
 SpaceAfterCStyleCast: true
 FixNamespaceComments: true

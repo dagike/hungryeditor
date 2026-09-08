@@ -7,9 +7,9 @@
 #include <QApplication>
 #include <QMenuBar>
 
-#include "app/MainWindow.h"
-
 #include <ScintillaEditBase.h>
+
+#include "app/MainWindow.h"
 
 int main(int argc, char** argv)
 {

@@ -1,5 +1,7 @@
 # hungryeditor
 
+[![ci](https://github.com/dagike/hungryeditor/actions/workflows/ci.yml/badge.svg)](https://github.com/dagike/hungryeditor/actions/workflows/ci.yml)
+
 A fast, native Markdown editor for people who live in the terminal but want a
 real editor for prose — the editing feel of Sublime and Notepad++, the live
 preview of Typora, and none of the browser weight.
@@ -23,7 +25,15 @@ Requirements:
 
 - CMake ≥ 3.24 and Ninja
 - A C++20 compiler (GCC 12+, Clang 16+, or MSVC 19.3+)
-- Qt 6.5+ (`Widgets`, `WebEngineWidgets`, `WebChannel`) — added from commit 0.4
+- Qt 6.4+ — `Widgets` and `Core5Compat` now; `WebEngineWidgets` and
+  `WebChannel` from Phase 3
+
+On Debian/Ubuntu:
+
+```sh
+sudo apt install cmake ninja-build build-essential \
+  qt6-base-dev qt6-5compat-dev qt6-webengine-dev qt6-webchannel-dev
+```
 
 ```sh
 cmake --preset linux-debug

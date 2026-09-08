@@ -1,0 +1,31 @@
+# First-party code only. Vendored sources under third_party/ are never passed
+# to clang-tidy and are excluded from header diagnostics by HeaderFilterRegex.
+#
+# The check list is deliberately curated rather than using broad wildcards:
+# a Qt codebase trips a lot of low-signal noise (include-cleaner,
+# const-correctness on RAII objects, swappable parameters) that isn't worth
+# gating CI on.
+
+Checks: >
+  bugprone-*,
+  clang-analyzer-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-virtual-class-destructor,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-equals-default,
+  modernize-use-bool-literals,
+  performance-*,
+  readability-braces-around-statements,
+  readability-container-size-empty,
+  readability-redundant-member-init,
+  readability-redundant-string-init,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -performance-avoid-endl
+
+WarningsAsErrors: '*'
+
+HeaderFilterRegex: '(src|tests)/.*\.h$'
+
+FormatStyle: file

@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: 6.4.2
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            preset: linux-debug
+          - os: windows-latest
+            preset: windows-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install WebEngine runtime libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libxdamage1 libxkbcommon-x11-0 libxkbfile1 \
+            libxcomposite1 libxrandr2 libxtst6 libasound2t64 \
+            libgstreamer-gl1.0-0 libgstreamer-plugins-base1.0-0
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: |
+          mapfile -t files < <(git ls-files 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h')
+          printf '%s\n' "${files[@]}"
+          clang-format --dry-run --Werror "${files[@]}"
+
+  tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Configure (for compile_commands.json)
+        run: cmake --preset linux-debug
+
+      - name: Run clang-tidy on first-party sources
+        run: |
+          mapfile -t files < <(git ls-files 'src/*.cpp' 'tests/*.cpp')
+          printf '%s\n' "${files[@]}"
+          clang-tidy -p build/linux-debug "${files[@]}"

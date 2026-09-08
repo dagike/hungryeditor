@@ -9,18 +9,15 @@
 
 #include <ILexer.h>
 #include <Lexilla.h>
-
 #include <ScintillaEditBase.h>
 #include <ScintillaMessages.h>
 #include <ScintillaTypes.h>
-
 #include <tree_sitter/api.h>
 
 extern "C" const TSLanguage* tree_sitter_markdown(void);
 extern "C" const TSLanguage* tree_sitter_markdown_inline(void);
 
-namespace
-{
+namespace {
 
 bool contains_type(TSNode node, std::string_view wanted)
 {
@@ -77,8 +74,8 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "tree-sitter: set_language(markdown) failed (ABI mismatch)\n");
         return 1;
     }
-    TSTree* tree = ts_parser_parse_string(parser, nullptr, doc,
-                                          static_cast<uint32_t>(std::strlen(doc)));
+    TSTree* tree =
+        ts_parser_parse_string(parser, nullptr, doc, static_cast<uint32_t>(std::strlen(doc)));
     TSNode root = ts_tree_root_node(tree);
 
     if (std::string_view{ts_node_type(root)} != "document") {

@@ -10,8 +10,7 @@
 #define HUNGRYEDITOR_VERSION "0.0.0"
 #endif
 
-namespace hungryeditor
-{
+namespace hungryeditor {
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
@@ -35,18 +34,18 @@ void MainWindow::buildMenus()
     quitAction->setObjectName(QStringLiteral("action.quit"));
 
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
-    QAction* aboutAction = helpMenu->addAction(tr("&About hungryeditor"), this, &MainWindow::showAbout);
+    QAction* aboutAction =
+        helpMenu->addAction(tr("&About hungryeditor"), this, &MainWindow::showAbout);
     aboutAction->setMenuRole(QAction::AboutRole);
     aboutAction->setObjectName(QStringLiteral("action.about"));
 }
 
 void MainWindow::showAbout()
 {
-    QMessageBox::about(
-        this, tr("About hungryeditor"),
-        tr("<h3>hungryeditor %1</h3>"
-           "<p>A fast, native Markdown editor.</p>")
-            .arg(QStringLiteral(HUNGRYEDITOR_VERSION)));
+    QMessageBox::about(this, tr("About hungryeditor"),
+                       tr("<h3>hungryeditor %1</h3>"
+                          "<p>A fast, native Markdown editor.</p>")
+                           .arg(QStringLiteral(HUNGRYEDITOR_VERSION)));
 }
 
 } // namespace hungryeditor

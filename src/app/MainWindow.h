@@ -4,8 +4,7 @@
 
 class ScintillaEditBase;
 
-namespace hungryeditor
-{
+namespace hungryeditor {
 
 /// The application's single top-level window. For now it hosts a bare editor
 /// widget and a minimal menu bar; file handling, tabs and the preview pane
