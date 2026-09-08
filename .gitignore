@@ -1,0 +1,31 @@
+# Build output
+/build/
+/out/
+build*/
+cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
+
+# CMake litter (when configured in-source by mistake)
+CMakeCache.txt
+CMakeFiles/
+*.cmake.stamp
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Packaging artifacts
+*.deb
+*.rpm
+*.AppImage
+*.msi
+*.zip
