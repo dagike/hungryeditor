@@ -4,6 +4,7 @@
 #include <QtTest>
 
 #include "editor/Editor.h"
+#include "highlight/CaptureStyles.h"
 
 class TestEditor : public QObject
 {
@@ -19,6 +20,8 @@ private slots:
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
+    void headingsAndCodeGetSyntaxStyles();
+    void plainParagraphStaysUnstyled();
 };
 
 void TestEditor::textRoundTrips()
@@ -117,6 +120,36 @@ void TestEditor::changingFontReappliesStyling()
 
     QCOMPARE(editor.editorFont().pointSize(), bigger.pointSize());
     QCOMPARE(editor.call().TabWidth(), 4); // still applied after re-styling
+}
+
+void TestEditor::headingsAndCodeGetSyntaxStyles()
+{
+    hungryeditor::Editor editor;
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+
+    const QString doc = QStringLiteral("# Title\n\nplain line\n\n```c\nint x;\n```\n");
+    editor.setText(doc);
+    QVERIFY(spy.wait(2000));
+
+    const QByteArray bytes = doc.toUtf8();
+    const int titleAt = static_cast<int>(bytes.indexOf("Title"));
+    const int codeAt = static_cast<int>(bytes.indexOf("int x"));
+
+    QCOMPARE(editor.styleAt(titleAt), static_cast<int>(hungryeditor::StyleHeading));
+    QCOMPARE(editor.styleAt(codeAt), static_cast<int>(hungryeditor::StyleCodeLiteral));
+}
+
+void TestEditor::plainParagraphStaysUnstyled()
+{
+    hungryeditor::Editor editor;
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+
+    const QString doc = QStringLiteral("# Title\n\njust some prose here\n");
+    editor.setText(doc);
+    QVERIFY(spy.wait(2000));
+
+    const int proseAt = static_cast<int>(doc.toUtf8().indexOf("prose"));
+    QCOMPARE(editor.styleAt(proseAt), static_cast<int>(hungryeditor::StylePlain));
 }
 
 QTEST_MAIN(TestEditor)

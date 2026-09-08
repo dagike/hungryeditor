@@ -23,7 +23,8 @@ public:
     explicit HighlightController(QObject* parent = nullptr);
     ~HighlightController() override;
 
-    void setLanguage(const TSLanguage* language);
+    /// Set the grammar and its highlights.scm query text.
+    void configure(const TSLanguage* language, const QString& highlightQuery);
 
     /// Submit the current document text. Returns the revision assigned to
     /// this submission; results for superseded revisions are discarded.

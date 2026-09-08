@@ -4,9 +4,25 @@
 #include <QThread>
 #include <QtTest>
 
+#include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
 
 extern "C" const TSLanguage* tree_sitter_markdown(void);
+
+namespace {
+// A small slice of the real markdown highlights query, enough to exercise
+// span production without depending on the bundled resource file.
+const QString kMarkdownQuery = QStringLiteral(R"scm(
+(atx_heading (inline) @text.title)
+[
+  (fenced_code_block)
+] @text.literal
+[
+  (atx_h1_marker)
+  (atx_h2_marker)
+] @punctuation.special
+)scm");
+} // namespace
 
 class TestHighlightWorker : public QObject
 {
@@ -16,6 +32,7 @@ private slots:
     void parsesOnASeparateThread();
     void burstOfEditsProducesOneResultForTheLatestRevision();
     void resultCarriesTreeSummary();
+    void spansCoverHeadingsAndCode();
 };
 
 void TestHighlightWorker::parsesOnASeparateThread()
@@ -28,7 +45,7 @@ void TestHighlightWorker::parsesOnASeparateThread()
 void TestHighlightWorker::burstOfEditsProducesOneResultForTheLatestRevision()
 {
     hungryeditor::HighlightController controller;
-    controller.setLanguage(tree_sitter_markdown());
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery);
 
     QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
 
@@ -50,7 +67,7 @@ void TestHighlightWorker::burstOfEditsProducesOneResultForTheLatestRevision()
 void TestHighlightWorker::resultCarriesTreeSummary()
 {
     hungryeditor::HighlightController controller;
-    controller.setLanguage(tree_sitter_markdown());
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery);
 
     QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
     controller.submit(QStringLiteral("# Title\n\npara\n\n```rust\nfn main() {}\n```\n"));
@@ -60,6 +77,47 @@ void TestHighlightWorker::resultCarriesTreeSummary()
     QVERIFY(result.ok);
     QCOMPARE(result.rootType, QStringLiteral("document"));
     QVERIFY(result.namedChildCount > 0);
+}
+
+void TestHighlightWorker::spansCoverHeadingsAndCode()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    const QString doc = QStringLiteral("# Heading\n\nplain paragraph\n\n```c\nint x;\n```\n");
+    controller.submit(doc);
+
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+    QVERIFY(!result.spans.isEmpty());
+
+    // Spans are contiguous and cover the whole document exactly once.
+    quint32 next = 0;
+    quint32 headingBytes = 0;
+    quint32 codeBytes = 0;
+    for (const auto& span : result.spans) {
+        QCOMPARE(span.start, next);
+        next += span.length;
+        if (span.style == hungryeditor::StyleHeading) {
+            headingBytes += span.length;
+        } else if (span.style == hungryeditor::StyleCodeLiteral) {
+            codeBytes += span.length;
+        }
+    }
+    QCOMPARE(next, static_cast<quint32>(doc.toUtf8().size()));
+    QVERIFY(headingBytes > 0);
+    QVERIFY(codeBytes > 0);
+
+    // The word "plain" is inside a bare paragraph — it must stay unstyled.
+    const int plainOffset = static_cast<int>(doc.toUtf8().indexOf("plain"));
+    for (const auto& span : result.spans) {
+        if (static_cast<int>(span.start) <= plainOffset &&
+            plainOffset < static_cast<int>(span.start + span.length)) {
+            QCOMPARE(span.style, static_cast<qint32>(hungryeditor::StylePlain));
+        }
+    }
 }
 
 QTEST_MAIN(TestHighlightWorker)

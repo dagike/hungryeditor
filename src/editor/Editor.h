@@ -17,18 +17,26 @@ struct NotificationData;
 
 namespace hungryeditor {
 
+class HighlightController;
+struct HighlightResult;
+
 /// Thin, typed wrapper around Scintilla's editor widget.
 ///
 /// It exposes the handful of operations the rest of the application needs as
 /// ordinary C++ methods and translates Scintilla's `SCN_*` notifications into
 /// Qt signals. Everything is UTF-8: Scintilla's buffer is configured for
 /// code page 65001 and all `QString` conversions go through UTF-8.
+///
+/// Syntax colouring runs in container-lexing mode: a background
+/// HighlightController parses the text with tree-sitter and hands back style
+/// spans that are applied here.
 class Editor : public ScintillaEditBase
 {
     Q_OBJECT
 
 public:
     explicit Editor(QWidget* parent = nullptr);
+    ~Editor() override;
 
     /// Whole-buffer contents.
     QString text() const;
@@ -58,6 +66,9 @@ public:
     QFont editorFont() const { return font_; }
     void setEditorFont(const QFont& font);
 
+    /// Style byte at a position — for tests to check colouring.
+    int styleAt(int position) const;
+
     /// Escape hatch for code that needs the full Scintilla API.
     Scintilla::ScintillaCall& call() { return call_; }
     const Scintilla::ScintillaCall& call() const { return call_; }
@@ -66,17 +77,23 @@ signals:
     void textChanged();
     void modifiedChanged(bool modified);
     void cursorPositionChanged(int line, int column);
+    /// Emitted after a background highlight pass has been applied.
+    void highlightingApplied();
 
 private:
     void onNotify(Scintilla::NotificationData* notification);
+    void applyHighlight(const HighlightResult& result);
 
     /// Apply fonts, colours, caret, tabs and margins from the current font
     /// and the (currently hard-coded) palette.
     void applyVisualDefaults();
+    /// Configure the semantic Scintilla styles (fore colour, bold, italic).
+    void applySyntaxStyles();
     /// Resize the line-number margin to fit the current line count.
     void updateLineNumberMargin();
 
     mutable Scintilla::ScintillaCall call_;
+    HighlightController* highlight_ = nullptr;
     QFont font_;
     bool modified_ = false;
     int lineDigits_ = 0;

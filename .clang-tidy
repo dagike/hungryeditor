@@ -23,6 +23,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
   -performance-avoid-endl,
+  -performance-enum-size,
   -clang-analyzer-optin.core.EnumCastOutOfRange
 
 WarningsAsErrors: '*'

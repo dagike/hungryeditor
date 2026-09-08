@@ -27,10 +27,10 @@ HighlightController::~HighlightController()
     thread_->wait();
 }
 
-void HighlightController::setLanguage(const TSLanguage* language)
+void HighlightController::configure(const TSLanguage* language, const QString& highlightQuery)
 {
-    QMetaObject::invokeMethod(worker_, "setLanguage", Qt::QueuedConnection,
-                              Q_ARG(const TSLanguage*, language));
+    QMetaObject::invokeMethod(worker_, "configure", Qt::QueuedConnection,
+                              Q_ARG(const TSLanguage*, language), Q_ARG(QString, highlightQuery));
 }
 
 quint64 HighlightController::submit(const QString& text)

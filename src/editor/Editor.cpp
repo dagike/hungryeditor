@@ -11,6 +11,13 @@
 #include <ScintillaMessages.h>
 #include <ScintillaStructures.h>
 #include <ScintillaTypes.h>
+#include <tree_sitter/api.h>
+
+#include "highlight/CaptureStyles.h"
+#include "highlight/HighlightController.h"
+#include "HighlightQueries.h" // generated: hungryeditor::queries::*
+
+extern "C" const TSLanguage* tree_sitter_markdown(void);
 
 namespace hungryeditor {
 
@@ -67,7 +74,20 @@ Editor::Editor(QWidget* parent) : ScintillaEditBase(parent)
     applyVisualDefaults();
 
     connect(this, &ScintillaEditBase::notify, this, &Editor::onNotify);
+
+    // Container-lexing highlighter, driven by a background tree-sitter parse.
+    // The grammar is hard-coded to Markdown for now; per-document language
+    // selection arrives with the grammar registry.
+    highlight_ = new HighlightController(this);
+    highlight_->configure(
+        tree_sitter_markdown(),
+        QString::fromUtf8(queries::kMarkdownHighlights.data(),
+                          static_cast<qsizetype>(queries::kMarkdownHighlights.size())));
+    connect(highlight_, &HighlightController::highlighted, this, &Editor::applyHighlight);
+    connect(this, &Editor::textChanged, this, [this] { highlight_->submit(text()); });
 }
+
+Editor::~Editor() = default;
 
 QString Editor::text() const
 {
@@ -177,8 +197,47 @@ void Editor::applyVisualDefaults()
     call_.SetMarginWidthN(kSymbolMargin, 0);
     call_.SetMarginWidthN(kFoldMargin, 0);
 
+    applySyntaxStyles();
+
     lineDigits_ = 0; // force updateLineNumberMargin() to recompute
     updateLineNumberMargin();
+}
+
+void Editor::applySyntaxStyles()
+{
+    // Must run after StyleClearAll(), which resets every style to the default.
+    for (const StyleDef& def : styleTable()) {
+        if (def.id == StylePlain) {
+            continue;
+        }
+        call_.StyleSetFore(def.id, sciColour(def.foreground));
+        call_.StyleSetBold(def.id, def.bold);
+        call_.StyleSetItalic(def.id, def.italic);
+        call_.StyleSetUnderline(def.id, def.underline);
+    }
+}
+
+void Editor::applyHighlight(const HighlightResult& result)
+{
+    if (!result.ok) {
+        return;
+    }
+    const auto docLength = static_cast<quint32>(call_.TextLength());
+
+    call_.StartStyling(0, 0);
+    quint32 styled = 0;
+    for (const HighlightSpan& span : result.spans) {
+        if (span.start != styled || styled >= docLength) {
+            break; // document changed under us; the next parse will catch up
+        }
+        const quint32 length = std::min(span.length, docLength - styled);
+        call_.SetStyling(length, span.style);
+        styled += length;
+    }
+    if (styled < docLength) {
+        call_.SetStyling(docLength - styled, StylePlain);
+    }
+    emit highlightingApplied();
 }
 
 void Editor::updateLineNumberMargin()
@@ -236,9 +295,27 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
         }
         break;
 
+    case Notification::StyleNeeded: {
+        // Container-lexing contract: fill the gap Scintilla asks about so it
+        // stops requesting. The real colours arrive from applyHighlight()
+        // once the background parse for this revision finishes.
+        const Scintilla::Position from = call_.EndStyled();
+        const Scintilla::Position to = notification->position;
+        if (to > from) {
+            call_.StartStyling(from, 0);
+            call_.SetStyling(to - from, StylePlain);
+        }
+        break;
+    }
+
     default:
         break;
     }
+}
+
+int Editor::styleAt(int position) const
+{
+    return static_cast<int>(call_.UnsignedStyleAt(position));
 }
 
 } // namespace hungryeditor
