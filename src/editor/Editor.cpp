@@ -7,6 +7,9 @@
 #include <QColor>
 #include <QFontDatabase>
 
+#include <ILexer.h>
+#include <Lexilla.h>
+#include <SciLexer.h>  // SCE_MARKDOWN_*
 #include <Scintilla.h> // STYLE_DEFAULT / STYLE_LINENUMBER
 #include <ScintillaMessages.h>
 #include <ScintillaStructures.h>
@@ -87,6 +90,8 @@ Editor::Editor(QWidget* parent) : ScintillaEditBase(parent)
                           static_cast<qsizetype>(queries::kMarkdownInjections.size())));
     connect(highlight_, &HighlightController::highlighted, this, &Editor::applyHighlight);
     connect(this, &Editor::textChanged, this, [this] { highlight_->submit(text()); });
+
+    updateHighlightTier();
 }
 
 Editor::~Editor() = default;
@@ -219,9 +224,91 @@ void Editor::applySyntaxStyles()
     }
 }
 
+void Editor::applyLexillaMarkdownStyles()
+{
+    // Lexilla's Markdown lexer owns style ids 0..21 (SCE_MARKDOWN_*), which
+    // overlap the semantic ids used in tree-sitter mode — so the styles are
+    // re-declared on every switch into and out of this tier.
+    const Palette palette;
+    const auto heading = sciColour(QColor(QStringLiteral("#0550ae")));
+    const auto code = sciColour(QColor(QStringLiteral("#6e40c9")));
+    const auto marker = sciColour(QColor(QStringLiteral("#57606a")));
+
+    call_.StyleClearAll();
+    for (int header = SCE_MARKDOWN_HEADER1; header <= SCE_MARKDOWN_HEADER6; ++header) {
+        call_.StyleSetFore(header, heading);
+        call_.StyleSetBold(header, true);
+    }
+    call_.StyleSetBold(SCE_MARKDOWN_STRONG1, true);
+    call_.StyleSetBold(SCE_MARKDOWN_STRONG2, true);
+    call_.StyleSetItalic(SCE_MARKDOWN_EM1, true);
+    call_.StyleSetItalic(SCE_MARKDOWN_EM2, true);
+    call_.StyleSetFore(SCE_MARKDOWN_STRIKEOUT, marker);
+    call_.StyleSetFore(SCE_MARKDOWN_PRECHAR, marker);
+    call_.StyleSetFore(SCE_MARKDOWN_ULIST_ITEM, marker);
+    call_.StyleSetFore(SCE_MARKDOWN_OLIST_ITEM, marker);
+    call_.StyleSetFore(SCE_MARKDOWN_BLOCKQUOTE, marker);
+    call_.StyleSetFore(SCE_MARKDOWN_HRULE, marker);
+    call_.StyleSetFore(SCE_MARKDOWN_LINK, sciColour(QColor(QStringLiteral("#0969da"))));
+    call_.StyleSetFore(SCE_MARKDOWN_CODE, code);
+    call_.StyleSetFore(SCE_MARKDOWN_CODE2, code);
+    call_.StyleSetFore(SCE_MARKDOWN_CODEBK, code);
+
+    call_.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
+    call_.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
+}
+
+void Editor::updateHighlightTier()
+{
+    const int bytes = length();
+    HighlightTier wanted = HighlightTier::TreeSitter;
+    if (bytes > plainTextByteLimit_) {
+        wanted = HighlightTier::PlainText;
+    } else if (bytes > lexillaByteLimit_) {
+        wanted = HighlightTier::Lexilla;
+    }
+    if (wanted == tier_) {
+        return;
+    }
+    tier_ = wanted;
+
+    switch (tier_) {
+    case HighlightTier::TreeSitter:
+        call_.SetILexer(nullptr);
+        applyVisualDefaults(); // restores the semantic style table
+        highlight_->setEnabled(true);
+        highlight_->submit(text());
+        break;
+
+    case HighlightTier::Lexilla: {
+        highlight_->setEnabled(false);
+        Scintilla::ILexer5* lexer = CreateLexer("markdown");
+        call_.SetILexer(lexer); // Scintilla releases it on the next SetILexer
+        applyLexillaMarkdownStyles();
+        call_.Colourise(0, -1);
+        break;
+    }
+
+    case HighlightTier::PlainText:
+        highlight_->setEnabled(false);
+        call_.SetILexer(nullptr);
+        applyVisualDefaults();
+        call_.StartStyling(0, 0);
+        call_.SetStyling(call_.TextLength(), StylePlain);
+        break;
+    }
+}
+
+void Editor::setFallbackByteLimits(int lexillaLimit, int plainTextLimit)
+{
+    lexillaByteLimit_ = lexillaLimit;
+    plainTextByteLimit_ = plainTextLimit;
+    updateHighlightTier();
+}
+
 void Editor::applyHighlight(const HighlightResult& result)
 {
-    if (!result.ok) {
+    if (!result.ok || tier_ != HighlightTier::TreeSitter) {
         return;
     }
     const auto docLength = static_cast<quint32>(call_.TextLength());
@@ -273,6 +360,7 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
             if (notification->linesAdded != 0) {
                 updateLineNumberMargin();
             }
+            updateHighlightTier();
             emit textChanged();
         }
         break;

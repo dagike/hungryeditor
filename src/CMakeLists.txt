@@ -65,6 +65,7 @@ target_compile_definitions(hungryeditor_core PRIVATE
 target_link_libraries(hungryeditor_core PUBLIC
     Qt6::Widgets
     hungryeditor::scintilla
+    hungryeditor::lexilla
     hungryeditor::treesitter
 )
 

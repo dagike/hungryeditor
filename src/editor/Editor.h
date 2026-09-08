@@ -29,7 +29,8 @@ struct HighlightResult;
 ///
 /// Syntax colouring runs in container-lexing mode: a background
 /// HighlightController parses the text with tree-sitter and hands back style
-/// spans that are applied here.
+/// spans that are applied here. Large buffers step down to Lexilla's stock
+/// Markdown lexer and then to plain text (see HighlightTier).
 class Editor : public ScintillaEditBase
 {
     Q_OBJECT
@@ -69,6 +70,21 @@ public:
     /// Style byte at a position — for tests to check colouring.
     int styleAt(int position) const;
 
+    /// How the buffer is being coloured. Large files drop from the
+    /// tree-sitter highlighter to Lexilla's stock lexer and then to plain
+    /// text, to keep editing responsive.
+    enum class HighlightTier
+    {
+        TreeSitter,
+        Lexilla,
+        PlainText
+    };
+    HighlightTier highlightTier() const { return tier_; }
+
+    /// Byte thresholds for the Lexilla and plain-text fallbacks. Exposed so
+    /// tests can exercise the tiers without multi-megabyte fixtures.
+    void setFallbackByteLimits(int lexillaLimit, int plainTextLimit);
+
     /// Escape hatch for code that needs the full Scintilla API.
     Scintilla::ScintillaCall& call() { return call_; }
     const Scintilla::ScintillaCall& call() const { return call_; }
@@ -89,14 +105,22 @@ private:
     void applyVisualDefaults();
     /// Configure the semantic Scintilla styles (fore colour, bold, italic).
     void applySyntaxStyles();
+    /// Configure the styles used by Lexilla's stock Markdown lexer.
+    void applyLexillaMarkdownStyles();
     /// Resize the line-number margin to fit the current line count.
     void updateLineNumberMargin();
+    /// Pick the highlighting tier for the current buffer size and, if it
+    /// changed, switch the lexer and the background highlighter to match.
+    void updateHighlightTier();
 
     mutable Scintilla::ScintillaCall call_;
     HighlightController* highlight_ = nullptr;
     QFont font_;
     bool modified_ = false;
     int lineDigits_ = 0;
+    HighlightTier tier_ = HighlightTier::TreeSitter;
+    int lexillaByteLimit_ = 2 * 1024 * 1024;
+    int plainTextByteLimit_ = 20 * 1024 * 1024;
 };
 
 } // namespace hungryeditor

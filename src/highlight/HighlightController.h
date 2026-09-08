@@ -30,7 +30,14 @@ public:
 
     /// Submit the current document text. Returns the revision assigned to
     /// this submission; results for superseded revisions are discarded.
+    /// A no-op (returns the current revision) while disabled.
     quint64 submit(const QString& text);
+
+    /// Enable or disable parsing. Disabled by the editor's large-file
+    /// fallback: submissions are ignored and no results are emitted until
+    /// re-enabled.
+    void setEnabled(bool enabled);
+    bool isEnabled() const { return enabled_; }
 
     quint64 currentRevision() const { return revision_; }
     quint64 lastResultRevision() const { return lastResultRevision_; }
@@ -48,6 +55,7 @@ private:
     HighlightWorker* worker_ = nullptr;
     quint64 revision_ = 0;
     quint64 lastResultRevision_ = 0;
+    bool enabled_ = true;
 };
 
 } // namespace hungryeditor

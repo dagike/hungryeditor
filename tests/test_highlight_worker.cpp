@@ -56,6 +56,7 @@ private slots:
     void inlineInjectionStylesEmphasisAndStrong();
     void unknownFenceLanguageKeepsLiteralStyle();
     void fencedCodeIsStyledByItsLanguageGrammar();
+    void disabledControllerIgnoresSubmissions();
 };
 
 void TestHighlightWorker::parsesOnASeparateThread()
@@ -205,6 +206,23 @@ void TestHighlightWorker::fencedCodeIsStyledByItsLanguageGrammar()
              static_cast<qint32>(hungryeditor::StyleKeyword));
     QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("i32"))),
              static_cast<qint32>(hungryeditor::StyleType));
+}
+
+void TestHighlightWorker::disabledControllerIgnoresSubmissions()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    controller.setEnabled(false);
+    QVERIFY(!controller.isEnabled());
+    controller.submit(QStringLiteral("# ignored\n"));
+
+    QVERIFY(!spy.wait(300)); // nothing is parsed while disabled
+
+    controller.setEnabled(true);
+    controller.submit(QStringLiteral("# picked up\n"));
+    QVERIFY(spy.wait(2000));
 }
 
 QTEST_MAIN(TestHighlightWorker)

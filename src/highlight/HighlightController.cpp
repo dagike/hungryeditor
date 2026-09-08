@@ -37,16 +37,32 @@ void HighlightController::configure(const TSLanguage* language, const QString& h
 
 quint64 HighlightController::submit(const QString& text)
 {
+    if (!enabled_) {
+        return revision_;
+    }
     const quint64 revision = ++revision_;
     QMetaObject::invokeMethod(worker_, "submit", Qt::QueuedConnection, Q_ARG(QString, text),
                               Q_ARG(quint64, revision));
     return revision;
 }
 
+void HighlightController::setEnabled(bool enabled)
+{
+    if (enabled_ == enabled) {
+        return;
+    }
+    enabled_ = enabled;
+    if (!enabled_) {
+        // Ignore any parse still in flight for the text we are leaving behind.
+        lastResultRevision_ = revision_ + 1;
+    }
+}
+
 void HighlightController::onParsed(const HighlightResult& result)
 {
-    // Drop results that a newer submission has already superseded.
-    if (result.revision < lastResultRevision_) {
+    // Drop results that a newer submission has already superseded, or any
+    // result at all while disabled.
+    if (!enabled_ || result.revision < lastResultRevision_) {
         return;
     }
     lastResultRevision_ = result.revision;

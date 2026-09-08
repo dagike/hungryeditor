@@ -24,6 +24,7 @@ private slots:
     void plainParagraphStaysUnstyled();
     void inlineEmphasisInProseGetsStyled();
     void fencedRustBlockGetsLanguageColours();
+    void largeDocumentsFallBackFromTreeSitter();
 };
 
 void TestEditor::textRoundTrips()
@@ -189,6 +190,40 @@ void TestEditor::fencedRustBlockGetsLanguageColours()
              static_cast<int>(hungryeditor::StyleKeyword));
     QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("i32"))),
              static_cast<int>(hungryeditor::StyleType));
+}
+
+void TestEditor::largeDocumentsFallBackFromTreeSitter()
+{
+    hungryeditor::Editor editor;
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+    editor.setFallbackByteLimits(80, 200);
+
+    // Small: tree-sitter drives the colouring.
+    editor.setText(QStringLiteral("# Heading\n\nshort body\n"));
+    QVERIFY(spy.wait(2000));
+    QCOMPARE(editor.highlightTier(), hungryeditor::Editor::HighlightTier::TreeSitter);
+    const int headingAt = static_cast<int>(QByteArray("# Heading").indexOf("Heading"));
+    QCOMPARE(editor.styleAt(headingAt), static_cast<int>(hungryeditor::StyleHeading));
+
+    // Mid-size: Lexilla's stock lexer takes over.
+    editor.setText(QStringLiteral("# Heading\n\n") + QString(120, QLatin1Char('x')) +
+                   QStringLiteral("\n"));
+    QCOMPARE(editor.highlightTier(), hungryeditor::Editor::HighlightTier::Lexilla);
+
+    // Large: no styling at all.
+    editor.setText(QStringLiteral("# Heading\n\n") + QString(400, QLatin1Char('y')) +
+                   QStringLiteral("\n"));
+    QCOMPARE(editor.highlightTier(), hungryeditor::Editor::HighlightTier::PlainText);
+    for (int pos = 0; pos < editor.length(); pos += 37) {
+        QCOMPARE(editor.styleAt(pos), static_cast<int>(hungryeditor::StylePlain));
+    }
+
+    // Shrinking back restores tree-sitter highlighting.
+    QSignalSpy again(&editor, &hungryeditor::Editor::highlightingApplied);
+    editor.setText(QStringLiteral("# Heading\n\nshort again\n"));
+    QVERIFY(again.wait(2000));
+    QCOMPARE(editor.highlightTier(), hungryeditor::Editor::HighlightTier::TreeSitter);
+    QCOMPARE(editor.styleAt(headingAt), static_cast<int>(hungryeditor::StyleHeading));
 }
 
 QTEST_MAIN(TestEditor)
