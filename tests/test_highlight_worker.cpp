@@ -22,6 +22,26 @@ const QString kMarkdownQuery = QStringLiteral(R"scm(
   (atx_h2_marker)
 ] @punctuation.special
 )scm");
+
+// Injections: markdown-inline over prose, and a foreign grammar over fenced
+// code (identified by its info string).
+const QString kMarkdownInjections = QStringLiteral(R"scm(
+(fenced_code_block
+  (info_string (language) @injection.language)
+  (code_fence_content) @injection.content)
+((inline) @injection.content (#set! injection.language "markdown_inline"))
+)scm");
+
+qint32 styleAtByte(const hungryeditor::HighlightResult& result, int byte)
+{
+    for (const auto& span : result.spans) {
+        if (static_cast<int>(span.start) <= byte &&
+            byte < static_cast<int>(span.start + span.length)) {
+            return span.style;
+        }
+    }
+    return -1;
+}
 } // namespace
 
 class TestHighlightWorker : public QObject
@@ -33,6 +53,8 @@ private slots:
     void burstOfEditsProducesOneResultForTheLatestRevision();
     void resultCarriesTreeSummary();
     void spansCoverHeadingsAndCode();
+    void inlineInjectionStylesEmphasisAndStrong();
+    void unknownFenceLanguageKeepsLiteralStyle();
 };
 
 void TestHighlightWorker::parsesOnASeparateThread()
@@ -118,6 +140,50 @@ void TestHighlightWorker::spansCoverHeadingsAndCode()
             QCOMPARE(span.style, static_cast<qint32>(hungryeditor::StylePlain));
         }
     }
+}
+
+void TestHighlightWorker::inlineInjectionStylesEmphasisAndStrong()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    const QString doc = QStringLiteral("plain *soft* and **loud** words\n");
+    controller.submit(doc);
+
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+
+    const QByteArray bytes = doc.toUtf8();
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("soft"))),
+             static_cast<qint32>(hungryeditor::StyleEmphasis));
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("loud"))),
+             static_cast<qint32>(hungryeditor::StyleStrong));
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("plain"))),
+             static_cast<qint32>(hungryeditor::StylePlain));
+}
+
+void TestHighlightWorker::unknownFenceLanguageKeepsLiteralStyle()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    // No grammar is registered for "rust" yet — the block must not crash and
+    // the fenced content keeps the block-level literal style.
+    const QString doc = QStringLiteral("intro *em* text\n\n```rust\nfn demo() {}\n```\n");
+    controller.submit(doc);
+
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+
+    const QByteArray bytes = doc.toUtf8();
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("em"))),
+             static_cast<qint32>(hungryeditor::StyleEmphasis));
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("fn demo"))),
+             static_cast<qint32>(hungryeditor::StyleCodeLiteral));
 }
 
 QTEST_MAIN(TestHighlightWorker)

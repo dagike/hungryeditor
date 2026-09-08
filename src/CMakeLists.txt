@@ -12,6 +12,7 @@ include(EmbedQueries)
 set(_md "${CMAKE_SOURCE_DIR}/third_party/tree-sitter-markdown")
 hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueries.h"
     kMarkdownHighlights       "${_md}/tree-sitter-markdown/queries/highlights.scm"
+    kMarkdownInjections       "${_md}/tree-sitter-markdown/queries/injections.scm"
     kMarkdownInlineHighlights "${_md}/tree-sitter-markdown-inline/queries/highlights.scm"
     kMarkdownInlineInjections "${_md}/tree-sitter-markdown-inline/queries/injections.scm")
 

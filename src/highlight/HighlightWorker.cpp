@@ -8,11 +8,73 @@
 #include <QTimer>
 
 #include "highlight/CaptureStyles.h"
+#include "HighlightQueries.h" // generated: hungryeditor::queries::*
+
+extern "C" const TSLanguage* tree_sitter_markdown_inline(void);
 
 namespace hungryeditor {
 
 namespace {
 constexpr int kDebounceMs = 15;
+
+TSQuery* newQuery(const TSLanguage* language, const QByteArray& scm)
+{
+    if (language == nullptr || scm.isEmpty()) {
+        return nullptr;
+    }
+    uint32_t errorOffset = 0;
+    TSQueryError errorType = TSQueryErrorNone;
+    // A malformed query simply disables that layer of highlighting; not fatal.
+    return ts_query_new(language, scm.constData(), static_cast<uint32_t>(scm.size()), &errorOffset,
+                        &errorType);
+}
+
+/// Grammar plus highlights query for a language named in an injection.
+struct InjectedGrammar
+{
+    const TSLanguage* language = nullptr;
+    std::string_view highlights;
+};
+
+/// Resolve an injection language name to a grammar. The fenced-code language
+/// registry (Rust, C, Python, ...) lands in the next commit; for now the only
+/// wired sub-grammar is markdown-inline, which is what colours emphasis,
+/// strong, links and code spans inside prose.
+InjectedGrammar injectedGrammar(std::string_view name)
+{
+    if (name == "markdown_inline" || name == "markdown.inline") {
+        return {tree_sitter_markdown_inline(), queries::kMarkdownInlineHighlights};
+    }
+    return {};
+}
+
+/// Value of a `(#set! injection.language "x")` directive on a query pattern,
+/// or empty when the pattern carries no such directive.
+std::string directiveLanguage(const TSQuery* query, uint32_t patternIndex)
+{
+    uint32_t stepCount = 0;
+    const TSQueryPredicateStep* steps =
+        ts_query_predicates_for_pattern(query, patternIndex, &stepCount);
+
+    std::vector<std::string_view> args;
+    for (uint32_t i = 0; i < stepCount; ++i) {
+        const TSQueryPredicateStep& step = steps[i];
+        if (step.type == TSQueryPredicateStepTypeDone) {
+            if (args.size() == 3 && args[0] == "set!" && args[1] == "injection.language") {
+                return std::string(args[2]);
+            }
+            args.clear();
+        } else if (step.type == TSQueryPredicateStepTypeString) {
+            uint32_t len = 0;
+            const char* value = ts_query_string_value_for_id(query, step.value_id, &len);
+            args.emplace_back(value, len);
+        } else {
+            args.emplace_back(); // capture step — keep argument positions aligned
+        }
+    }
+    return {};
+}
+
 } // namespace
 
 HighlightWorker::HighlightWorker(QObject* parent) : QObject(parent)
@@ -25,9 +87,7 @@ HighlightWorker::HighlightWorker(QObject* parent) : QObject(parent)
 
 HighlightWorker::~HighlightWorker()
 {
-    if (query_ != nullptr) {
-        ts_query_delete(query_);
-    }
+    clearQueries();
 }
 
 int HighlightWorker::debounceIntervalMs()
@@ -35,24 +95,35 @@ int HighlightWorker::debounceIntervalMs()
     return kDebounceMs;
 }
 
-void HighlightWorker::configure(const TSLanguage* language, const QString& highlightQuery)
+void HighlightWorker::clearQueries()
 {
-    engine_.setLanguage(language);
-
     if (query_ != nullptr) {
         ts_query_delete(query_);
         query_ = nullptr;
     }
-    if (language == nullptr || highlightQuery.isEmpty()) {
+    if (injectionQuery_ != nullptr) {
+        ts_query_delete(injectionQuery_);
+        injectionQuery_ = nullptr;
+    }
+    for (const auto& entry : subQueries_) {
+        if (entry.second != nullptr) {
+            ts_query_delete(entry.second);
+        }
+    }
+    subQueries_.clear();
+}
+
+void HighlightWorker::configure(const TSLanguage* language, const QString& highlightQuery,
+                                const QString& injectionQuery)
+{
+    engine_.setLanguage(language);
+    clearQueries();
+    if (language == nullptr) {
         return;
     }
 
-    const QByteArray utf8 = highlightQuery.toUtf8();
-    uint32_t errorOffset = 0;
-    TSQueryError errorType = TSQueryErrorNone;
-    query_ = ts_query_new(language, utf8.constData(), static_cast<uint32_t>(utf8.size()),
-                          &errorOffset, &errorType);
-    // A malformed query simply disables highlighting; it is not fatal.
+    query_ = newQuery(language, highlightQuery.toUtf8());
+    injectionQuery_ = newQuery(language, injectionQuery.toUtf8());
 }
 
 void HighlightWorker::submit(const QString& text, quint64 revision)
@@ -91,36 +162,18 @@ void HighlightWorker::runPendingParse()
 QVector<HighlightSpan> HighlightWorker::computeSpans(std::string_view source) const
 {
     QVector<HighlightSpan> spans;
-    if (query_ == nullptr || !engine_.hasTree() || source.empty()) {
+    if (!engine_.hasTree() || source.empty()) {
         return spans;
     }
 
     // Paint a per-byte style buffer, then run-length encode it. Later captures
-    // (which tree-sitter yields in node order, more specific ones last) win.
+    // (which tree-sitter yields in node order, more specific ones last) win;
+    // injected sub-grammars are painted last and override the block layer.
     std::vector<qint32> byteStyle(source.size(), StylePlain);
-
-    TSQueryCursor* cursor = ts_query_cursor_new();
-    ts_query_cursor_exec(cursor, query_, engine_.rootNode());
-
-    TSQueryMatch match;
-    uint32_t captureIndex = 0;
-    while (ts_query_cursor_next_capture(cursor, &match, &captureIndex)) {
-        const TSQueryCapture& capture = match.captures[captureIndex];
-
-        uint32_t nameLen = 0;
-        const char* name = ts_query_capture_name_for_id(query_, capture.index, &nameLen);
-        const int style = styleForCapture(std::string_view(name, nameLen));
-        if (style == StylePlain) {
-            continue;
-        }
-
-        const uint32_t start = ts_node_start_byte(capture.node);
-        const uint32_t end = ts_node_end_byte(capture.node);
-        for (uint32_t i = start; i < end && i < byteStyle.size(); ++i) {
-            byteStyle[i] = style;
-        }
+    if (query_ != nullptr) {
+        paintCaptures(query_, engine_.rootNode(), 0, byteStyle);
     }
-    ts_query_cursor_delete(cursor);
+    paintInjections(source, byteStyle);
 
     for (uint32_t i = 0; i < byteStyle.size();) {
         const qint32 style = byteStyle[i];
@@ -132,6 +185,113 @@ QVector<HighlightSpan> HighlightWorker::computeSpans(std::string_view source) co
         i = j;
     }
     return spans;
+}
+
+void HighlightWorker::paintCaptures(TSQuery* query, const TSNode& root, quint32 baseOffset,
+                                    std::vector<qint32>& byteStyle) const
+{
+    TSQueryCursor* cursor = ts_query_cursor_new();
+    ts_query_cursor_exec(cursor, query, root);
+
+    TSQueryMatch match;
+    uint32_t captureIndex = 0;
+    while (ts_query_cursor_next_capture(cursor, &match, &captureIndex)) {
+        const TSQueryCapture& capture = match.captures[captureIndex];
+
+        uint32_t nameLen = 0;
+        const char* name = ts_query_capture_name_for_id(query, capture.index, &nameLen);
+        const int style = styleForCapture(std::string_view(name, nameLen));
+        if (style == StylePlain) {
+            continue;
+        }
+
+        const quint32 start = baseOffset + ts_node_start_byte(capture.node);
+        const quint32 end = baseOffset + ts_node_end_byte(capture.node);
+        for (quint32 i = start; i < end && i < byteStyle.size(); ++i) {
+            byteStyle[i] = style;
+        }
+    }
+    ts_query_cursor_delete(cursor);
+}
+
+void HighlightWorker::paintInjections(std::string_view source, std::vector<qint32>& byteStyle) const
+{
+    if (injectionQuery_ == nullptr) {
+        return;
+    }
+
+    TSQueryCursor* cursor = ts_query_cursor_new();
+    ts_query_cursor_exec(cursor, injectionQuery_, engine_.rootNode());
+
+    TSQueryMatch match;
+    while (ts_query_cursor_next_match(cursor, &match)) {
+        TSNode contentNode{};
+        bool haveContent = false;
+        std::string language;
+
+        for (uint16_t i = 0; i < match.capture_count; ++i) {
+            const TSQueryCapture& capture = match.captures[i];
+            uint32_t nameLen = 0;
+            const char* name =
+                ts_query_capture_name_for_id(injectionQuery_, capture.index, &nameLen);
+            const std::string_view captureName(name, nameLen);
+
+            if (captureName == "injection.content") {
+                contentNode = capture.node;
+                haveContent = true;
+            } else if (captureName == "injection.language") {
+                const uint32_t start = ts_node_start_byte(capture.node);
+                const uint32_t end = ts_node_end_byte(capture.node);
+                if (end <= source.size() && start < end) {
+                    language.assign(source.substr(start, end - start));
+                }
+            }
+        }
+        if (!haveContent) {
+            continue;
+        }
+        if (language.empty()) {
+            language = directiveLanguage(injectionQuery_, match.pattern_index);
+        }
+
+        const InjectedGrammar grammar = injectedGrammar(language);
+        if (grammar.language == nullptr) {
+            continue;
+        }
+
+        const uint32_t contentStart = ts_node_start_byte(contentNode);
+        const uint32_t contentEnd = ts_node_end_byte(contentNode);
+        if (contentEnd > source.size() || contentEnd <= contentStart) {
+            continue;
+        }
+
+        TSQuery* subQuery = subQueryFor(grammar.language, grammar.highlights);
+        if (subQuery == nullptr) {
+            continue;
+        }
+
+        // A single level of injection: the sub-grammar's own injections
+        // (HTML in prose, foreign code) are not recursed into yet.
+        TreeSitterEngine sub;
+        sub.setLanguage(grammar.language);
+        sub.setText(std::string(source.substr(contentStart, contentEnd - contentStart)));
+        if (sub.hasTree()) {
+            paintCaptures(subQuery, sub.rootNode(), contentStart, byteStyle);
+        }
+    }
+    ts_query_cursor_delete(cursor);
+}
+
+TSQuery* HighlightWorker::subQueryFor(const TSLanguage* language, std::string_view scm) const
+{
+    const auto it = subQueries_.find(language);
+    if (it != subQueries_.end()) {
+        return it->second;
+    }
+    const QByteArray queryText(scm.data(), static_cast<qsizetype>(scm.size()));
+    TSQuery* query = newQuery(language, queryText);
+    subQueries_.emplace(language, query);
+    return query;
 }
 
 } // namespace hungryeditor

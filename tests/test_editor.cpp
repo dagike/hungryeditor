@@ -22,6 +22,7 @@ private slots:
     void changingFontReappliesStyling();
     void headingsAndCodeGetSyntaxStyles();
     void plainParagraphStaysUnstyled();
+    void inlineEmphasisInProseGetsStyled();
 };
 
 void TestEditor::textRoundTrips()
@@ -150,6 +151,26 @@ void TestEditor::plainParagraphStaysUnstyled()
 
     const int proseAt = static_cast<int>(doc.toUtf8().indexOf("prose"));
     QCOMPARE(editor.styleAt(proseAt), static_cast<int>(hungryeditor::StylePlain));
+}
+
+void TestEditor::inlineEmphasisInProseGetsStyled()
+{
+    hungryeditor::Editor editor;
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+
+    // Emphasis and strong come from the markdown-inline sub-grammar, run as an
+    // injection over the paragraph's inline content.
+    const QString doc = QStringLiteral("a paragraph with *soft* and **loud** words\n");
+    editor.setText(doc);
+    QVERIFY(spy.wait(2000));
+
+    const QByteArray bytes = doc.toUtf8();
+    QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("soft"))),
+             static_cast<int>(hungryeditor::StyleEmphasis));
+    QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("loud"))),
+             static_cast<int>(hungryeditor::StyleStrong));
+    QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("paragraph"))),
+             static_cast<int>(hungryeditor::StylePlain));
 }
 
 QTEST_MAIN(TestEditor)

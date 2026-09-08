@@ -82,7 +82,9 @@ Editor::Editor(QWidget* parent) : ScintillaEditBase(parent)
     highlight_->configure(
         tree_sitter_markdown(),
         QString::fromUtf8(queries::kMarkdownHighlights.data(),
-                          static_cast<qsizetype>(queries::kMarkdownHighlights.size())));
+                          static_cast<qsizetype>(queries::kMarkdownHighlights.size())),
+        QString::fromUtf8(queries::kMarkdownInjections.data(),
+                          static_cast<qsizetype>(queries::kMarkdownInjections.size())));
     connect(highlight_, &HighlightController::highlighted, this, &Editor::applyHighlight);
     connect(this, &Editor::textChanged, this, [this] { highlight_->submit(text()); });
 }
