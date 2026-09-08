@@ -23,6 +23,7 @@ private slots:
     void headingsAndCodeGetSyntaxStyles();
     void plainParagraphStaysUnstyled();
     void inlineEmphasisInProseGetsStyled();
+    void fencedRustBlockGetsLanguageColours();
 };
 
 void TestEditor::textRoundTrips()
@@ -134,10 +135,11 @@ void TestEditor::headingsAndCodeGetSyntaxStyles()
 
     const QByteArray bytes = doc.toUtf8();
     const int titleAt = static_cast<int>(bytes.indexOf("Title"));
-    const int codeAt = static_cast<int>(bytes.indexOf("int x"));
+    const int codeAt = static_cast<int>(bytes.indexOf("int x")); // the C keyword "int"
 
     QCOMPARE(editor.styleAt(titleAt), static_cast<int>(hungryeditor::StyleHeading));
-    QCOMPARE(editor.styleAt(codeAt), static_cast<int>(hungryeditor::StyleCodeLiteral));
+    // The fenced block is highlighted with the C grammar: "int" is a type.
+    QCOMPARE(editor.styleAt(codeAt), static_cast<int>(hungryeditor::StyleType));
 }
 
 void TestEditor::plainParagraphStaysUnstyled()
@@ -171,6 +173,22 @@ void TestEditor::inlineEmphasisInProseGetsStyled()
              static_cast<int>(hungryeditor::StyleStrong));
     QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("paragraph"))),
              static_cast<int>(hungryeditor::StylePlain));
+}
+
+void TestEditor::fencedRustBlockGetsLanguageColours()
+{
+    hungryeditor::Editor editor;
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+
+    const QString doc = QStringLiteral("# t\n\n```rust\nfn demo() -> i32 { 0 }\n```\n");
+    editor.setText(doc);
+    QVERIFY(spy.wait(2000));
+
+    const QByteArray bytes = doc.toUtf8();
+    QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("fn demo"))),
+             static_cast<int>(hungryeditor::StyleKeyword));
+    QCOMPARE(editor.styleAt(static_cast<int>(bytes.indexOf("i32"))),
+             static_cast<int>(hungryeditor::StyleType));
 }
 
 QTEST_MAIN(TestEditor)

@@ -10,11 +10,29 @@ qt_standard_project_setup()
 # Embed the tree-sitter highlight queries as C++ string literals.
 include(EmbedQueries)
 set(_md "${CMAKE_SOURCE_DIR}/third_party/tree-sitter-markdown")
+set(_gr "${CMAKE_SOURCE_DIR}/third_party/grammars")
 hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueries.h"
-    kMarkdownHighlights       "${_md}/tree-sitter-markdown/queries/highlights.scm"
-    kMarkdownInjections       "${_md}/tree-sitter-markdown/queries/injections.scm"
-    kMarkdownInlineHighlights "${_md}/tree-sitter-markdown-inline/queries/highlights.scm"
-    kMarkdownInlineInjections "${_md}/tree-sitter-markdown-inline/queries/injections.scm")
+    "kMarkdownHighlights|${_md}/tree-sitter-markdown/queries/highlights.scm"
+    "kMarkdownInjections|${_md}/tree-sitter-markdown/queries/injections.scm"
+    "kMarkdownInlineHighlights|${_md}/tree-sitter-markdown-inline/queries/highlights.scm"
+    "kMarkdownInlineInjections|${_md}/tree-sitter-markdown-inline/queries/injections.scm"
+    "kLangBash|${_gr}/bash/queries/highlights.scm"
+    "kLangC|${_gr}/c/queries/highlights.scm"
+    "kLangCpp|${_gr}/c/queries/highlights.scm|${_gr}/cpp/queries/highlights.scm"
+    "kLangCSharp|${_gr}/c-sharp/queries/highlights.scm"
+    "kLangCss|${_gr}/css/queries/highlights.scm"
+    "kLangGo|${_gr}/go/queries/highlights.scm"
+    "kLangHtml|${_gr}/html/queries/highlights.scm"
+    "kLangJava|${_gr}/java/queries/highlights.scm"
+    "kLangJavaScript|${_gr}/javascript/queries/highlights.scm"
+    "kLangJson|${_gr}/json/queries/highlights.scm"
+    "kLangPhp|${_gr}/php/queries/highlights.scm"
+    "kLangPython|${_gr}/python/queries/highlights.scm"
+    "kLangRuby|${_gr}/ruby/queries/highlights.scm"
+    "kLangRust|${_gr}/rust/queries/highlights.scm"
+    "kLangToml|${_gr}/toml/queries/highlights.scm"
+    "kLangTypeScript|${_gr}/javascript/queries/highlights.scm|${_gr}/typescript/queries/highlights.scm"
+    "kLangYaml|${_gr}/yaml/queries/highlights.scm")
 
 add_library(hungryeditor_core STATIC
     app/MainWindow.cpp
@@ -23,6 +41,8 @@ add_library(hungryeditor_core STATIC
     editor/Editor.h
     highlight/CaptureStyles.cpp
     highlight/CaptureStyles.h
+    highlight/GrammarRegistry.cpp
+    highlight/GrammarRegistry.h
     highlight/TreeSitterEngine.cpp
     highlight/TreeSitterEngine.h
     highlight/HighlightWorker.cpp

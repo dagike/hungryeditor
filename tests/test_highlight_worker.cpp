@@ -55,6 +55,7 @@ private slots:
     void spansCoverHeadingsAndCode();
     void inlineInjectionStylesEmphasisAndStrong();
     void unknownFenceLanguageKeepsLiteralStyle();
+    void fencedCodeIsStyledByItsLanguageGrammar();
 };
 
 void TestHighlightWorker::parsesOnASeparateThread()
@@ -170,9 +171,9 @@ void TestHighlightWorker::unknownFenceLanguageKeepsLiteralStyle()
     controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
 
     QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
-    // No grammar is registered for "rust" yet — the block must not crash and
+    // No grammar is registered for "nonesuch" — the block must not crash and
     // the fenced content keeps the block-level literal style.
-    const QString doc = QStringLiteral("intro *em* text\n\n```rust\nfn demo() {}\n```\n");
+    const QString doc = QStringLiteral("intro *em* text\n\n```nonesuch\nfn demo() {}\n```\n");
     controller.submit(doc);
 
     QVERIFY(spy.wait(2000));
@@ -184,6 +185,26 @@ void TestHighlightWorker::unknownFenceLanguageKeepsLiteralStyle()
              static_cast<qint32>(hungryeditor::StyleEmphasis));
     QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("fn demo"))),
              static_cast<qint32>(hungryeditor::StyleCodeLiteral));
+}
+
+void TestHighlightWorker::fencedCodeIsStyledByItsLanguageGrammar()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    const QString doc = QStringLiteral("```rust\nfn demo() -> i32 { 0 }\n```\n");
+    controller.submit(doc);
+
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+
+    const QByteArray bytes = doc.toUtf8();
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("fn "))),
+             static_cast<qint32>(hungryeditor::StyleKeyword));
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("i32"))),
+             static_cast<qint32>(hungryeditor::StyleType));
 }
 
 QTEST_MAIN(TestHighlightWorker)

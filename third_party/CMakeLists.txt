@@ -8,6 +8,7 @@
 #   lexilla          5.4.0  (HPND-style, see lexilla/License.txt)
 #   tree-sitter      0.24.7 (MIT, see tree-sitter/LICENSE)
 #   tree-sitter-md   0.4.1  (MIT, see tree-sitter-markdown/LICENSE)
+#   grammars/*       18 language grammars (all MIT, see THIRD_PARTY.md)
 
 # --- helper: quiet a vendored target --------------------------------------
 function(_vendor_quiet target)
@@ -89,17 +90,50 @@ _vendor_quiet(lexilla)
 # =========================================================================
 set(_ts   "${CMAKE_CURRENT_SOURCE_DIR}/tree-sitter")
 set(_tsmd "${CMAKE_CURRENT_SOURCE_DIR}/tree-sitter-markdown")
+set(_gr   "${CMAKE_CURRENT_SOURCE_DIR}/grammars")
+
+# Language grammars with a flat src/ layout.
+set(_gr_langs
+    bash c cpp c-sharp css go html java javascript json
+    python ruby rust toml yaml)
+set(_gr_sources "")
+foreach(_lang IN LISTS _gr_langs)
+    file(GLOB _lang_c CONFIGURE_DEPENDS "${_gr}/${_lang}/src/*.c")
+    list(APPEND _gr_sources ${_lang_c})
+endforeach()
+
+# TypeScript/TSX and PHP keep one directory level so each dialect's scanner
+# can reach its package's shared common/ header.
+file(GLOB _ts_dialect_c CONFIGURE_DEPENDS
+    "${_gr}/typescript/typescript/src/*.c"
+    "${_gr}/typescript/tsx/src/*.c"
+    "${_gr}/php/php/src/*.c")
+list(APPEND _gr_sources ${_ts_dialect_c})
+
+# yaml/src/scanner.c #includes schema.core.c directly — never compile the
+# schema fragments as their own translation units.
+list(FILTER _gr_sources EXCLUDE REGEX "/schema\\.[a-z]+\\.c$")
 
 add_library(treesitter STATIC
     "${_ts}/src/lib.c"                                       # amalgamated runtime
     "${_tsmd}/tree-sitter-markdown/src/parser.c"
     "${_tsmd}/tree-sitter-markdown/src/scanner.c"
     "${_tsmd}/tree-sitter-markdown-inline/src/parser.c"
-    "${_tsmd}/tree-sitter-markdown-inline/src/scanner.c")
+    "${_tsmd}/tree-sitter-markdown-inline/src/scanner.c"
+    ${_gr_sources})
 add_library(hungryeditor::treesitter ALIAS treesitter)
 
-# Each grammar's .c files resolve "tree_sitter/parser.h" from their own src/
-# directory; only the runtime needs an explicit include path.
+# Most grammar .c files resolve "tree_sitter/parser.h" from their own src/
+# directory. The TS/TSX/PHP scanners include a sibling common/scanner.h, which
+# in turn needs the dialect's src/ dir on the header search path.
+set_source_files_properties(
+    "${_gr}/typescript/typescript/src/scanner.c"
+    "${_gr}/typescript/tsx/src/scanner.c"
+    "${_gr}/php/php/src/scanner.c"
+    PROPERTIES INCLUDE_DIRECTORIES
+        "${_gr}/typescript/typescript/src;${_gr}/typescript/tsx/src;${_gr}/php/php/src")
+
+# The runtime needs its own src/ on the include path; grammars do not.
 target_include_directories(treesitter
     PRIVATE "${_ts}/src"
     SYSTEM PUBLIC "${_ts}/include")

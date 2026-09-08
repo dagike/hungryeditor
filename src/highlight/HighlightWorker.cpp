@@ -8,6 +8,7 @@
 #include <QTimer>
 
 #include "highlight/CaptureStyles.h"
+#include "highlight/GrammarRegistry.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
 
 extern "C" const TSLanguage* tree_sitter_markdown_inline(void);
@@ -29,23 +30,15 @@ TSQuery* newQuery(const TSLanguage* language, const QByteArray& scm)
                         &errorType);
 }
 
-/// Grammar plus highlights query for a language named in an injection.
-struct InjectedGrammar
-{
-    const TSLanguage* language = nullptr;
-    std::string_view highlights;
-};
-
-/// Resolve an injection language name to a grammar. The fenced-code language
-/// registry (Rust, C, Python, ...) lands in the next commit; for now the only
-/// wired sub-grammar is markdown-inline, which is what colours emphasis,
-/// strong, links and code spans inside prose.
-InjectedGrammar injectedGrammar(std::string_view name)
+/// Resolve an injection language name to a grammar: the markdown-inline
+/// sub-grammar for prose spans, otherwise a fenced-code language from the
+/// registry (Rust, C, Python, ...).
+Grammar injectedGrammar(std::string_view name)
 {
     if (name == "markdown_inline" || name == "markdown.inline") {
         return {tree_sitter_markdown_inline(), queries::kMarkdownInlineHighlights};
     }
-    return {};
+    return grammarForName(name);
 }
 
 /// Value of a `(#set! injection.language "x")` directive on a query pattern,
@@ -254,7 +247,7 @@ void HighlightWorker::paintInjections(std::string_view source, std::vector<qint3
             language = directiveLanguage(injectionQuery_, match.pattern_index);
         }
 
-        const InjectedGrammar grammar = injectedGrammar(language);
+        const Grammar grammar = injectedGrammar(language);
         if (grammar.language == nullptr) {
             continue;
         }

@@ -10,6 +10,31 @@ upstream as practical — only build scripts and IDE project files were removed.
 | tree-sitter | 0.24.7 | https://github.com/tree-sitter/tree-sitter | MIT — `third_party/tree-sitter/LICENSE` |
 | tree-sitter-markdown | 0.4.1 | https://github.com/tree-sitter-grammars/tree-sitter-markdown | MIT — `third_party/tree-sitter-markdown/LICENSE` |
 
+### Language grammars (`third_party/grammars/`)
+
+Pre-generated `parser.c` / `scanner.c` plus `queries/highlights.scm`, all MIT.
+Each grammar's `LICENSE` is kept alongside its sources.
+
+| Grammar | Version | Upstream |
+|---------|---------|----------|
+| bash | v0.23.3 | https://github.com/tree-sitter/tree-sitter-bash |
+| c | v0.23.4 | https://github.com/tree-sitter/tree-sitter-c |
+| cpp | v0.23.4 | https://github.com/tree-sitter/tree-sitter-cpp |
+| c-sharp | v0.23.1 | https://github.com/tree-sitter/tree-sitter-c-sharp |
+| css | v0.23.2 | https://github.com/tree-sitter/tree-sitter-css |
+| go | v0.23.4 | https://github.com/tree-sitter/tree-sitter-go |
+| html | v0.23.2 | https://github.com/tree-sitter/tree-sitter-html |
+| java | v0.23.5 | https://github.com/tree-sitter/tree-sitter-java |
+| javascript | v0.23.1 | https://github.com/tree-sitter/tree-sitter-javascript |
+| json | v0.24.8 | https://github.com/tree-sitter/tree-sitter-json |
+| php | v0.23.11 | https://github.com/tree-sitter/tree-sitter-php |
+| python | v0.23.6 | https://github.com/tree-sitter/tree-sitter-python |
+| ruby | v0.23.1 | https://github.com/tree-sitter/tree-sitter-ruby |
+| rust | v0.23.2 | https://github.com/tree-sitter/tree-sitter-rust |
+| toml | v0.7.0 | https://github.com/tree-sitter-grammars/tree-sitter-toml |
+| typescript + tsx | v0.23.2 | https://github.com/tree-sitter/tree-sitter-typescript |
+| yaml | v0.7.1 | https://github.com/tree-sitter-grammars/tree-sitter-yaml |
+
 ## Notes
 
 - **Scintilla** is built with its Qt platform layer
@@ -24,7 +49,14 @@ upstream as practical — only build scripts and IDE project files were removed.
   (`tree_sitter_markdown_inline`) — built from their pre-generated `parser.c`,
   so no `tree-sitter generate` / Node toolchain is needed. The grammars'
   `queries/*.scm` (highlight and injection rules) are kept for use from
-  Phase 1 onward. Additional language grammars are added in commit 1.7.
+  Phase 1 onward.
+- **Language grammars** under `third_party/grammars/` back the fenced-code
+  registry (`src/highlight/GrammarRegistry`). Only `src/*.c`, the bundled
+  `src/tree_sitter/*.h`, and `queries/highlights.scm` are compiled or read;
+  a dialect that layers on a base language (C++ on C, TypeScript on
+  JavaScript) has the base query concatenated ahead of its own at build time.
+  Predicate directives in the queries (`#match?`, `#eq?`) are not yet
+  evaluated, so a few captures over-fire slightly.
 - All components are used under permissive terms that require preserving the
   copyright notice and permission text, reproduced in the license files above
   and in the application's about box (added in a later phase).
