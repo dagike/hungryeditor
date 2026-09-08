@@ -12,6 +12,8 @@ add_library(hungryeditor_core STATIC
     app/MainWindow.h
     editor/Editor.cpp
     editor/Editor.h
+    highlight/TreeSitterEngine.cpp
+    highlight/TreeSitterEngine.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 
@@ -26,6 +28,7 @@ target_compile_definitions(hungryeditor_core PRIVATE
 target_link_libraries(hungryeditor_core PUBLIC
     Qt6::Widgets
     hungryeditor::scintilla
+    hungryeditor::treesitter
 )
 
 hungryeditor_set_warnings(hungryeditor_core)

@@ -27,6 +27,10 @@ hungryeditor_add_test(test_editor
     SOURCES test_editor.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_treesitter_engine
+    SOURCES test_treesitter_engine.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_main_window
     SOURCES test_main_window.cpp
     LIBS hungryeditor::core)
