@@ -1,23 +1,28 @@
-# Test tree. The Qt Test harness proper is wired up in commit 0.6; for now
-# there are two plain executables driven by CTest.
+# Test tree — Qt Test cases registered with CTest.
+#
+# Every test runs headless: hungryeditor_add_test() forces the "offscreen"
+# QPA platform so the suite needs no display on CI or over SSH.
 
-add_executable(smoke_test smoke_test.cpp)
-target_compile_features(smoke_test PRIVATE cxx_std_20)
-add_test(NAME smoke COMMAND smoke_test)
+find_package(Qt6 REQUIRED COMPONENTS Test Widgets)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+# hungryeditor_add_test(<name> SOURCES <files...> [LIBS <targets...>])
+function(hungryeditor_add_test name)
+    cmake_parse_arguments(ARG "" "" "SOURCES;LIBS" ${ARGN})
 
-add_executable(vendor_link_test vendor_link_test.cpp)
-target_link_libraries(vendor_link_test PRIVATE
-    hungryeditor::scintilla
-    hungryeditor::lexilla
-    hungryeditor::treesitter
-    Qt6::Widgets)
-hungryeditor_set_warnings(vendor_link_test)
-add_test(NAME vendor_link COMMAND vendor_link_test)
+    add_executable(${name} ${ARG_SOURCES})
+    set_target_properties(${name} PROPERTIES AUTOMOC ON)
+    target_link_libraries(${name} PRIVATE Qt6::Test ${ARG_LIBS})
+    hungryeditor_set_warnings(${name})
 
-add_executable(main_window_test main_window_test.cpp)
-set_target_properties(main_window_test PROPERTIES AUTOMOC ON)
-target_link_libraries(main_window_test PRIVATE hungryeditor::core)
-hungryeditor_set_warnings(main_window_test)
-add_test(NAME main_window COMMAND main_window_test)
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endfunction()
+
+hungryeditor_add_test(test_vendor
+    SOURCES test_vendor.cpp
+    LIBS hungryeditor::scintilla hungryeditor::lexilla hungryeditor::treesitter Qt6::Widgets)
+
+hungryeditor_add_test(test_main_window
+    SOURCES test_main_window.cpp
+    LIBS hungryeditor::core)
