@@ -11,6 +11,7 @@ add_executable(vendor_link_test vendor_link_test.cpp)
 target_link_libraries(vendor_link_test PRIVATE
     hungryeditor::scintilla
     hungryeditor::lexilla
+    hungryeditor::treesitter
     Qt6::Widgets)
 hungryeditor_set_warnings(vendor_link_test)
 add_test(NAME vendor_link COMMAND vendor_link_test)

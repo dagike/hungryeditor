@@ -4,8 +4,10 @@
 # stripped). They are compiled with warnings silenced and their headers are
 # exposed as SYSTEM includes so they never pollute first-party diagnostics.
 #
-#   scintilla  5.5.5  (HPND-style, see scintilla/License.txt)
-#   lexilla    5.4.0  (HPND-style, see lexilla/License.txt)
+#   scintilla        5.5.5  (HPND-style, see scintilla/License.txt)
+#   lexilla          5.4.0  (HPND-style, see lexilla/License.txt)
+#   tree-sitter      0.24.7 (MIT, see tree-sitter/LICENSE)
+#   tree-sitter-md   0.4.1  (MIT, see tree-sitter-markdown/LICENSE)
 
 # --- helper: quiet a vendored target --------------------------------------
 function(_vendor_quiet target)
@@ -77,3 +79,34 @@ target_include_directories(lexilla
         "${_sci}/include")
 
 _vendor_quiet(lexilla)
+
+# =========================================================================
+# tree-sitter  (incremental parser runtime + Markdown grammars, C11)
+# =========================================================================
+set(_ts   "${CMAKE_CURRENT_SOURCE_DIR}/tree-sitter")
+set(_tsmd "${CMAKE_CURRENT_SOURCE_DIR}/tree-sitter-markdown")
+
+add_library(treesitter STATIC
+    "${_ts}/src/lib.c"                                       # amalgamated runtime
+    "${_tsmd}/tree-sitter-markdown/src/parser.c"
+    "${_tsmd}/tree-sitter-markdown/src/scanner.c"
+    "${_tsmd}/tree-sitter-markdown-inline/src/parser.c"
+    "${_tsmd}/tree-sitter-markdown-inline/src/scanner.c")
+add_library(hungryeditor::treesitter ALIAS treesitter)
+
+# Each grammar's .c files resolve "tree_sitter/parser.h" from their own src/
+# directory; only the runtime needs an explicit include path.
+target_include_directories(treesitter
+    PRIVATE "${_ts}/src"
+    SYSTEM PUBLIC "${_ts}/include")
+
+set_target_properties(treesitter PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON)
+
+if(MSVC)
+    target_compile_options(treesitter PRIVATE /w)
+else()
+    target_compile_options(treesitter PRIVATE -w)
+endif()
