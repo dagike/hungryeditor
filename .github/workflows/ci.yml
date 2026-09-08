@@ -22,12 +22,12 @@ jobs:
           - os: ubuntu-latest
             preset: linux-debug
             qt_version: 6.4.2
-          # Qt 6.4.x headers don't compile with the MSVC toolchain currently
-          # on windows-latest (missing 'stdext' in qvarlengtharray.h, fixed
-          # upstream in 6.5.0); use the 6.5 LTS line there.
+          # windows-latest ships a preview MSVC toolset that dropped
+          # stdext::checked_array_iterator; Qt's headers only stop using it
+          # in 6.8, so pin the Windows build to the current 6.8 line.
           - os: windows-latest
             preset: windows-release
-            qt_version: 6.5.3
+            qt_version: 6.8.3
 
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +98,8 @@ jobs:
 
       - name: Run clang-tidy on first-party sources
         run: |
-          mapfile -t files < <(git ls-files 'src/*.cpp' 'tests/*.cpp')
+          # tests/ is skipped: the Qt Test files #include a generated .moc that
+          # only exists after a build, and configure alone is enough for src/.
+          mapfile -t files < <(git ls-files 'src/*.cpp')
           printf '%s\n' "${files[@]}"
           clang-tidy -p build/linux-debug "${files[@]}"
