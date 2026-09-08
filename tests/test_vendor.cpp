@@ -8,17 +8,14 @@
 
 #include <ILexer.h>
 #include <Lexilla.h>
-
 #include <ScintillaEditBase.h>
 #include <ScintillaMessages.h>
-
 #include <tree_sitter/api.h>
 
 extern "C" const TSLanguage* tree_sitter_markdown(void);
 extern "C" const TSLanguage* tree_sitter_markdown_inline(void);
 
-namespace
-{
+namespace {
 
 bool containsType(TSNode node, std::string_view wanted)
 {
