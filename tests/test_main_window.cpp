@@ -331,13 +331,18 @@ void TestMainWindow::restoresTabsAndGeometryFromACleanSession()
         QVERIFY(first.openFiles({a, b}));
         first.documents()->setCurrentIndex(1); // user switches over to b
         first.editor()->setCursorPosition(2, 1);
-        first.resize(840, 560);
+        // Keep this within the headless 800x600 offscreen screen: restoreGeometry
+        // clamps a larger window to the available screen area.
+        first.resize(720, 480);
         first.saveSession();
     }
 
     hungryeditor::MainWindow second;
     second.setStateDirectory(state.path());
     second.restoreLastSession(/*askFirst=*/false);
+    // Check the restored geometry before showing: a shown window can be resized
+    // by the platform (the offscreen plugin on Windows trims the frame).
+    QCOMPARE(second.size(), QSize(720, 480));
     second.show();
     QVERIFY(QTest::qWaitForWindowExposed(&second));
 
@@ -345,7 +350,6 @@ void TestMainWindow::restoresTabsAndGeometryFromACleanSession()
     QCOMPARE(second.currentPath(), b);
     QCOMPARE(second.editor()->text(), QStringLiteral("b0\nb1\nb2\n"));
     QCOMPARE(second.editor()->cursorLine(), 2);
-    QCOMPARE(second.width(), 840);
 
     // The session file is consumed once restored.
     QVERIFY(
