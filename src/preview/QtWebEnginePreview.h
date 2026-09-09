@@ -1,6 +1,7 @@
 #pragma once
 
-#include <QPointer>
+#include <memory>
+
 #include <QUrl>
 
 #include "preview/PreviewBackend.h"
@@ -31,10 +32,12 @@ public:
     void setHtml(const QString& html, const QUrl& baseUrl = QUrl()) override;
     void setContent(const QString& bodyHtml, const QUrl& baseUrl = QUrl()) override;
     void runJavaScript(const QString& script,
-                       std::function<void(const QVariant&)> callback = {}) override;
+                       const std::function<void(const QVariant&)>& callback = {}) override;
 
 private:
-    QPointer<QWebEngineView> view_;
+    // Owned until widget() is embedded in a layout, which reparents it; the
+    // backend must outlive whatever it is embedded in.
+    std::unique_ptr<QWebEngineView> view_;
     PreviewBridge* bridge_;
     QWebChannel* channel_;
     QUrl baseUrl_;

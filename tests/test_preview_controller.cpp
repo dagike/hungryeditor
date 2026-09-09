@@ -19,7 +19,7 @@ public:
     QWidget* widget() override { return nullptr; }
     void setHtml(const QString&, const QUrl&) override {}
     void setContent(const QString& bodyHtml, const QUrl&) override { pushes << bodyHtml; }
-    void runJavaScript(const QString&, std::function<void(const QVariant&)>) override {}
+    void runJavaScript(const QString&, const std::function<void(const QVariant&)>&) override {}
 
     QStringList pushes;
 };

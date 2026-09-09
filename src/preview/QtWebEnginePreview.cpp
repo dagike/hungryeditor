@@ -1,7 +1,5 @@
 #include "preview/QtWebEnginePreview.h"
 
-#include <utility>
-
 #include <QWebChannel>
 #include <QWebEnginePage>
 #include <QWebEngineView>
@@ -56,25 +54,21 @@ const char* const kShellHtml = R"HTML(<!doctype html>
 } // namespace
 
 QtWebEnginePreview::QtWebEnginePreview(QObject* parent)
-    : PreviewBackend(parent), view_(new QWebEngineView), bridge_(new PreviewBridge(this)),
-      channel_(new QWebChannel(this))
+    : PreviewBackend(parent), view_(std::make_unique<QWebEngineView>()),
+      bridge_(new PreviewBridge(this)), channel_(new QWebChannel(this))
 {
     channel_->registerObject(QStringLiteral("bridge"), bridge_);
     view_->page()->setWebChannel(channel_);
 
-    connect(view_.data(), &QWebEngineView::loadFinished, this, &PreviewBackend::loadFinished);
+    connect(view_.get(), &QWebEngineView::loadFinished, this, &PreviewBackend::loadFinished);
     connect(bridge_, &PreviewBridge::pageReady, this, &PreviewBackend::ready);
 }
 
-QtWebEnginePreview::~QtWebEnginePreview()
-{
-    // QPointer is null if the view was embedded and destroyed with its parent.
-    delete view_.data();
-}
+QtWebEnginePreview::~QtWebEnginePreview() = default;
 
 QWidget* QtWebEnginePreview::widget()
 {
-    return view_.data();
+    return view_.get();
 }
 
 void QtWebEnginePreview::setHtml(const QString& html, const QUrl& baseUrl)
@@ -95,10 +89,10 @@ void QtWebEnginePreview::setContent(const QString& bodyHtml, const QUrl& baseUrl
 }
 
 void QtWebEnginePreview::runJavaScript(const QString& script,
-                                       std::function<void(const QVariant&)> callback)
+                                       const std::function<void(const QVariant&)>& callback)
 {
     if (callback) {
-        view_->page()->runJavaScript(script, std::move(callback));
+        view_->page()->runJavaScript(script, callback);
     } else {
         view_->page()->runJavaScript(script);
     }

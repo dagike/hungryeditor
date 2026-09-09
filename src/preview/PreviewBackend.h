@@ -40,7 +40,7 @@ public:
     /// result once available (an invalid QVariant if the script returned
     /// nothing or the page is gone).
     virtual void runJavaScript(const QString& script,
-                               std::function<void(const QVariant&)> callback = {}) = 0;
+                               const std::function<void(const QVariant&)>& callback = {}) = 0;
 
 signals:
     /// Emitted once a setHtml() load settles; `ok` is false on a load error.
