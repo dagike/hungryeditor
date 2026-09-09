@@ -9,6 +9,7 @@ upstream as practical — only build scripts and IDE project files were removed.
 | Lexilla | 5.4.0 (`540`) | https://www.scintilla.org/Lexilla.html | HPND-style — `third_party/lexilla/License.txt` |
 | tree-sitter | 0.24.7 | https://github.com/tree-sitter/tree-sitter | MIT — `third_party/tree-sitter/LICENSE` |
 | tree-sitter-markdown | 0.4.1 | https://github.com/tree-sitter-grammars/tree-sitter-markdown | MIT — `third_party/tree-sitter-markdown/LICENSE` |
+| md4c | 0.5.2 (`release-0.5.2`) | https://github.com/mity/md4c | MIT — `third_party/md4c/LICENSE.md` |
 
 ### Language grammars (`third_party/grammars/`)
 
@@ -57,6 +58,10 @@ Each grammar's `LICENSE` is kept alongside its sources.
   JavaScript) has the base query concatenated ahead of its own at build time.
   Predicate directives in the queries (`#match?`, `#eq?`) are not yet
   evaluated, so a few captures over-fire slightly.
+- **md4c** is compiled from its single `src/md4c.c` (its bundled HTML renderer
+  and `entity.c` table are not vendored — `src/markdown/Md4cRenderer` renders
+  the parser callbacks directly so it can add `data-src-line` anchors for
+  scroll sync). CommonMark only for now; GFM flags are enabled in a later phase.
 - All components are used under permissive terms that require preserving the
   copyright notice and permission text, reproduced in the license files above
   and in the application's about box (added in a later phase).
