@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QMenu>
 #include <QMenuBar>
@@ -21,6 +22,7 @@
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 
 class TestMainWindow : public QObject
@@ -56,6 +58,7 @@ private slots:
     void viewModeActionsTogglePaneVisibility();
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
+    void scrollSyncsBothWays();
 };
 
 namespace {
@@ -592,6 +595,46 @@ void TestMainWindow::switchingDocumentsRefreshesThePreview()
 
     QVERIFY(rendered.count() >= 1 || rendered.wait(2000));
     QVERIFY(rendered.last().at(0).toString().contains(QStringLiteral(">Doc A</h1>")));
+}
+
+void TestMainWindow::scrollSyncsBothWays()
+{
+    hungryeditor::MainWindow window;
+    window.resize(720, 320);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QString doc;
+    for (int i = 0; i < 80; ++i) {
+        doc += QStringLiteral("Paragraph %1 with a comfortable amount of filler text.\n\n").arg(i);
+    }
+    QSignalSpy ready(window.previewBackend(), &hungryeditor::PreviewBackend::ready);
+    window.editor()->setText(doc);
+    QVERIFY(ready.wait(20000)); // preview shell up with the rendered body
+
+    const auto previewScrollY = [&] {
+        int y = -1;
+        window.previewBackend()->runJavaScript(QStringLiteral("Math.round(window.scrollY)"),
+                                               [&](const QVariant& v) { y = v.toInt(); });
+        QElapsedTimer clock;
+        clock.start();
+        while (y < 0 && clock.elapsed() < 5000) {
+            QTest::qWait(20);
+        }
+        return y;
+    };
+
+    // Editor scroll drives the preview.
+    window.editor()->setFirstVisibleLine(60);
+    QTRY_VERIFY_WITH_TIMEOUT(previewScrollY() > 0, 10000);
+
+    // Preview scroll drives the editor. Let the brief post-sync mute window in
+    // the page expire first, otherwise the manual scroll is treated as an echo.
+    window.editor()->setFirstVisibleLine(0);
+    QTest::qWait(400);
+    window.previewBackend()->runJavaScript(
+        QStringLiteral("window.scrollTo(0, document.body.scrollHeight); void 0"));
+    QTRY_VERIFY_WITH_TIMEOUT(window.editor()->firstVisibleLine() > 0, 10000);
 }
 
 QTEST_MAIN(TestMainWindow)

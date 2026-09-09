@@ -51,6 +51,9 @@ public:
     /// The debounce-and-render controller feeding the preview. Exposed for tests.
     PreviewController* previewController() const { return previewController_.get(); }
 
+    /// The preview rendering backend. Exposed for tests.
+    PreviewBackend* previewBackend() const { return preview_.get(); }
+
     /// The preview pane widget, for tests to check visibility.
     QWidget* previewWidget() const;
 
@@ -144,6 +147,10 @@ private:
     void applyViewMode();
     void refreshPreview();
 
+    // Scroll sync. Each direction guards against the echo the other would cause.
+    void syncPreviewToEditor();
+    void syncEditorToPreview(int line);
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);
@@ -181,6 +188,7 @@ private:
     QString lastError_;
     bool syncingTabs_ = false;
     bool reorderingTabs_ = false;
+    bool syncingScroll_ = false;
 
     // Documents with a reload prompt already queued for the next event-loop
     // turn, and files whose disappearance has already been reported — so

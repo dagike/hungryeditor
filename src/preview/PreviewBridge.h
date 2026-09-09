@@ -6,8 +6,8 @@
 namespace hungryeditor {
 
 /// The object the preview page talks to over QWebChannel. The host pushes
-/// rendered HTML through `content`; the page reports back when it is wired up
-/// and, later, scroll position and heading clicks.
+/// rendered HTML and scroll requests down; the page reports back when it is
+/// wired up and when the viewer scrolls it.
 class PreviewBridge : public QObject
 {
     Q_OBJECT
@@ -21,15 +21,27 @@ public:
     /// Push a new rendered body to the page. A no-op if it is unchanged.
     void setContent(const QString& html);
 
+    /// Ask the page to scroll the block from source line `line` to the top.
+    void requestScrollToLine(int line) { emit scrollToLineRequested(line); }
+
 signals:
     void contentChanged(const QString& html);
+
+    /// Host wants the page scrolled so `line`'s block is at the top.
+    void scrollToLineRequested(int line);
 
     /// The page's script has connected and applied the initial content.
     void pageReady();
 
+    /// The viewer scrolled the page; `line` is the source line now at the top.
+    void viewerScrolled(int line);
+
 public slots:
     /// Called from the page once its QWebChannel handshake completes.
     void notifyReady() { emit pageReady(); }
+
+    /// Called from the page's scroll handler.
+    void reportScroll(int line) { emit viewerScrolled(line); }
 
 private:
     QString content_;

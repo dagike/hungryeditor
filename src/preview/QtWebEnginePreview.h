@@ -33,6 +33,7 @@ public:
     void setContent(const QString& bodyHtml, const QUrl& baseUrl = QUrl()) override;
     void runJavaScript(const QString& script,
                        const std::function<void(const QVariant&)>& callback = {}) override;
+    void scrollToSourceLine(int line) override;
 
 private:
     // Owned until widget() is embedded in a layout, which reparents it; the

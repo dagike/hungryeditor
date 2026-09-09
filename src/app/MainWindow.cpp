@@ -98,6 +98,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     splitter_->setStretchFactor(0, 1);
     splitter_->setStretchFactor(1, 1);
     connect(editor_, &Editor::textChanged, this, &MainWindow::refreshPreview);
+    connect(editor_, &Editor::viewportScrolled, this, &MainWindow::syncPreviewToEditor);
+    connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
+            &MainWindow::syncEditorToPreview);
 
     buildMenus();
     setStateDirectory(defaultStateDirectory());
@@ -325,6 +328,26 @@ void MainWindow::refreshPreview()
     if (viewMode_ != ViewMode::Editor) {
         previewController_->setMarkdown(editor_->text());
     }
+}
+
+void MainWindow::syncPreviewToEditor()
+{
+    if (syncingScroll_ || viewMode_ != ViewMode::Split) {
+        return;
+    }
+    syncingScroll_ = true;
+    preview_->scrollToSourceLine(editor_->firstVisibleLine());
+    syncingScroll_ = false;
+}
+
+void MainWindow::syncEditorToPreview(int line)
+{
+    if (syncingScroll_ || viewMode_ != ViewMode::Split) {
+        return;
+    }
+    syncingScroll_ = true;
+    editor_->setFirstVisibleLine(line);
+    syncingScroll_ = false;
 }
 
 QString MainWindow::currentPath() const

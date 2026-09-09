@@ -176,6 +176,9 @@ int Editor::firstVisibleLine() const
 void Editor::setFirstVisibleLine(int line)
 {
     call_.SetFirstVisibleLine(line);
+    // Scintilla only sends SC_UPDATE_V_SCROLL when it repaints, which a hidden
+    // or idle widget will not do — surface programmatic scrolls directly.
+    emit viewportScrolled();
 }
 
 void Editor::setEditorFont(const QFont& font)
@@ -416,6 +419,9 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
     case Notification::UpdateUI:
         if (FlagSet(notification->updated, Update::Selection)) {
             emit cursorPositionChanged(cursorLine(), cursorColumn());
+        }
+        if (FlagSet(notification->updated, Update::VScroll)) {
+            emit viewportScrolled();
         }
         break;
 
