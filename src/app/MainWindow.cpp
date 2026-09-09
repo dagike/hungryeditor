@@ -4,7 +4,10 @@
 #include <QFileDialog>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QVBoxLayout>
+#include <QWidget>
 
+#include "app/TabBar.h"
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
@@ -24,23 +27,52 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
     resize(1000, 720);
 
-    editor_ = new Editor(this);
-    setCentralWidget(editor_);
+    auto* container = new QWidget(this);
+    auto* layout = new QVBoxLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    tabBar_ = new TabBar(container);
+    editor_ = new Editor(container);
+    layout->addWidget(tabBar_);
+    layout->addWidget(editor_);
+    setCentralWidget(container);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
 
     buildMenus();
 
+    connect(documents_.get(), &DocumentManager::documentAdded, this, &MainWindow::onDocumentAdded);
+    connect(documents_.get(), &DocumentManager::documentClosed, this,
+            &MainWindow::onDocumentClosed);
     connect(documents_.get(), &DocumentManager::currentChanged, this,
-            [this](int) { updateWindowTitle(); });
+            &MainWindow::onCurrentChanged);
     connect(documents_.get(), &DocumentManager::modifiedChanged, this,
             [this](int index, bool modified) {
                 if (index == documents_->currentIndex()) {
                     saveAction_->setEnabled(modified);
                 }
+                syncTabText(index);
                 updateWindowTitle();
             });
 
+    connect(tabBar_, &QTabBar::currentChanged, this, [this](int index) {
+        if (!syncingTabs_ && !reorderingTabs_ && index >= 0) {
+            documents_->setCurrentIndex(index);
+        }
+    });
+    connect(tabBar_, &QTabBar::tabCloseRequested, this, &MainWindow::closeDocumentAt);
+    connect(tabBar_, &QTabBar::tabMoved, this, [this](int from, int to) {
+        if (syncingTabs_) {
+            return;
+        }
+        reorderingTabs_ = true;
+        documents_->moveDocument(from, to);
+        documents_->setCurrentIndex(tabBar_->currentIndex());
+        reorderingTabs_ = false;
+    });
+
+    primeTabs();
     updateWindowTitle();
 }
 
@@ -67,6 +99,11 @@ void MainWindow::buildMenus()
     saveAsAction->setShortcut(QKeySequence::SaveAs);
     saveAsAction->setObjectName(QStringLiteral("action.saveAs"));
 
+    QAction* closeAction =
+        fileMenu->addAction(tr("&Close"), this, &MainWindow::closeCurrentDocument);
+    closeAction->setShortcut(QKeySequence::Close);
+    closeAction->setObjectName(QStringLiteral("action.close"));
+
     fileMenu->addSeparator();
 
     QAction* nextAction =
@@ -91,6 +128,56 @@ void MainWindow::buildMenus()
         helpMenu->addAction(tr("&About hungryeditor"), this, &MainWindow::showAbout);
     aboutAction->setMenuRole(QAction::AboutRole);
     aboutAction->setObjectName(QStringLiteral("action.about"));
+}
+
+void MainWindow::primeTabs()
+{
+    syncingTabs_ = true;
+    for (int i = 0; i < documents_->count(); ++i) {
+        tabBar_->addTab(documents_->documentAt(i)->displayName());
+        syncTabText(i);
+    }
+    tabBar_->setCurrentIndex(documents_->currentIndex());
+    syncingTabs_ = false;
+    tabBar_->setVisible(documents_->count() > 1);
+}
+
+void MainWindow::syncTabText(int index)
+{
+    const Document* document = documents_->documentAt(index);
+    if (document == nullptr || index >= tabBar_->count()) {
+        return;
+    }
+    const QString name = document->displayName();
+    tabBar_->setTabText(index, document->isModified() ? QStringLiteral("*") + name : name);
+    tabBar_->setTabToolTip(index, document->isUntitled() ? name : document->path());
+}
+
+void MainWindow::onDocumentAdded(int index)
+{
+    syncingTabs_ = true;
+    tabBar_->insertTab(index, documents_->documentAt(index)->displayName());
+    syncTabText(index);
+    syncingTabs_ = false;
+    tabBar_->setVisible(documents_->count() > 1);
+}
+
+void MainWindow::onDocumentClosed(int index)
+{
+    syncingTabs_ = true;
+    tabBar_->removeTab(index);
+    syncingTabs_ = false;
+    tabBar_->setVisible(documents_->count() > 1);
+}
+
+void MainWindow::onCurrentChanged(int index)
+{
+    syncingTabs_ = true;
+    if (index >= 0 && index < tabBar_->count()) {
+        tabBar_->setCurrentIndex(index);
+    }
+    syncingTabs_ = false;
+    updateWindowTitle();
 }
 
 QString MainWindow::currentPath() const
@@ -123,6 +210,24 @@ bool MainWindow::savePath(const QString& path)
     }
     lastError_.clear();
     return true;
+}
+
+void MainWindow::closeDocumentAt(int index)
+{
+    const Document* document = documents_->documentAt(index);
+    if (document == nullptr) {
+        return;
+    }
+    if (document->isModified()) {
+        const QMessageBox::StandardButton choice = QMessageBox::question(
+            this, tr("Discard Changes?"),
+            tr("“%1” has unsaved changes. Close it anyway?").arg(document->displayName()),
+            QMessageBox::Discard | QMessageBox::Cancel);
+        if (choice != QMessageBox::Discard) {
+            return;
+        }
+    }
+    documents_->closeDocument(index);
 }
 
 void MainWindow::newDocument()
@@ -164,6 +269,11 @@ void MainWindow::saveAsDialog()
     if (!savePath(path)) {
         QMessageBox::warning(this, tr("Save Failed"), lastError_);
     }
+}
+
+void MainWindow::closeCurrentDocument()
+{
+    closeDocumentAt(documents_->currentIndex());
 }
 
 void MainWindow::nextDocument()

@@ -193,6 +193,27 @@ void DocumentManager::closeDocument(int index)
     emit currentChanged(currentIndex_);
 }
 
+void DocumentManager::moveDocument(int from, int to)
+{
+    if (from == to || from < 0 || to < 0 || from >= count() || to >= count()) {
+        return;
+    }
+
+    std::unique_ptr<Document> moved = std::move(documents_[static_cast<std::size_t>(from)]);
+    documents_.erase(documents_.begin() + from);
+    documents_.insert(documents_.begin() + to, std::move(moved));
+
+    if (currentIndex_ == from) {
+        currentIndex_ = to;
+    } else if (from < currentIndex_ && currentIndex_ <= to) {
+        --currentIndex_;
+    } else if (to <= currentIndex_ && currentIndex_ < from) {
+        ++currentIndex_;
+    }
+
+    emit documentMoved(from, to);
+}
+
 void DocumentManager::setCurrentIndex(int index)
 {
     if (index < 0 || index >= count() || index == currentIndex_) {

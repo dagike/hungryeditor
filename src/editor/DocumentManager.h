@@ -44,11 +44,17 @@ public:
     /// open: closing the last one replaces it with a fresh untitled buffer.
     void closeDocument(int index);
 
+    /// Reorder the document list, moving the entry at `from` to `to`. The
+    /// current document stays current (its index is adjusted). Scintilla
+    /// documents are untouched.
+    void moveDocument(int from, int to);
+
     void setCurrentIndex(int index);
 
 signals:
     void documentAdded(int index);
     void documentClosed(int index);
+    void documentMoved(int from, int to);
     void currentChanged(int index);
     void modifiedChanged(int index, bool modified);
 

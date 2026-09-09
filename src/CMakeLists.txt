@@ -37,6 +37,8 @@ hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueri
 add_library(hungryeditor_core STATIC
     app/MainWindow.cpp
     app/MainWindow.h
+    app/TabBar.cpp
+    app/TabBar.h
     editor/Document.cpp
     editor/Document.h
     editor/DocumentManager.cpp

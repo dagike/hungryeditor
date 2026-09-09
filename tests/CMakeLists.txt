@@ -50,3 +50,7 @@ hungryeditor_add_test(test_document_manager
 hungryeditor_add_test(test_main_window
     SOURCES test_main_window.cpp
     LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_tab_bar
+    SOURCES test_tab_bar.cpp
+    LIBS hungryeditor::core)

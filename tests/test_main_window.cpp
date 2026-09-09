@@ -7,6 +7,7 @@
 #include <QtTest>
 
 #include "app/MainWindow.h"
+#include "app/TabBar.h"
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
@@ -16,7 +17,7 @@ class TestMainWindow : public QObject
     Q_OBJECT
 
 private slots:
-    void editorIsCentralWidget();
+    void editorSitsBelowTheTabBar();
     void hasExpectedMenus();
     void hasNamedActions_data();
     void hasNamedActions();
@@ -28,11 +29,16 @@ private slots:
     void newAndSwitchActionsChangeCurrentDocument();
 };
 
-void TestMainWindow::editorIsCentralWidget()
+void TestMainWindow::editorSitsBelowTheTabBar()
 {
     hungryeditor::MainWindow window;
     QVERIFY(window.editor() != nullptr);
-    QCOMPARE(window.centralWidget(), static_cast<QWidget*>(window.editor()));
+    QVERIFY(window.tabBar() != nullptr);
+    QVERIFY(window.centralWidget()->isAncestorOf(window.editor()));
+    QVERIFY(window.centralWidget()->isAncestorOf(window.tabBar()));
+    // A single document keeps the tab strip hidden.
+    QCOMPARE(window.documents()->count(), 1);
+    QVERIFY(window.tabBar()->isHidden());
 }
 
 void TestMainWindow::hasExpectedMenus()
@@ -115,6 +121,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("open") << QStringLiteral("action.open");
     QTest::newRow("save") << QStringLiteral("action.save");
     QTest::newRow("saveAs") << QStringLiteral("action.saveAs");
+    QTest::newRow("close") << QStringLiteral("action.close");
     QTest::newRow("quit") << QStringLiteral("action.quit");
     QTest::newRow("about") << QStringLiteral("action.about");
 }
