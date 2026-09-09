@@ -12,6 +12,8 @@
 #include <ScintillaEditBase.h>
 // clang-format on
 
+class QKeyEvent;
+
 namespace Scintilla {
 struct NotificationData;
 }
@@ -93,6 +95,10 @@ public:
     /// tokens arrive with the grammar registry.
     void toggleLineComment();
 
+    /// Position of the bracket that pairs with the one at `position`, or -1 if
+    /// there is no bracket there or it is unbalanced.
+    int matchingBrace(int position) const;
+
     /// How a find/replace matches.
     struct SearchOptions
     {
@@ -166,9 +172,20 @@ signals:
     /// Emitted when the vertical scroll position changes, for preview sync.
     void viewportScrolled();
 
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
+
 private:
     void onNotify(Scintilla::NotificationData* notification);
     void applyHighlight(const HighlightResult& result);
+
+    /// Highlight the bracket pair around the caret (or flag an unmatched one).
+    void updateBraceHighlight();
+    /// Insert a newline that carries the current line's indentation and, if it
+    /// is a Markdown list item, its (renumbered) marker — or, on an empty item,
+    /// removes the marker instead. Returns false to fall back to a plain
+    /// newline (multi-caret, selection, non-plain caret).
+    bool insertSmartNewline();
 
     /// Apply fonts, colours, caret, tabs and margins from the current font
     /// and the (currently hard-coded) palette.

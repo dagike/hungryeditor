@@ -1,5 +1,6 @@
 // Coverage for the typed editor wrapper.
 
+#include <QKeyEvent>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -27,6 +28,8 @@ private slots:
     void movesDuplicatesAndDeletesLines();
     void joinsLines();
     void togglesHtmlCommentIdempotently();
+    void matchesBrackets();
+    void newlineCarriesIndentAndContinuesLists();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -261,6 +264,43 @@ void TestEditor::togglesHtmlCommentIdempotently()
     editor.call().SetSelection(editor.call().PositionFromLine(1) + 3, 0);
     editor.toggleLineComment();
     QCOMPARE(editor.text(), QStringLiteral("<!-- first -->\n<!-- second -->\n"));
+}
+
+void TestEditor::matchesBrackets()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("foo (bar [baz]) qux\n"));
+    QCOMPARE(editor.matchingBrace(4), 14); // ( -> )
+    QCOMPARE(editor.matchingBrace(14), 4); // ) -> (
+    QCOMPARE(editor.matchingBrace(9), 13); // [ -> ]
+    QCOMPARE(editor.matchingBrace(0), -1); // not a bracket
+
+    editor.setText(QStringLiteral("unbalanced (\n"));
+    QCOMPARE(editor.matchingBrace(11), -1);
+}
+
+void TestEditor::newlineCarriesIndentAndContinuesLists()
+{
+    hungryeditor::Editor editor;
+
+    const auto pressEnterAtEnd = [&](const QString& start) {
+        editor.setText(start);
+        editor.call().GotoPos(editor.call().LineEndPosition(0));
+        QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+        QCoreApplication::sendEvent(&editor, &press);
+    };
+
+    pressEnterAtEnd(QStringLiteral("    indented"));
+    QCOMPARE(editor.text(), QStringLiteral("    indented\n    "));
+
+    pressEnterAtEnd(QStringLiteral("- first item"));
+    QCOMPARE(editor.text(), QStringLiteral("- first item\n- "));
+
+    pressEnterAtEnd(QStringLiteral("3. third"));
+    QCOMPARE(editor.text(), QStringLiteral("3. third\n4. "));
+
+    pressEnterAtEnd(QStringLiteral("- ")); // empty bullet
+    QCOMPARE(editor.text(), QString());    // the marker and its newline are removed
 }
 
 void TestEditor::visualDefaultsAreApplied()

@@ -1,11 +1,13 @@
 #include "editor/Editor.h"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 
 #include <QColor>
 #include <QFontDatabase>
+#include <QKeyEvent>
 
 #include <ILexer.h>
 #include <Lexilla.h>
@@ -51,6 +53,8 @@ struct Palette
     QColor selection{QStringLiteral("#cfe3ff")};
     QColor caret{QStringLiteral("#1e1e1e")};
     QColor findMatch{QStringLiteral("#f0b429")};
+    QColor braceMatch{QStringLiteral("#bfe3c6")};
+    QColor braceBad{QStringLiteral("#cf222e")};
 };
 
 constexpr int kLineNumberMargin = 0;
@@ -395,9 +399,11 @@ void Editor::toggleLineComment()
         const std::size_t indentEnd = body.find_first_not_of(" \t");
         const std::string indent = body.substr(0, indentEnd);
 
-        std::string replacement;
+        std::string replacement = indent;
         if (addComments) {
-            replacement = indent + "<!-- " + trimmedBody + " -->";
+            replacement += "<!-- ";
+            replacement += trimmedBody;
+            replacement += " -->";
         } else if (isHtmlComment(body)) {
             std::string inner = trimmedBody.substr(4, trimmedBody.size() - 7);
             if (!inner.empty() && inner.front() == ' ') {
@@ -406,7 +412,7 @@ void Editor::toggleLineComment()
             if (!inner.empty() && inner.back() == ' ') {
                 inner.pop_back();
             }
-            replacement = indent + inner;
+            replacement += inner;
         } else {
             continue;
         }
@@ -572,6 +578,11 @@ void Editor::applyVisualDefaults()
     call_.SetCaretLineBack(sciColour(palette.currentLine));
     call_.SetCaretWidth(2);
     call_.SetCaretPeriod(500);
+
+    call_.StyleSetBack(STYLE_BRACELIGHT, sciColour(palette.braceMatch));
+    call_.StyleSetBold(STYLE_BRACELIGHT, true);
+    call_.StyleSetFore(STYLE_BRACEBAD, sciColour(palette.braceBad));
+    call_.StyleSetBold(STYLE_BRACEBAD, true);
 
     call_.SetEOLMode(Scintilla::EndOfLine::Lf);
     call_.SetTabWidth(kTabWidth);
@@ -784,6 +795,7 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
     case Notification::UpdateUI:
         if (FlagSet(notification->updated, Update::Selection)) {
             emit cursorPositionChanged(cursorLine(), cursorColumn());
+            updateBraceHighlight();
         }
         if (FlagSet(notification->updated, Update::VScroll)) {
             emit viewportScrolled();
@@ -811,6 +823,143 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
 int Editor::styleAt(int position) const
 {
     return static_cast<int>(call_.UnsignedStyleAt(position));
+}
+
+int Editor::matchingBrace(int position) const
+{
+    return static_cast<int>(call_.BraceMatch(position, 0));
+}
+
+namespace {
+
+bool isBracket(int ch)
+{
+    return ch == '(' || ch == ')' || ch == '[' || ch == ']' || ch == '{' || ch == '}';
+}
+
+/// Split a line's text into its leading indentation, a Markdown list marker
+/// ("- ", "* ", "+ " or "N. ") if present, and the remaining content.
+struct LinePrefix
+{
+    std::string indent;
+    std::string marker;
+    std::string rest;
+};
+
+LinePrefix analyseLine(const std::string& line)
+{
+    LinePrefix prefix;
+    const std::size_t contentStart = line.find_first_not_of(" \t");
+    if (contentStart == std::string::npos) {
+        prefix.indent = line;
+        return prefix;
+    }
+    prefix.indent = line.substr(0, contentStart);
+    const std::string body = line.substr(contentStart);
+
+    if (body.size() >= 2 && body[1] == ' ' &&
+        (body[0] == '-' || body[0] == '*' || body[0] == '+')) {
+        prefix.marker = body.substr(0, 2);
+        prefix.rest = body.substr(2);
+        return prefix;
+    }
+    std::size_t digits = 0;
+    while (digits < body.size() && std::isdigit(static_cast<unsigned char>(body[digits])) != 0) {
+        ++digits;
+    }
+    if (digits > 0 && digits + 1 < body.size() && body[digits + 1] == ' ' &&
+        (body[digits] == '.' || body[digits] == ')')) {
+        prefix.marker = body.substr(0, digits + 2);
+        prefix.rest = body.substr(digits + 2);
+        return prefix;
+    }
+    prefix.rest = body;
+    return prefix;
+}
+
+std::string bumpedMarker(const std::string& marker)
+{
+    if (std::isdigit(static_cast<unsigned char>(marker[0])) == 0) {
+        return marker;
+    }
+    std::size_t digits = 0;
+    while (std::isdigit(static_cast<unsigned char>(marker[digits])) != 0) {
+        ++digits;
+    }
+    std::string bumped = std::to_string(std::stol(marker.substr(0, digits)) + 1);
+    bumped += marker.substr(digits);
+    return bumped;
+}
+
+} // namespace
+
+void Editor::updateBraceHighlight()
+{
+    const Scintilla::Position caret = call_.CurrentPos();
+    Scintilla::Position bracePos = -1;
+    for (const Scintilla::Position candidate : {caret - 1, caret}) {
+        if (candidate >= 0 && isBracket(call_.CharAt(candidate))) {
+            bracePos = candidate;
+            break;
+        }
+    }
+
+    if (bracePos < 0) {
+        call_.BraceHighlight(-1, -1);
+        return;
+    }
+    const Scintilla::Position match = call_.BraceMatch(bracePos, 0);
+    if (match < 0) {
+        call_.BraceBadLight(bracePos);
+    } else {
+        call_.BraceHighlight(bracePos, match);
+    }
+}
+
+bool Editor::insertSmartNewline()
+{
+    if (call_.Selections() != 1 || call_.SelectionStart() != call_.SelectionEnd()) {
+        return false;
+    }
+
+    const Scintilla::Position caret = call_.CurrentPos();
+    const Scintilla::Line line = call_.LineFromPosition(caret);
+    const Scintilla::Position lineStart = call_.PositionFromLine(line);
+    const std::string text = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+    const LinePrefix prefix = analyseLine(text);
+
+    const bool caretPastPrefix =
+        caret - lineStart >= Scintilla::Position(prefix.indent.size() + prefix.marker.size());
+
+    if (!prefix.marker.empty() && prefix.rest.find_first_not_of(" \t") == std::string::npos &&
+        caretPastPrefix) {
+        // Enter on an otherwise-empty list item: drop the marker, stay put.
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(prefix.indent.size()), prefix.indent.c_str());
+        call_.GotoPos(lineStart + Scintilla::Position(prefix.indent.size()));
+        return true;
+    }
+
+    std::string insert = "\n";
+    insert += prefix.indent;
+    if (!prefix.marker.empty() && caretPastPrefix) {
+        insert += bumpedMarker(prefix.marker);
+    }
+    call_.BeginUndoAction();
+    call_.AddText(Scintilla::Position(insert.size()), insert.c_str());
+    call_.EndUndoAction();
+    return true;
+}
+
+void Editor::keyPressEvent(QKeyEvent* event)
+{
+    const bool plainReturn = (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+                             event->modifiers() == Qt::NoModifier;
+    if (plainReturn && insertSmartNewline()) {
+        event->accept();
+        return;
+    }
+    ScintillaEditBase::keyPressEvent(event);
 }
 
 } // namespace hungryeditor
