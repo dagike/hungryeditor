@@ -18,6 +18,8 @@ private slots:
     void undoRedo();
     void cursorPositionReporting();
     void viewportScrollEmitsASignal();
+    void multipleSelectionIsEnabled();
+    void selectNextOccurrenceGrowsTheSelection();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -106,6 +108,36 @@ void TestEditor::viewportScrollEmitsASignal()
 
     QVERIFY(!spy.isEmpty());
     QCOMPARE(editor.firstVisibleLine(), 80);
+}
+
+void TestEditor::multipleSelectionIsEnabled()
+{
+    hungryeditor::Editor editor;
+    QVERIFY(editor.call().MultipleSelection());
+    QVERIFY(editor.call().AdditionalSelectionTyping());
+}
+
+void TestEditor::selectNextOccurrenceGrowsTheSelection()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("foo bar foo baz foo\n"));
+    editor.setCursorPosition(0, 1); // inside the first "foo"
+
+    editor.selectNextOccurrence(); // select the word under the caret
+    QCOMPARE(editor.selectionCount(), 1);
+    QCOMPARE(editor.selectionTexts(), QStringList{QStringLiteral("foo")});
+
+    editor.selectNextOccurrence();
+    QCOMPARE(editor.selectionCount(), 2);
+
+    editor.selectNextOccurrence();
+    QCOMPARE(editor.selectionCount(), 3);
+    for (const QString& selected : editor.selectionTexts()) {
+        QCOMPARE(selected, QStringLiteral("foo"));
+    }
+
+    editor.selectNextOccurrence(); // every occurrence is already selected
+    QCOMPARE(editor.selectionCount(), 3);
 }
 
 void TestEditor::visualDefaultsAreApplied()

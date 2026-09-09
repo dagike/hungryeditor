@@ -60,6 +60,7 @@ private slots:
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
     void clickingAPreviewHeadingMovesTheCaret();
+    void selectNextActionAddsACaret();
 };
 
 namespace {
@@ -103,7 +104,7 @@ void TestMainWindow::editorSitsBelowTheTabBar()
 void TestMainWindow::hasExpectedMenus()
 {
     hungryeditor::MainWindow window;
-    QCOMPARE(window.menuBar()->actions().size(), 3); // File, View, Help
+    QCOMPARE(window.menuBar()->actions().size(), 4); // File, Edit, View, Help
 }
 
 void TestMainWindow::saveActionFollowsDirtyState()
@@ -502,6 +503,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("close") << QStringLiteral("action.close");
     QTest::newRow("quit") << QStringLiteral("action.quit");
     QTest::newRow("about") << QStringLiteral("action.about");
+    QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -656,6 +658,21 @@ void TestMainWindow::clickingAPreviewHeadingMovesTheCaret()
         QStringLiteral("document.querySelectorAll('h2')[0].click(); void 0"));
 
     QTRY_COMPARE_WITH_TIMEOUT(window.editor()->cursorLine(), 4, 10000);
+}
+
+void TestMainWindow::selectNextActionAddsACaret()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("alpha beta alpha gamma\n"));
+    window.editor()->setCursorPosition(0, 2); // inside the first "alpha"
+
+    QAction* selectNext = window.findChild<QAction*>(QStringLiteral("action.selectNext"));
+    QVERIFY(selectNext != nullptr);
+
+    selectNext->trigger();
+    QCOMPARE(window.editor()->selectionCount(), 1);
+    selectNext->trigger();
+    QCOMPARE(window.editor()->selectionCount(), 2);
 }
 
 QTEST_MAIN(TestMainWindow)

@@ -2,6 +2,7 @@
 
 #include <QFont>
 #include <QString>
+#include <QStringList>
 
 // Scintilla's headers are not self-contained and must be included in this
 // order: ScintillaCall.h uses types from ScintillaTypes.h without including it.
@@ -62,6 +63,16 @@ public:
     int cursorLine() const;
     int cursorColumn() const;
     void setCursorPosition(int line, int column);
+
+    /// Number of active selections (carets).
+    int selectionCount() const;
+    /// The text of every active selection, in Scintilla's selection order.
+    QStringList selectionTexts() const;
+
+    /// Sublime-style "select next occurrence": with no selection, select the
+    /// word under the caret; with one, add the next case-sensitive match as an
+    /// extra caret and make it the main selection, wrapping past end of file.
+    void selectNextOccurrence();
 
     /// Document line shown at the top of the viewport, zero-based. Persisted
     /// per tab so a switch or a restart returns to the same scroll offset.

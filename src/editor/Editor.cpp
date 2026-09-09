@@ -168,6 +168,78 @@ void Editor::setCursorPosition(int line, int column)
     call_.GotoPos(pos);
 }
 
+int Editor::selectionCount() const
+{
+    return static_cast<int>(call_.Selections());
+}
+
+QStringList Editor::selectionTexts() const
+{
+    QStringList texts;
+    const int count = static_cast<int>(call_.Selections());
+    for (int i = 0; i < count; ++i) {
+        const std::string s =
+            call_.StringOfSpan({call_.SelectionNStart(i), call_.SelectionNEnd(i)});
+        texts << QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
+    }
+    return texts;
+}
+
+void Editor::selectNextOccurrence()
+{
+    using Scintilla::Position;
+
+    const auto main = static_cast<int>(call_.MainSelection());
+    const Position start = call_.SelectionNStart(main);
+    const Position end = call_.SelectionNEnd(main);
+
+    if (start == end) {
+        // No selection yet: take the word under the caret.
+        const Position wordStart = call_.WordStartPosition(start, true);
+        const Position wordEnd = call_.WordEndPosition(start, true);
+        if (wordStart != wordEnd) {
+            call_.SetSelection(wordEnd, wordStart); // caret, anchor
+        }
+        return;
+    }
+
+    const std::string phrase = call_.StringOfSpan({start, end});
+    if (phrase.empty()) {
+        return;
+    }
+    const auto length = static_cast<Position>(phrase.size());
+
+    // Search from just past the furthest current selection, wrapping once.
+    Position from = 0;
+    const int count = static_cast<int>(call_.Selections());
+    for (int i = 0; i < count; ++i) {
+        from = std::max(from, call_.SelectionNEnd(i));
+    }
+
+    call_.SetSearchFlags(Scintilla::FindOption::MatchCase);
+    const auto findIn = [&](Position lo, Position hi) {
+        call_.SetTargetRange(lo, hi);
+        return call_.SearchInTarget(length, phrase.c_str());
+    };
+
+    Position found = findIn(from, call_.TextLength());
+    if (found < 0) {
+        found = findIn(0, start); // wrap around to before the first match
+    }
+    if (found < 0) {
+        return; // this is the only occurrence
+    }
+    for (int i = 0; i < count; ++i) {
+        if (call_.SelectionNStart(i) == found) {
+            return; // wrapped back onto a match already selected
+        }
+    }
+
+    call_.AddSelection(found + length, found); // caret, anchor
+    call_.SetMainSelection(static_cast<int>(call_.Selections()) - 1);
+    call_.ScrollCaret();
+}
+
 int Editor::firstVisibleLine() const
 {
     return static_cast<int>(call_.FirstVisibleLine());
@@ -236,6 +308,12 @@ void Editor::applyVisualDefaults()
     call_.SetWrapMode(Scintilla::Wrap::None);
     call_.SetScrollWidthTracking(true);
     call_.SetScrollWidth(1);
+
+    // Multi-caret editing: Ctrl+click adds carets, Alt+drag selects a column,
+    // and typing/pasting acts on every selection.
+    call_.SetMultipleSelection(true);
+    call_.SetAdditionalSelectionTyping(true);
+    call_.SetMultiPaste(Scintilla::MultiPaste::Each);
 
     call_.SetMarginTypeN(kLineNumberMargin, Scintilla::MarginType::Number);
     call_.SetMarginWidthN(kSymbolMargin, 0);

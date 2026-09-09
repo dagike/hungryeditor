@@ -209,6 +209,13 @@ void MainWindow::buildMenus()
     quitAction->setMenuRole(QAction::QuitRole);
     quitAction->setObjectName(QStringLiteral("action.quit"));
 
+    QMenu* editMenu = menuBar()->addMenu(tr("&Edit"));
+
+    QAction* selectNextAction = editMenu->addAction(tr("Select &Next Occurrence"), this,
+                                                    [this] { editor_->selectNextOccurrence(); });
+    selectNextAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    selectNextAction->setObjectName(QStringLiteral("action.selectNext"));
+
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewModeGroup_ = new QActionGroup(this);
 
