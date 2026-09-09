@@ -1,5 +1,7 @@
 #include "theme/Theme.h"
 
+#include "highlight/CaptureStyles.h"
+
 namespace hungryeditor {
 
 Theme Theme::builtin()
@@ -61,7 +63,34 @@ QString Theme::previewCss() const
                "table { border-collapse: collapse; }"
                "th, td { border: 1px solid var(--he-border); padding: .4em .75em; }"
                "img { max-width: 100%; }")
-        .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord);
+               .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord) +
+           codeTokenCss();
+}
+
+QString Theme::codeTokenCss() const
+{
+    // Fenced-code colouring: the same token palette the editor paints with, so
+    // a `rust fence looks identical in both panes.
+    QString css;
+    for (const StyleDef& style : styleTable()) {
+        const std::string cssClass = styleCssClass(style.id);
+        if (cssClass.empty()) {
+            continue;
+        }
+        css += QStringLiteral(".%1 { color: %2;")
+                   .arg(QString::fromStdString(cssClass), style.foreground.name());
+        if (style.bold) {
+            css += QStringLiteral(" font-weight: 600;");
+        }
+        if (style.italic) {
+            css += QStringLiteral(" font-style: italic;");
+        }
+        if (style.underline) {
+            css += QStringLiteral(" text-decoration: underline;");
+        }
+        css += QStringLiteral(" }");
+    }
+    return css;
 }
 
 } // namespace hungryeditor

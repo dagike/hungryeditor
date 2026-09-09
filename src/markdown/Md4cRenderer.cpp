@@ -1,11 +1,15 @@
 #include "markdown/Md4cRenderer.h"
 
 #include <algorithm>
+#include <string_view>
 #include <vector>
 
 #include <QByteArray>
 
 #include <md4c.h>
+
+#include "highlight/CaptureStyles.h"
+#include "highlight/CodeHighlighter.h"
 
 namespace hungryeditor {
 
@@ -34,6 +38,10 @@ struct RenderContext
     int lastLine = 0;                   ///< line of the most recent source text
 
     int imageDepth = 0; ///< inside <img>: text is folded into the alt attribute
+
+    bool inCode = false; ///< inside a fenced/indented code block
+    QByteArray codeText; ///< its verbatim content, held back for highlighting
+    QByteArray codeLang; ///< its info string
 };
 
 void appendEscaped(QByteArray& out, const char* text, MD_SIZE size)
@@ -109,6 +117,35 @@ void closeBlock(RenderContext& ctx, const char* closing)
     ctx.out += closing;
 }
 
+/// Flush a fenced block's buffered text: tree-sitter tokens wrapped in
+/// `<span class="tok-...">`, or plain escaped text when the language is
+/// unknown.
+void emitHighlightedCode(RenderContext& ctx)
+{
+    const std::string_view code(ctx.codeText.constData(), std::size_t(ctx.codeText.size()));
+    const std::string_view lang(ctx.codeLang.constData(), std::size_t(ctx.codeLang.size()));
+
+    const std::vector<CodeToken> tokens = highlightCode(lang, code);
+    if (tokens.empty()) {
+        appendEscaped(ctx.out, code.data(), MD_SIZE(code.size()));
+        return;
+    }
+
+    for (const CodeToken& token : tokens) {
+        const char* piece = code.data() + token.start;
+        const std::string cssClass = styleCssClass(token.style);
+        if (cssClass.empty()) {
+            appendEscaped(ctx.out, piece, MD_SIZE(token.length));
+            continue;
+        }
+        ctx.out += "<span class=\"";
+        ctx.out += cssClass.c_str();
+        ctx.out += "\">";
+        appendEscaped(ctx.out, piece, MD_SIZE(token.length));
+        ctx.out += "</span>";
+    }
+}
+
 int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
 {
     auto& ctx = *static_cast<RenderContext*>(userdata);
@@ -147,7 +184,11 @@ int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
         const auto* d = static_cast<const MD_BLOCK_CODE_DETAIL*>(detail);
         // A fence line precedes the content md4c reports the offset of.
         openBlock(ctx, "<pre", "><code", d->fence_char != 0 ? -1 : 0);
+        ctx.inCode = true;
+        ctx.codeText.clear();
+        ctx.codeLang.clear();
         if (d->lang.text != nullptr && d->lang.size > 0) {
+            ctx.codeLang = QByteArray(d->lang.text, qsizetype(d->lang.size));
             ctx.out += " class=\"language-";
             appendAttribute(ctx.out, d->lang);
             ctx.out += '"';
@@ -194,6 +235,8 @@ int leaveBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
         break;
     }
     case MD_BLOCK_CODE:
+        ctx.inCode = false;
+        emitHighlightedCode(ctx);
         closeBlock(ctx, "</code></pre>\n");
         break;
     case MD_BLOCK_HTML:
@@ -309,6 +352,11 @@ int onText(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
         } else {
             appendEscaped(ctx.out, text, size);
         }
+        return 0;
+    }
+
+    if (ctx.inCode) {
+        ctx.codeText.append(text, qsizetype(size)); // highlighted on leave_block
         return 0;
     }
 

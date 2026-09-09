@@ -49,6 +49,8 @@ add_library(hungryeditor_core STATIC
     editor/Editor.h
     highlight/CaptureStyles.cpp
     highlight/CaptureStyles.h
+    highlight/CodeHighlighter.cpp
+    highlight/CodeHighlighter.h
     highlight/GrammarRegistry.cpp
     highlight/GrammarRegistry.h
     highlight/TreeSitterEngine.cpp

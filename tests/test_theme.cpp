@@ -40,6 +40,11 @@ void TestTheme::previewCssDefinesTokensAndBaseRules()
     QVERIFY(css.contains(QStringLiteral("blockquote {")));
     QVERIFY(css.contains(QStringLiteral("pre {")));
     QVERIFY(css.contains(QStringLiteral("th, td { border: 1px solid var(--he-border)")));
+
+    // Fenced-code token classes, coloured from the editor's palette.
+    QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: #cf222e")));
+    QVERIFY(css.contains(QStringLiteral(".tok-comment { color: #6e7781; font-style: italic;")));
+    QVERIFY(css.contains(QStringLiteral(".tok-string-escape {")));
 }
 
 QTEST_APPLESS_MAIN(TestTheme)
