@@ -33,7 +33,7 @@ Session SessionStore::load() const
         QByteArray::fromBase64(root.value(QStringLiteral("geometry")).toString().toLatin1());
     session.currentIndex = root.value(QStringLiteral("current")).toInt();
     const QJsonArray documents = root.value(QStringLiteral("documents")).toArray();
-    for (const QJsonValue& value : documents) {
+    for (const auto& value : documents) {
         const QJsonObject entry = value.toObject();
         SessionDocument document;
         document.path = entry.value(QStringLiteral("path")).toString();

@@ -1,5 +1,6 @@
 // Coverage for the recent-files list.
 
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -7,6 +8,15 @@
 
 using hungryeditor::RecentFile;
 using hungryeditor::RecentFiles;
+
+namespace {
+// RecentFiles stores absolute paths, so a bare POSIX path like "/x/a.md" comes
+// back drive-qualified on Windows. Compare against the same normalisation.
+QString abs(const QString& path)
+{
+    return QFileInfo(path).absoluteFilePath();
+}
+} // namespace
 
 class TestRecentFiles : public QObject
 {
@@ -32,8 +42,8 @@ void TestRecentFiles::newestFirstAndDeduped()
 
     const QList<RecentFile> entries = recent.entries();
     QCOMPARE(entries.size(), 2);
-    QCOMPARE(entries.at(0).path, QStringLiteral("/x/a.md"));
-    QCOMPARE(entries.at(1).path, QStringLiteral("/x/b.md"));
+    QCOMPARE(entries.at(0).path, abs(QStringLiteral("/x/a.md")));
+    QCOMPARE(entries.at(1).path, abs(QStringLiteral("/x/b.md")));
 }
 
 void TestRecentFiles::pinnedEntriesLeadAndSurviveEviction()
@@ -51,7 +61,7 @@ void TestRecentFiles::pinnedEntriesLeadAndSurviveEviction()
 
     const QList<RecentFile> entries = recent.entries();
     QVERIFY(entries.first().pinned);
-    QCOMPARE(entries.first().path, QStringLiteral("/x/pinme.md"));
+    QCOMPARE(entries.first().path, abs(QStringLiteral("/x/pinme.md")));
 
     int unpinned = 0;
     for (const RecentFile& entry : entries) {
@@ -76,7 +86,7 @@ void TestRecentFiles::clearUnpinnedKeepsPins()
 
     const QList<RecentFile> entries = recent.entries();
     QCOMPARE(entries.size(), 1);
-    QCOMPARE(entries.first().path, QStringLiteral("/x/a.md"));
+    QCOMPARE(entries.first().path, abs(QStringLiteral("/x/a.md")));
     QVERIFY(entries.first().pinned);
 }
 
@@ -111,9 +121,9 @@ void TestRecentFiles::roundTripsThroughDisk()
     RecentFiles reloaded(path); // the constructor loads
     const QList<RecentFile> entries = reloaded.entries();
     QCOMPARE(entries.size(), 2);
-    QCOMPARE(entries.at(0).path, QStringLiteral("/x/b.md"));
+    QCOMPARE(entries.at(0).path, abs(QStringLiteral("/x/b.md")));
     QVERIFY(entries.at(0).pinned);
-    QCOMPARE(entries.at(1).path, QStringLiteral("/x/a.md"));
+    QCOMPARE(entries.at(1).path, abs(QStringLiteral("/x/a.md")));
     QVERIFY(!entries.at(1).pinned);
 }
 
