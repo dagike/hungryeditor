@@ -78,8 +78,12 @@ add_library(hungryeditor_core STATIC
     preview/QtWebEnginePreview.h
     theme/Theme.cpp
     theme/Theme.h
+    ui/CommandPalette.cpp
+    ui/CommandPalette.h
     ui/FindReplaceBar.cpp
     ui/FindReplaceBar.h
+    ui/FuzzyMatch.cpp
+    ui/FuzzyMatch.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
     workspace/FileSearch.cpp

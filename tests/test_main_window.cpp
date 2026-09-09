@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
@@ -26,6 +27,7 @@
 #include "io/SessionStore.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
+#include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileSearch.h"
@@ -68,6 +70,7 @@ private slots:
     void selectNextActionAddsACaret();
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
+    void commandPaletteRunsTheChosenAction();
 };
 
 namespace {
@@ -513,6 +516,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("find") << QStringLiteral("action.find");
     QTest::newRow("replace") << QStringLiteral("action.replace");
     QTest::newRow("findInFiles") << QStringLiteral("action.findInFiles");
+    QTest::newRow("commandPalette") << QStringLiteral("action.commandPalette");
     QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
@@ -739,6 +743,27 @@ void TestMainWindow::activatingASearchResultOpensTheFile()
     panel->activateResult(0);
     QCOMPARE(window.currentPath(), file);
     QCOMPARE(window.editor()->cursorLine(), 1);
+}
+
+void TestMainWindow::commandPaletteRunsTheChosenAction()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("word word word\n"));
+    window.editor()->setCursorPosition(0, 0);
+
+    window.findChild<QAction*>(QStringLiteral("action.commandPalette"))->trigger();
+    auto* palette = window.findChild<hungryeditor::CommandPalette*>();
+    QVERIFY(palette != nullptr);
+
+    auto* query = palette->findChild<QLineEdit*>();
+    QVERIFY(query != nullptr);
+    query->setText(QStringLiteral("select next")); // -> "Select Next Occurrence"
+
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QCoreApplication::sendEvent(query, &enter);
+
+    QCOMPARE(window.editor()->selectionCount(), 1); // selectNextOccurrence ran
+    QVERIFY(palette->isHidden());
 }
 
 QTEST_MAIN(TestMainWindow)

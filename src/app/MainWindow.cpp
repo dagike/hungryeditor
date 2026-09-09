@@ -32,6 +32,7 @@
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
+#include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileSearch.h"
@@ -109,6 +110,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
     connect(findBar_, &FindReplaceBar::queryChanged, this, &MainWindow::refreshFindHighlight);
     connect(findBar_, &FindReplaceBar::dismissed, this, &MainWindow::closeFindBar);
+
+    commandPalette_ = new CommandPalette(this);
+    connect(commandPalette_, &CommandPalette::commandChosen, this, [this](const QString& id) {
+        if (QAction* action = findChild<QAction*>(id)) {
+            action->trigger();
+        }
+    });
 
     searchResults_ = new SearchResultsPanel(this);
     searchDock_ = new QDockWidget(tr("Find in Files"), this);
@@ -269,6 +277,13 @@ void MainWindow::buildMenus()
         editMenu->addAction(tr("Find in &Files…"), this, &MainWindow::findInFiles);
     findInFilesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     findInFilesAction->setObjectName(QStringLiteral("action.findInFiles"));
+
+    editMenu->addSeparator();
+
+    QAction* paletteAction =
+        editMenu->addAction(tr("Command &Palette…"), this, &MainWindow::openCommandPalette);
+    paletteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
+    paletteAction->setObjectName(QStringLiteral("action.commandPalette"));
 
     editMenu->addSeparator();
 
@@ -443,6 +458,26 @@ void MainWindow::closeFindBar()
     findBar_->hide();
     editor_->markAllMatches(QString(), {});
     editor_->setFocus();
+}
+
+void MainWindow::openCommandPalette()
+{
+    QList<CommandPalette::Command> commands;
+    for (QAction* action : findChildren<QAction*>()) {
+        const QString id = action->objectName();
+        if (!id.startsWith(QLatin1String("action.")) || action->text().isEmpty() ||
+            !action->isEnabled()) {
+            continue;
+        }
+        QString title = action->text();
+        title.remove(QLatin1Char('&'));
+        if (title.endsWith(QChar(0x2026))) { // trailing ellipsis
+            title.chop(1);
+        }
+        commands.append({id, title, action->shortcut().toString(QKeySequence::NativeText)});
+    }
+    commandPalette_->setCommands(commands);
+    commandPalette_->open();
 }
 
 void MainWindow::findInFiles()

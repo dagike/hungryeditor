@@ -17,6 +17,7 @@ class QSplitter;
 
 namespace hungryeditor {
 
+class CommandPalette;
 class Document;
 class DocumentManager;
 class Editor;
@@ -165,6 +166,9 @@ private:
     void closeFindBar();
     void findInFiles();
 
+    // Command palette.
+    void openCommandPalette();
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);
@@ -188,6 +192,7 @@ private:
     Editor* editor_ = nullptr;
     TabBar* tabBar_ = nullptr;
     FindReplaceBar* findBar_ = nullptr;
+    CommandPalette* commandPalette_ = nullptr;
     SearchResultsPanel* searchResults_ = nullptr;
     QDockWidget* searchDock_ = nullptr;
     QSplitter* splitter_ = nullptr;
