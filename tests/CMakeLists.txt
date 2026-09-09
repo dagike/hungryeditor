@@ -87,6 +87,10 @@ hungryeditor_add_test(test_file_search
     SOURCES test_file_search.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_file_index
+    SOURCES test_file_index.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_fuzzy_match
     SOURCES test_fuzzy_match.cpp
     LIBS hungryeditor::core)

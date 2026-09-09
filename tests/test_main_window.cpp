@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
@@ -71,6 +72,7 @@ private slots:
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
     void commandPaletteRunsTheChosenAction();
+    void quickOpenOpensAFuzzilyMatchedFile();
 };
 
 namespace {
@@ -516,6 +518,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("find") << QStringLiteral("action.find");
     QTest::newRow("replace") << QStringLiteral("action.replace");
     QTest::newRow("findInFiles") << QStringLiteral("action.findInFiles");
+    QTest::newRow("quickOpen") << QStringLiteral("action.quickOpen");
     QTest::newRow("commandPalette") << QStringLiteral("action.commandPalette");
     QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
@@ -764,6 +767,33 @@ void TestMainWindow::commandPaletteRunsTheChosenAction()
 
     QCOMPARE(window.editor()->selectionCount(), 1); // selectNextOccurrence ran
     QVERIFY(palette->isHidden());
+}
+
+void TestMainWindow::quickOpenOpensAFuzzilyMatchedFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    writeText(dir.filePath(QStringLiteral("alpha.md")), "A\n");
+    const QString beta = writeText(dir.filePath(QStringLiteral("beta-notes.md")), "B\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(dir.filePath(QStringLiteral("alpha.md")))); // roots the index here
+
+    window.findChild<QAction*>(QStringLiteral("action.quickOpen"))->trigger();
+    auto* palette = window.findChild<hungryeditor::CommandPalette*>();
+    QVERIFY(palette != nullptr);
+    auto* query = palette->findChild<QLineEdit*>();
+    auto* list = palette->findChild<QListWidget*>();
+    QVERIFY(query != nullptr);
+    QVERIFY(list != nullptr);
+
+    QTRY_VERIFY_WITH_TIMEOUT(list->count() >= 2, 5000); // background index landed
+    query->setText(QStringLiteral("btnt"));             // fuzzy -> beta-notes
+    QTRY_COMPARE(list->count(), 1);
+
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QCoreApplication::sendEvent(query, &enter);
+    QCOMPARE(window.currentPath(), beta);
 }
 
 QTEST_MAIN(TestMainWindow)

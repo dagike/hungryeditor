@@ -35,6 +35,7 @@
 #include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/SearchResultsPanel.h"
+#include "workspace/FileIndex.h"
 #include "workspace/FileSearch.h"
 
 #ifndef HUNGRYEDITOR_VERSION
@@ -112,9 +113,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(findBar_, &FindReplaceBar::dismissed, this, &MainWindow::closeFindBar);
 
     commandPalette_ = new CommandPalette(this);
-    connect(commandPalette_, &CommandPalette::commandChosen, this, [this](const QString& id) {
-        if (QAction* action = findChild<QAction*>(id)) {
-            action->trigger();
+    connect(commandPalette_, &CommandPalette::commandChosen, this, &MainWindow::runPaletteChoice);
+
+    fileIndex_ = new FileIndex(this);
+    connect(fileIndex_, &FileIndex::refreshed, this, [this] {
+        if (paletteShowsFiles_ && !commandPalette_->isHidden()) {
+            populateQuickOpen();
         }
     });
 
@@ -279,6 +283,11 @@ void MainWindow::buildMenus()
     findInFilesAction->setObjectName(QStringLiteral("action.findInFiles"));
 
     editMenu->addSeparator();
+
+    QAction* quickOpenAction =
+        editMenu->addAction(tr("&Quick Open…"), this, &MainWindow::openQuickOpen);
+    quickOpenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    quickOpenAction->setObjectName(QStringLiteral("action.quickOpen"));
 
     QAction* paletteAction =
         editMenu->addAction(tr("Command &Palette…"), this, &MainWindow::openCommandPalette);
@@ -462,6 +471,7 @@ void MainWindow::closeFindBar()
 
 void MainWindow::openCommandPalette()
 {
+    paletteShowsFiles_ = false;
     QList<CommandPalette::Command> commands;
     for (QAction* action : findChildren<QAction*>()) {
         const QString id = action->objectName();
@@ -478,6 +488,36 @@ void MainWindow::openCommandPalette()
     }
     commandPalette_->setCommands(commands);
     commandPalette_->open();
+}
+
+void MainWindow::openQuickOpen()
+{
+    paletteShowsFiles_ = true;
+    const QString current = currentPath();
+    fileIndex_->setRoot(current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath());
+    populateQuickOpen();
+    commandPalette_->open();
+}
+
+void MainWindow::populateQuickOpen()
+{
+    const QDir root(fileIndex_->root());
+    QList<CommandPalette::Command> commands;
+    for (const QString& path : fileIndex_->files()) {
+        commands.append({path, root.relativeFilePath(path), QString()});
+    }
+    commandPalette_->setCommands(commands);
+}
+
+void MainWindow::runPaletteChoice(const QString& id)
+{
+    if (id.startsWith(QLatin1String("action."))) {
+        if (QAction* action = findChild<QAction*>(id)) {
+            action->trigger();
+        }
+    } else {
+        openPath(id);
+    }
 }
 
 void MainWindow::findInFiles()

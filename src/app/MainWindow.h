@@ -21,6 +21,7 @@ class CommandPalette;
 class Document;
 class DocumentManager;
 class Editor;
+class FileIndex;
 class FindReplaceBar;
 class PreviewBackend;
 class PreviewController;
@@ -166,8 +167,11 @@ private:
     void closeFindBar();
     void findInFiles();
 
-    // Command palette.
+    // Command palette and quick open (share one widget).
     void openCommandPalette();
+    void openQuickOpen();
+    void populateQuickOpen();
+    void runPaletteChoice(const QString& id);
 
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
@@ -193,6 +197,8 @@ private:
     TabBar* tabBar_ = nullptr;
     FindReplaceBar* findBar_ = nullptr;
     CommandPalette* commandPalette_ = nullptr;
+    FileIndex* fileIndex_ = nullptr;
+    bool paletteShowsFiles_ = false;
     SearchResultsPanel* searchResults_ = nullptr;
     QDockWidget* searchDock_ = nullptr;
     QSplitter* splitter_ = nullptr;

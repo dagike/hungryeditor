@@ -45,6 +45,9 @@ CommandPalette::CommandPalette(QWidget* parent) : QWidget(parent)
 void CommandPalette::setCommands(const QList<Command>& commands)
 {
     commands_ = commands;
+    if (!isHidden()) {
+        refilter(); // the palette is up — keep the list current
+    }
 }
 
 void CommandPalette::open()
