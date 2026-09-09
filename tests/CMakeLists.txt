@@ -83,6 +83,10 @@ hungryeditor_add_test(test_theme
     SOURCES test_theme.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_file_search
+    SOURCES test_file_search.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_code_highlighter
     SOURCES test_code_highlighter.cpp
     LIBS hungryeditor::core)

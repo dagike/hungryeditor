@@ -2,6 +2,7 @@
 
 #include <QFont>
 #include <QString>
+#include <QStringList>
 
 // Scintilla's headers are not self-contained and must be included in this
 // order: ScintillaCall.h uses types from ScintillaTypes.h without including it.
@@ -62,6 +63,49 @@ public:
     int cursorLine() const;
     int cursorColumn() const;
     void setCursorPosition(int line, int column);
+
+    /// Number of active selections (carets).
+    int selectionCount() const;
+    /// The text of every active selection, in Scintilla's selection order.
+    QStringList selectionTexts() const;
+    /// The main selection's text (empty when the caret has no selection).
+    QString selectedText() const;
+
+    /// Sublime-style "select next occurrence": with no selection, select the
+    /// word under the caret; with one, add the next case-sensitive match as an
+    /// extra caret and make it the main selection, wrapping past end of file.
+    void selectNextOccurrence();
+
+    /// Rectangular (column) selection between two zero-based line/column
+    /// coordinates — one caret per spanned line. The interactive paths are
+    /// Alt+drag and Alt+Shift+arrows.
+    void selectColumn(int anchorLine, int anchorColumn, int caretLine, int caretColumn);
+
+    /// How a find/replace matches.
+    struct SearchOptions
+    {
+        bool matchCase = false;
+        bool wholeWord = false;
+        bool regex = false; ///< ECMAScript regex (std::regex-backed)
+    };
+
+    /// Select the next (or previous) match of `query` starting from the current
+    /// selection, wrapping when `wrap`. Returns false if there is no match.
+    bool findNext(const QString& query, const SearchOptions& options, bool forward = true,
+                  bool wrap = true);
+
+    /// If the current selection is a match of `query`, replace it (regex
+    /// backreferences honoured) and select the following match; otherwise just
+    /// advance to the next match. Returns whether a replacement was made.
+    bool replaceCurrent(const QString& query, const QString& replacement,
+                        const SearchOptions& options);
+
+    /// Replace every match in the document in one undo step. Returns the count.
+    int replaceAll(const QString& query, const QString& replacement, const SearchOptions& options);
+
+    /// Outline every match of `query` with the find indicator (an empty query
+    /// clears it). Returns the number of matches.
+    int markAllMatches(const QString& query, const SearchOptions& options);
 
     /// Document line shown at the top of the viewport, zero-based. Persisted
     /// per tab so a switch or a restart returns to the same scroll offset.

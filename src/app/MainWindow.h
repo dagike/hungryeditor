@@ -9,6 +9,7 @@
 
 class QAction;
 class QActionGroup;
+class QDockWidget;
 class QDragEnterEvent;
 class QDropEvent;
 class QMenu;
@@ -19,9 +20,11 @@ namespace hungryeditor {
 class Document;
 class DocumentManager;
 class Editor;
+class FindReplaceBar;
 class PreviewBackend;
 class PreviewController;
 class RecentFiles;
+class SearchResultsPanel;
 class SessionStore;
 class TabBar;
 
@@ -56,6 +59,9 @@ public:
 
     /// The preview pane widget, for tests to check visibility.
     QWidget* previewWidget() const;
+
+    /// The find-in-files results panel. Exposed for tests.
+    SearchResultsPanel* searchResultsPanel() const { return searchResults_; }
 
     /// The editor widget filling the window. Exposed for tests.
     Editor* editor() const { return editor_; }
@@ -154,6 +160,11 @@ private:
     // Clicking a heading in the preview drops the editor caret on its source.
     void jumpEditorToLine(int line);
 
+    // Find / replace bar and the find-in-files panel.
+    void refreshFindHighlight();
+    void closeFindBar();
+    void findInFiles();
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);
@@ -176,6 +187,9 @@ private:
     // pointers through the editor) while the editor is still alive.
     Editor* editor_ = nullptr;
     TabBar* tabBar_ = nullptr;
+    FindReplaceBar* findBar_ = nullptr;
+    SearchResultsPanel* searchResults_ = nullptr;
+    QDockWidget* searchDock_ = nullptr;
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;

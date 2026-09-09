@@ -5,12 +5,14 @@
 #include <QDropEvent>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QtTest>
 #include <QUrl>
 
@@ -24,6 +26,9 @@
 #include "io/SessionStore.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
+#include "ui/FindReplaceBar.h"
+#include "ui/SearchResultsPanel.h"
+#include "workspace/FileSearch.h"
 
 class TestMainWindow : public QObject
 {
@@ -60,6 +65,9 @@ private slots:
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
     void clickingAPreviewHeadingMovesTheCaret();
+    void selectNextActionAddsACaret();
+    void findBarSearchesAndReplaces();
+    void activatingASearchResultOpensTheFile();
 };
 
 namespace {
@@ -103,7 +111,7 @@ void TestMainWindow::editorSitsBelowTheTabBar()
 void TestMainWindow::hasExpectedMenus()
 {
     hungryeditor::MainWindow window;
-    QCOMPARE(window.menuBar()->actions().size(), 3); // File, View, Help
+    QCOMPARE(window.menuBar()->actions().size(), 4); // File, Edit, View, Help
 }
 
 void TestMainWindow::saveActionFollowsDirtyState()
@@ -502,6 +510,10 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("close") << QStringLiteral("action.close");
     QTest::newRow("quit") << QStringLiteral("action.quit");
     QTest::newRow("about") << QStringLiteral("action.about");
+    QTest::newRow("find") << QStringLiteral("action.find");
+    QTest::newRow("replace") << QStringLiteral("action.replace");
+    QTest::newRow("findInFiles") << QStringLiteral("action.findInFiles");
+    QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -656,6 +668,77 @@ void TestMainWindow::clickingAPreviewHeadingMovesTheCaret()
         QStringLiteral("document.querySelectorAll('h2')[0].click(); void 0"));
 
     QTRY_COMPARE_WITH_TIMEOUT(window.editor()->cursorLine(), 4, 10000);
+}
+
+void TestMainWindow::selectNextActionAddsACaret()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("alpha beta alpha gamma\n"));
+    window.editor()->setCursorPosition(0, 2); // inside the first "alpha"
+
+    QAction* selectNext = window.findChild<QAction*>(QStringLiteral("action.selectNext"));
+    QVERIFY(selectNext != nullptr);
+
+    selectNext->trigger();
+    QCOMPARE(window.editor()->selectionCount(), 1);
+    selectNext->trigger();
+    QCOMPARE(window.editor()->selectionCount(), 2);
+}
+
+void TestMainWindow::findBarSearchesAndReplaces()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("alpha beta alpha gamma alpha\n"));
+    window.editor()->setCursorPosition(0, 0);
+
+    window.findChild<QAction*>(QStringLiteral("action.find"))->trigger();
+    auto* bar = window.findChild<hungryeditor::FindReplaceBar*>();
+    QVERIFY(bar != nullptr);
+
+    const auto click = [bar](const QString& text) {
+        for (QToolButton* button : bar->findChildren<QToolButton*>()) {
+            if (button->text() == text) {
+                button->click();
+                return;
+            }
+        }
+        QFAIL("find-bar button not found");
+    };
+
+    bar->setQuery(QStringLiteral("alpha"));
+    click(QStringLiteral("▼")); // next
+    QCOMPARE(window.editor()->selectedText(), QStringLiteral("alpha"));
+
+    window.findChild<QAction*>(QStringLiteral("action.replace"))->trigger();
+    bar->setReplacement(QStringLiteral("A"));
+    click(QStringLiteral("All"));
+    QCOMPARE(window.editor()->text(), QStringLiteral("A beta A gamma A\n"));
+
+    // Esc dismisses the bar.
+    QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QCoreApplication::sendEvent(bar, &esc);
+    QVERIFY(bar->isHidden());
+}
+
+void TestMainWindow::activatingASearchResultOpensTheFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString file =
+        writeText(dir.filePath(QStringLiteral("notes.md")), "line one\nfind me here\nline three\n");
+
+    hungryeditor::MainWindow window;
+    auto* panel = window.searchResultsPanel();
+    QVERIFY(panel != nullptr);
+
+    const auto hits = hungryeditor::searchDirectory(dir.path(), QStringLiteral("find me"),
+                                                    hungryeditor::FileSearchOptions{});
+    panel->showResults(QStringLiteral("find me"), hits);
+    QCOMPARE(panel->hits().size(), 1);
+
+    panel->activateResult(0);
+    QCOMPARE(window.currentPath(), file);
+    QCOMPARE(window.editor()->cursorLine(), 1);
 }
 
 QTEST_MAIN(TestMainWindow)

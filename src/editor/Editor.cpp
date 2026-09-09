@@ -50,6 +50,7 @@ struct Palette
     QColor currentLine{QStringLiteral("#f2f6fc")};
     QColor selection{QStringLiteral("#cfe3ff")};
     QColor caret{QStringLiteral("#1e1e1e")};
+    QColor findMatch{QStringLiteral("#f0b429")};
 };
 
 constexpr int kLineNumberMargin = 0;
@@ -57,6 +58,32 @@ constexpr int kSymbolMargin = 1;
 constexpr int kFoldMargin = 2;
 constexpr int kMinLineDigits = 3;
 constexpr int kTabWidth = 4;
+constexpr int kFindIndicator = 20; // in the user range (8..31)
+
+Scintilla::FindOption searchFlags(const Editor::SearchOptions& options)
+{
+    using F = Scintilla::FindOption;
+    F flags = F::None;
+    if (options.matchCase) {
+        flags |= F::MatchCase;
+    }
+    if (options.wholeWord) {
+        flags |= F::WholeWord;
+    }
+    if (options.regex) {
+        flags |= F::RegExp | F::Cxx11RegEx; // Cxx11RegEx must accompany RegExp
+    }
+    return flags;
+}
+
+/// Search `[from, to]` in the target (from > to searches backwards). On a hit
+/// the caller reads call.Target{Start,End}(); returns whether anything matched.
+bool searchRange(Scintilla::ScintillaCall& call, const QByteArray& needle, Scintilla::Position from,
+                 Scintilla::Position to)
+{
+    call.SetTargetRange(from, to);
+    return call.SearchInTarget(needle.size(), needle.constData()) >= 0;
+}
 } // namespace
 
 Editor::Editor(QWidget* parent) : ScintillaEditBase(parent)
@@ -168,6 +195,186 @@ void Editor::setCursorPosition(int line, int column)
     call_.GotoPos(pos);
 }
 
+int Editor::selectionCount() const
+{
+    return static_cast<int>(call_.Selections());
+}
+
+QStringList Editor::selectionTexts() const
+{
+    QStringList texts;
+    const int count = static_cast<int>(call_.Selections());
+    for (int i = 0; i < count; ++i) {
+        const std::string s =
+            call_.StringOfSpan({call_.SelectionNStart(i), call_.SelectionNEnd(i)});
+        texts << QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
+    }
+    return texts;
+}
+
+QString Editor::selectedText() const
+{
+    const std::string s = call_.StringOfSpan({call_.SelectionStart(), call_.SelectionEnd()});
+    return QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
+}
+
+void Editor::selectNextOccurrence()
+{
+    using Scintilla::Position;
+
+    const auto main = static_cast<int>(call_.MainSelection());
+    const Position start = call_.SelectionNStart(main);
+    const Position end = call_.SelectionNEnd(main);
+
+    if (start == end) {
+        // No selection yet: take the word under the caret.
+        const Position wordStart = call_.WordStartPosition(start, true);
+        const Position wordEnd = call_.WordEndPosition(start, true);
+        if (wordStart != wordEnd) {
+            call_.SetSelection(wordEnd, wordStart); // caret, anchor
+        }
+        return;
+    }
+
+    const std::string phrase = call_.StringOfSpan({start, end});
+    if (phrase.empty()) {
+        return;
+    }
+    const auto length = static_cast<Position>(phrase.size());
+
+    // Search from just past the furthest current selection, wrapping once.
+    Position from = 0;
+    const int count = static_cast<int>(call_.Selections());
+    for (int i = 0; i < count; ++i) {
+        from = std::max(from, call_.SelectionNEnd(i));
+    }
+
+    call_.SetSearchFlags(Scintilla::FindOption::MatchCase);
+    const auto findIn = [&](Position lo, Position hi) {
+        call_.SetTargetRange(lo, hi);
+        return call_.SearchInTarget(length, phrase.c_str());
+    };
+
+    Position found = findIn(from, call_.TextLength());
+    if (found < 0) {
+        found = findIn(0, start); // wrap around to before the first match
+    }
+    if (found < 0) {
+        return; // this is the only occurrence
+    }
+    for (int i = 0; i < count; ++i) {
+        if (call_.SelectionNStart(i) == found) {
+            return; // wrapped back onto a match already selected
+        }
+    }
+
+    call_.AddSelection(found + length, found); // caret, anchor
+    call_.SetMainSelection(static_cast<int>(call_.Selections()) - 1);
+    call_.ScrollCaret();
+}
+
+void Editor::selectColumn(int anchorLine, int anchorColumn, int caretLine, int caretColumn)
+{
+    call_.SetRectangularSelectionAnchor(call_.FindColumn(anchorLine, anchorColumn));
+    call_.SetRectangularSelectionCaret(call_.FindColumn(caretLine, caretColumn));
+}
+
+bool Editor::findNext(const QString& query, const SearchOptions& options, bool forward, bool wrap)
+{
+    if (query.isEmpty()) {
+        return false;
+    }
+    const QByteArray needle = query.toUtf8();
+    call_.SetSearchFlags(searchFlags(options));
+
+    const Scintilla::Position docEnd = call_.TextLength();
+    const Scintilla::Position selStart = call_.SelectionStart();
+    const Scintilla::Position selEnd = call_.SelectionEnd();
+
+    const bool hit = forward ? (searchRange(call_, needle, selEnd, docEnd) ||
+                                (wrap && searchRange(call_, needle, 0, selStart)))
+                             : (searchRange(call_, needle, selStart, 0) ||
+                                (wrap && searchRange(call_, needle, docEnd, selEnd)));
+    if (!hit) {
+        return false;
+    }
+    call_.SetSelection(call_.TargetEnd(), call_.TargetStart()); // caret, anchor
+    call_.ScrollCaret();
+    return true;
+}
+
+bool Editor::replaceCurrent(const QString& query, const QString& replacement,
+                            const SearchOptions& options)
+{
+    const Scintilla::Position start = call_.SelectionStart();
+    const Scintilla::Position end = call_.SelectionEnd();
+    const QByteArray needle = query.toUtf8();
+    call_.SetSearchFlags(searchFlags(options));
+
+    // Replace only if the selection is exactly a match; otherwise just advance.
+    const bool selectionIsMatch = start != end && searchRange(call_, needle, start, end) &&
+                                  call_.TargetStart() == start && call_.TargetEnd() == end;
+    if (!selectionIsMatch) {
+        return findNext(query, options, /*forward=*/true, /*wrap=*/true);
+    }
+
+    const QByteArray repl = replacement.toUtf8();
+    const Scintilla::Position newLength = options.regex
+                                              ? call_.ReplaceTargetRE(repl.size(), repl.constData())
+                                              : call_.ReplaceTarget(repl.size(), repl.constData());
+    call_.SetSelection(start + newLength, start); // caret, anchor
+    findNext(query, options, /*forward=*/true, /*wrap=*/true);
+    return true;
+}
+
+int Editor::replaceAll(const QString& query, const QString& replacement,
+                       const SearchOptions& options)
+{
+    if (query.isEmpty()) {
+        return 0;
+    }
+    const QByteArray needle = query.toUtf8();
+    const QByteArray repl = replacement.toUtf8();
+    call_.SetSearchFlags(searchFlags(options));
+
+    int replaced = 0;
+    call_.BeginUndoAction();
+    Scintilla::Position from = 0;
+    while (searchRange(call_, needle, from, call_.TextLength())) {
+        const Scintilla::Position matchStart = call_.TargetStart();
+        const Scintilla::Position matchEnd = call_.TargetEnd();
+        const Scintilla::Position newLength =
+            options.regex ? call_.ReplaceTargetRE(repl.size(), repl.constData())
+                          : call_.ReplaceTarget(repl.size(), repl.constData());
+        from = matchStart + newLength + (matchEnd == matchStart ? 1 : 0);
+        ++replaced;
+    }
+    call_.EndUndoAction();
+    return replaced;
+}
+
+int Editor::markAllMatches(const QString& query, const SearchOptions& options)
+{
+    call_.SetIndicatorCurrent(kFindIndicator);
+    call_.IndicatorClearRange(0, call_.TextLength());
+    if (query.isEmpty()) {
+        return 0;
+    }
+    const QByteArray needle = query.toUtf8();
+    call_.SetSearchFlags(searchFlags(options));
+
+    int matches = 0;
+    Scintilla::Position from = 0;
+    while (searchRange(call_, needle, from, call_.TextLength())) {
+        const Scintilla::Position matchStart = call_.TargetStart();
+        const Scintilla::Position matchEnd = call_.TargetEnd();
+        call_.IndicatorFillRange(matchStart, matchEnd - matchStart);
+        from = matchEnd + (matchEnd == matchStart ? 1 : 0);
+        ++matches;
+    }
+    return matches;
+}
+
 int Editor::firstVisibleLine() const
 {
     return static_cast<int>(call_.FirstVisibleLine());
@@ -236,6 +443,27 @@ void Editor::applyVisualDefaults()
     call_.SetWrapMode(Scintilla::Wrap::None);
     call_.SetScrollWidthTracking(true);
     call_.SetScrollWidth(1);
+
+    // Multi-caret editing: Ctrl+click adds carets, Alt+drag selects a column,
+    // and typing/pasting acts on every selection.
+    call_.SetMultipleSelection(true);
+    call_.SetAdditionalSelectionTyping(true);
+    call_.SetMultiPaste(Scintilla::MultiPaste::Each);
+
+    // Rectangular (column) selection: Alt+drag, or hold Alt to switch a normal
+    // drag into a rectangular one. Alt+Shift+arrows is Scintilla's keyboard path.
+    call_.SetRectangularSelectionModifier(static_cast<int>(Scintilla::KeyMod::Alt));
+    call_.SetMouseSelectionRectangularSwitch(true);
+    call_.SetAdditionalCaretsBlink(true);
+    call_.SetAdditionalCaretFore(sciColour(palette.caret));
+    call_.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
+                           sciColour(palette.selection));
+
+    // Find bar: outline every match while the bar is open.
+    call_.IndicSetStyle(kFindIndicator, Scintilla::IndicatorStyle::StraightBox);
+    call_.IndicSetFore(kFindIndicator, sciColour(palette.findMatch));
+    call_.IndicSetAlpha(kFindIndicator, static_cast<Scintilla::Alpha>(70));
+    call_.IndicSetOutlineAlpha(kFindIndicator, static_cast<Scintilla::Alpha>(160));
 
     call_.SetMarginTypeN(kLineNumberMargin, Scintilla::MarginType::Number);
     call_.SetMarginWidthN(kSymbolMargin, 0);
