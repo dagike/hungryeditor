@@ -119,7 +119,7 @@ void RecentFiles::load()
 
     QList<RecentFile> pinned;
     QList<RecentFile> unpinned;
-    for (const QJsonValue& value : files) {
+    for (const auto& value : files) {
         const QJsonObject entry = value.toObject();
         const QString path = entry.value(QStringLiteral("path")).toString();
         if (path.isEmpty()) {
