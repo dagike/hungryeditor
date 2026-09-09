@@ -21,6 +21,9 @@ private slots:
     void multipleSelectionIsEnabled();
     void selectNextOccurrenceGrowsTheSelection();
     void rectangularSelectionSpansEveryLine();
+    void findNextSelectsAndWraps();
+    void findHonoursCaseWholeWordAndRegex();
+    void replaceAllRewritesEveryMatch();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -153,6 +156,59 @@ void TestEditor::rectangularSelectionSpansEveryLine()
     for (const QString& selected : editor.selectionTexts()) {
         QCOMPARE(selected, QStringLiteral("bc"));
     }
+}
+
+void TestEditor::findNextSelectsAndWraps()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("one two one three one\n"));
+    editor.setCursorPosition(0, 0);
+    const hungryeditor::Editor::SearchOptions opts;
+
+    QVERIFY(editor.findNext(QStringLiteral("one"), opts));
+    QCOMPARE(editor.cursorColumn(), 3); // caret after the first "one"
+    QVERIFY(editor.findNext(QStringLiteral("one"), opts));
+    QCOMPARE(editor.cursorColumn(), 11); // after the second
+    QVERIFY(editor.findNext(QStringLiteral("one"), opts));
+    QVERIFY(editor.findNext(QStringLiteral("one"), opts)); // wraps to the first
+    QCOMPARE(editor.cursorColumn(), 3);
+
+    QVERIFY(!editor.findNext(QStringLiteral("absent"), opts));
+}
+
+void TestEditor::findHonoursCaseWholeWordAndRegex()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("foo Foo foobar\n"));
+
+    hungryeditor::Editor::SearchOptions o;
+    QCOMPARE(editor.markAllMatches(QStringLiteral("foo"), o), 3); // case-insensitive substring
+
+    o.matchCase = true;
+    QCOMPARE(editor.markAllMatches(QStringLiteral("foo"), o), 2); // "foo", "foobar"
+
+    o.wholeWord = true;
+    QCOMPARE(editor.markAllMatches(QStringLiteral("foo"), o), 1); // just the bare "foo"
+
+    hungryeditor::Editor::SearchOptions rx;
+    rx.regex = true;
+    QCOMPARE(editor.markAllMatches(QStringLiteral("f.o"), rx), 3);
+}
+
+void TestEditor::replaceAllRewritesEveryMatch()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("a-a-a\n"));
+    QCOMPARE(editor.replaceAll(QStringLiteral("a"), QStringLiteral("bb"), {}), 3);
+    QCOMPARE(editor.text(), QStringLiteral("bb-bb-bb\n"));
+
+    editor.setText(QStringLiteral("2024-01-02\n"));
+    hungryeditor::Editor::SearchOptions rx;
+    rx.regex = true;
+    QCOMPARE(editor.replaceAll(QStringLiteral("(\\d+)-(\\d+)-(\\d+)"),
+                               QStringLiteral("\\3/\\2/\\1"), rx),
+             1);
+    QCOMPARE(editor.text(), QStringLiteral("02/01/2024\n"));
 }
 
 void TestEditor::visualDefaultsAreApplied()

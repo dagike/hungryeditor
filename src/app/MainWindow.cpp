@@ -30,6 +30,7 @@
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
+#include "ui/FindReplaceBar.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -81,12 +82,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     tabBar_ = new TabBar(container);
     editor_ = new Editor(container);
+    findBar_ = new FindReplaceBar(container);
     splitter_ = new QSplitter(Qt::Horizontal, container);
     splitter_->setChildrenCollapsible(false);
     splitter_->addWidget(editor_);
     layout->addWidget(tabBar_);
+    layout->addWidget(findBar_);
     layout->addWidget(splitter_);
     setCentralWidget(container);
+
+    connect(findBar_, &FindReplaceBar::findRequested, this, [this](bool forward) {
+        editor_->findNext(findBar_->query(), findBar_->options(), forward);
+        refreshFindHighlight();
+    });
+    connect(findBar_, &FindReplaceBar::replaceOneRequested, this, [this] {
+        editor_->replaceCurrent(findBar_->query(), findBar_->replacement(), findBar_->options());
+        refreshFindHighlight();
+    });
+    connect(findBar_, &FindReplaceBar::replaceAllRequested, this, [this] {
+        editor_->replaceAll(findBar_->query(), findBar_->replacement(), findBar_->options());
+        refreshFindHighlight();
+    });
+    connect(findBar_, &FindReplaceBar::queryChanged, this, &MainWindow::refreshFindHighlight);
+    connect(findBar_, &FindReplaceBar::dismissed, this, &MainWindow::closeFindBar);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
@@ -210,6 +228,27 @@ void MainWindow::buildMenus()
     quitAction->setObjectName(QStringLiteral("action.quit"));
 
     QMenu* editMenu = menuBar()->addMenu(tr("&Edit"));
+
+    const auto openFindBar = [this](bool withReplace) {
+        const QString selected = editor_->selectedText();
+        if (!selected.isEmpty() && !selected.contains(QLatin1Char('\n'))) {
+            findBar_->setQuery(selected);
+        }
+        findBar_->reveal(withReplace);
+        refreshFindHighlight();
+    };
+
+    QAction* findAction =
+        editMenu->addAction(tr("&Find…"), this, [openFindBar] { openFindBar(false); });
+    findAction->setShortcut(QKeySequence::Find);
+    findAction->setObjectName(QStringLiteral("action.find"));
+
+    QAction* replaceAction =
+        editMenu->addAction(tr("&Replace…"), this, [openFindBar] { openFindBar(true); });
+    replaceAction->setShortcut(QKeySequence::Replace);
+    replaceAction->setObjectName(QStringLiteral("action.replace"));
+
+    editMenu->addSeparator();
 
     QAction* selectNextAction = editMenu->addAction(tr("Select &Next Occurrence"), this,
                                                     [this] { editor_->selectNextOccurrence(); });
@@ -367,6 +406,21 @@ void MainWindow::jumpEditorToLine(int line)
     if (viewMode_ == ViewMode::Split) {
         editor_->setFocus();
     }
+}
+
+void MainWindow::refreshFindHighlight()
+{
+    if (findBar_->isHidden()) {
+        return;
+    }
+    findBar_->setMatchCount(editor_->markAllMatches(findBar_->query(), findBar_->options()));
+}
+
+void MainWindow::closeFindBar()
+{
+    findBar_->hide();
+    editor_->markAllMatches(QString(), {});
+    editor_->setFocus();
 }
 
 QString MainWindow::currentPath() const

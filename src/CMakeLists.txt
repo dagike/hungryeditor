@@ -78,6 +78,8 @@ add_library(hungryeditor_core STATIC
     preview/QtWebEnginePreview.h
     theme/Theme.cpp
     theme/Theme.h
+    ui/FindReplaceBar.cpp
+    ui/FindReplaceBar.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

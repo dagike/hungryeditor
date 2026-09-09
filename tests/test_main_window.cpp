@@ -5,12 +5,14 @@
 #include <QDropEvent>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QtTest>
 #include <QUrl>
 
@@ -24,6 +26,7 @@
 #include "io/SessionStore.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
+#include "ui/FindReplaceBar.h"
 
 class TestMainWindow : public QObject
 {
@@ -61,6 +64,7 @@ private slots:
     void scrollSyncsBothWays();
     void clickingAPreviewHeadingMovesTheCaret();
     void selectNextActionAddsACaret();
+    void findBarSearchesAndReplaces();
 };
 
 namespace {
@@ -503,6 +507,8 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("close") << QStringLiteral("action.close");
     QTest::newRow("quit") << QStringLiteral("action.quit");
     QTest::newRow("about") << QStringLiteral("action.about");
+    QTest::newRow("find") << QStringLiteral("action.find");
+    QTest::newRow("replace") << QStringLiteral("action.replace");
     QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
@@ -673,6 +679,41 @@ void TestMainWindow::selectNextActionAddsACaret()
     QCOMPARE(window.editor()->selectionCount(), 1);
     selectNext->trigger();
     QCOMPARE(window.editor()->selectionCount(), 2);
+}
+
+void TestMainWindow::findBarSearchesAndReplaces()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("alpha beta alpha gamma alpha\n"));
+    window.editor()->setCursorPosition(0, 0);
+
+    window.findChild<QAction*>(QStringLiteral("action.find"))->trigger();
+    auto* bar = window.findChild<hungryeditor::FindReplaceBar*>();
+    QVERIFY(bar != nullptr);
+
+    const auto click = [bar](const QString& text) {
+        for (QToolButton* button : bar->findChildren<QToolButton*>()) {
+            if (button->text() == text) {
+                button->click();
+                return;
+            }
+        }
+        QFAIL("find-bar button not found");
+    };
+
+    bar->setQuery(QStringLiteral("alpha"));
+    click(QStringLiteral("▼")); // next
+    QCOMPARE(window.editor()->selectedText(), QStringLiteral("alpha"));
+
+    window.findChild<QAction*>(QStringLiteral("action.replace"))->trigger();
+    bar->setReplacement(QStringLiteral("A"));
+    click(QStringLiteral("All"));
+    QCOMPARE(window.editor()->text(), QStringLiteral("A beta A gamma A\n"));
+
+    // Esc dismisses the bar.
+    QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QCoreApplication::sendEvent(bar, &esc);
+    QVERIFY(bar->isHidden());
 }
 
 QTEST_MAIN(TestMainWindow)

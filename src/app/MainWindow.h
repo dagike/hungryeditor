@@ -19,6 +19,7 @@ namespace hungryeditor {
 class Document;
 class DocumentManager;
 class Editor;
+class FindReplaceBar;
 class PreviewBackend;
 class PreviewController;
 class RecentFiles;
@@ -154,6 +155,10 @@ private:
     // Clicking a heading in the preview drops the editor caret on its source.
     void jumpEditorToLine(int line);
 
+    // Find / replace bar.
+    void refreshFindHighlight();
+    void closeFindBar();
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);
@@ -176,6 +181,7 @@ private:
     // pointers through the editor) while the editor is still alive.
     Editor* editor_ = nullptr;
     TabBar* tabBar_ = nullptr;
+    FindReplaceBar* findBar_ = nullptr;
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;
