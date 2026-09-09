@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QMenuBar>
 #include <QMimeData>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QUrl>
@@ -16,12 +17,14 @@
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
 #include "io/DraftStore.h"
+#include "io/SessionStore.h"
 
 class TestMainWindow : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void editorSitsBelowTheTabBar();
     void hasExpectedMenus();
     void hasNamedActions_data();
@@ -37,7 +40,9 @@ private slots:
     void externalEditReloadsACleanBuffer();
     void externalEditDoesNotClobberADirtyBuffer();
     void restoresUnsavedDraftsOnStartup();
-    void cleanShutdownClearsDrafts();
+    void cleanShutdownWritesASession();
+    void restoresTabsAndGeometryFromACleanSession();
+    void sessionRestoreFallsBackToDraftRecovery();
     void newAndSwitchActionsChangeCurrentDocument();
 };
 
@@ -274,19 +279,79 @@ void TestMainWindow::restoresUnsavedDraftsOnStartup()
     QVERIFY(window.editor()->isModified());
 }
 
-void TestMainWindow::cleanShutdownClearsDrafts()
+void TestMainWindow::cleanShutdownWritesASession()
 {
-    QTemporaryDir drafts;
-    QVERIFY(drafts.isValid());
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
 
     hungryeditor::MainWindow window;
-    window.documents()->setDraftDirectory(drafts.path());
+    window.setStateDirectory(state.path());
     window.editor()->setText(QStringLiteral("unsaved edits\n"));
-    window.documents()->autosaveDirtyDocuments();
-    QVERIFY(!hungryeditor::DraftStore(drafts.path()).loadAll().isEmpty());
 
-    window.documents()->clearDrafts(); // what the aboutToQuit hook runs
-    QVERIFY(hungryeditor::DraftStore(drafts.path()).loadAll().isEmpty());
+    window.saveSession(); // what the aboutToQuit hook runs
+
+    hungryeditor::SessionStore store(state.path() + QStringLiteral("/session.json"));
+    QVERIFY(store.load().valid);
+    // The unsaved buffer stays recoverable through its draft.
+    QVERIFY(
+        !hungryeditor::DraftStore(state.path() + QStringLiteral("/drafts")).loadAll().isEmpty());
+}
+
+void TestMainWindow::restoresTabsAndGeometryFromACleanSession()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "alpha\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b0\nb1\nb2\n");
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        QVERIFY(first.openFiles({a, b}));
+        first.documents()->setCurrentIndex(1); // user switches over to b
+        first.editor()->setCursorPosition(2, 1);
+        first.resize(840, 560);
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+    second.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&second));
+
+    QCOMPARE(second.documents()->count(), 2);
+    QCOMPARE(second.currentPath(), b);
+    QCOMPARE(second.editor()->text(), QStringLiteral("b0\nb1\nb2\n"));
+    QCOMPARE(second.editor()->cursorLine(), 2);
+    QCOMPARE(second.width(), 840);
+
+    // The session file is consumed once restored.
+    QVERIFY(
+        !hungryeditor::SessionStore(state.path() + QStringLiteral("/session.json")).load().valid);
+}
+
+void TestMainWindow::sessionRestoreFallsBackToDraftRecovery()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    {
+        hungryeditor::DraftStore seed(state.path() + QStringLiteral("/drafts"));
+        hungryeditor::Draft draft;
+        draft.id = QStringLiteral("crashed");
+        draft.text = QStringLiteral("recovered text\n");
+        QVERIFY(seed.write(draft));
+    }
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.restoreLastSession(/*askFirst=*/false); // no session.json -> crash path
+
+    QCOMPARE(window.documents()->count(), 1);
+    QCOMPARE(window.editor()->text(), QStringLiteral("recovered text\n"));
+    QVERIFY(window.editor()->isModified());
 }
 
 void TestMainWindow::hasNamedActions_data()

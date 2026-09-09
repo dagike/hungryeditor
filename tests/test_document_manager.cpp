@@ -8,12 +8,14 @@
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
 #include "io/DraftStore.h"
+#include "io/SessionStore.h"
 
 using hungryeditor::Document;
 using hungryeditor::DocumentManager;
 using hungryeditor::Draft;
 using hungryeditor::DraftStore;
 using hungryeditor::Editor;
+using hungryeditor::Session;
 
 namespace {
 
@@ -54,6 +56,10 @@ private slots:
     void savingAndClosingDropTheDraft();
     void restoreDraftsRecreatesModifiedBuffers();
     void autosaveTimerWritesADraftOnItsOwn();
+    void switchingTabsRestoresTheCaret();
+    void buildSessionCapturesPathsOrderAndCarets();
+    void restoreSessionReopensFilesAtTheirCaret();
+    void restoreSessionOverlaysADraftOntoItsFile();
 };
 
 void TestDocumentManager::startsWithOneUntitledDocument()
@@ -439,6 +445,105 @@ void TestDocumentManager::autosaveTimerWritesADraftOnItsOwn()
     QTRY_VERIFY_WITH_TIMEOUT(!DraftStore(drafts.path()).loadAll().isEmpty(), 3000);
     QCOMPARE(DraftStore(drafts.path()).loadAll().first().text,
              QStringLiteral("typed and left alone\n"));
+}
+
+void TestDocumentManager::switchingTabsRestoresTheCaret()
+{
+    Editor editor;
+    DocumentManager manager(&editor);
+
+    editor.setText(QStringLiteral("l0\nl1\nl2\nl3\nl4\n"));
+    editor.setCursorPosition(3, 1);
+    manager.newDocument();
+    editor.setText(QStringLiteral("other buffer\n"));
+
+    // Scintilla drops the caret to the top on a document swap; the manager
+    // must put it back where each buffer was last left.
+    manager.setCurrentIndex(0);
+    QCOMPARE(editor.cursorLine(), 3);
+    QCOMPARE(editor.cursorColumn(), 1);
+
+    manager.setCurrentIndex(1);
+    QCOMPARE(editor.cursorLine(), 0);
+}
+
+void TestDocumentManager::buildSessionCapturesPathsOrderAndCarets()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString a = writeFile(dir, QStringLiteral("a.md"), "aaa\n");
+    const QString b = writeFile(dir, QStringLiteral("b.md"), "b0\nb1\nb2\n");
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.openDocument(a);
+    manager.openDocument(b);
+    editor.setCursorPosition(2, 1);
+
+    const Session session = manager.buildSession();
+    QCOMPARE(session.currentIndex, manager.currentIndex());
+    QCOMPARE(session.documents.size(), 3); // startup untitled + a + b
+    QCOMPARE(session.documents.at(1).path, a);
+    QCOMPARE(session.documents.last().path, b);
+    QCOMPARE(session.documents.last().caretLine, 2);
+    QCOMPARE(session.documents.last().caretColumn, 1);
+}
+
+void TestDocumentManager::restoreSessionReopensFilesAtTheirCaret()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString a = writeFile(dir, QStringLiteral("ra.md"), "a0\na1\n");
+    const QString b = writeFile(dir, QStringLiteral("rb.md"), "b0\nb1\nb2\nb3\n");
+
+    Session session;
+    session.valid = true;
+    session.currentIndex = 0;
+    session.documents.append({a, QString(), 1, 1, 0});
+    session.documents.append({b, QString(), 3, 0, 0});
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.restoreSession(session, {});
+
+    QCOMPARE(manager.count(), 3); // startup untitled + the two files
+    QCOMPARE(manager.documentAt(1)->path(), a);
+    QCOMPARE(manager.documentAt(2)->path(), b);
+
+    manager.setCurrentIndex(1);
+    QCOMPARE(editor.cursorLine(), 1);
+    QCOMPARE(editor.cursorColumn(), 1);
+    manager.setCurrentIndex(2);
+    QCOMPARE(editor.cursorLine(), 3);
+}
+
+void TestDocumentManager::restoreSessionOverlaysADraftOntoItsFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+    const QString path = writeFile(dir, QStringLiteral("doc.md"), "on disk\n");
+
+    Draft draft;
+    draft.id = QStringLiteral("d1");
+    draft.originalPath = path;
+    draft.text = QStringLiteral("unsaved edits\n");
+
+    Session session;
+    session.valid = true;
+    session.currentIndex = 0;
+    session.documents.append({path, QStringLiteral("d1"), 0, 0, 0});
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.setDraftDirectory(drafts.path());
+    manager.restoreSession(session, {draft});
+
+    manager.setCurrentIndex(1);
+    QCOMPARE(editor.text(), QStringLiteral("unsaved edits\n"));
+    QVERIFY(manager.current()->isModified());
+    QCOMPARE(manager.current()->draftId(), QStringLiteral("d1"));
 }
 
 QTEST_MAIN(TestDocumentManager)

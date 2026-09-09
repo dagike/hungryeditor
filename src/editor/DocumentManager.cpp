@@ -6,6 +6,8 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
+#include <QHash>
+#include <QSet>
 #include <QTimer>
 
 #include "editor/Document.h"
@@ -388,6 +390,113 @@ void DocumentManager::clearDrafts()
     draftHashes_.clear();
 }
 
+Session DocumentManager::buildSession() const
+{
+    Session session;
+    session.valid = true;
+    session.currentIndex = currentIndex_;
+    for (int i = 0; i < count(); ++i) {
+        const Document* document = documents_[static_cast<std::size_t>(i)].get();
+        const ViewState view = (i == currentIndex_)
+                                   ? ViewState{editor_->cursorLine(), editor_->cursorColumn(),
+                                               editor_->firstVisibleLine()}
+                                   : document->viewState();
+        SessionDocument entry;
+        entry.path = document->path();
+        entry.draftId = document->draftId();
+        entry.caretLine = view.caretLine;
+        entry.caretColumn = view.caretColumn;
+        entry.firstVisibleLine = view.firstVisibleLine;
+        session.documents.append(entry);
+    }
+    return session;
+}
+
+void DocumentManager::restoreSession(const Session& session, const QList<Draft>& drafts)
+{
+    QHash<QString, Draft> draftById;
+    for (const Draft& draft : drafts) {
+        draftById.insert(draft.id, draft);
+    }
+
+    for (const SessionDocument& entry : session.documents) {
+        const auto draftIt = draftById.constFind(entry.draftId);
+        const bool haveDraft = !entry.draftId.isEmpty() && draftIt != draftById.constEnd();
+
+        Document* raw = nullptr;
+        if (entry.path.isEmpty()) {
+            // An untitled tab only returns if its unsaved text survived.
+            if (!haveDraft) {
+                continue;
+            }
+            auto document = std::make_unique<Document>(createScintillaDocument(editor_), QString(),
+                                                       nextUntitledNumber_++);
+            document->setEncoding(draftIt->encoding);
+            document->setLineEnding(draftIt->lineEnding);
+            document->adoptDraftId(draftIt->id);
+            raw = addDocument(std::move(document));
+            setCurrentIndex(indexOf(raw));
+            editor_->setText(draftIt->text);
+            draftHashes_.insert(draftIt->id, qHash(draftIt->text));
+        } else {
+            FileError error;
+            raw = openDocument(entry.path, &error);
+            if (raw == nullptr) {
+                continue; // the file is gone — drop the tab
+            }
+            if (haveDraft) {
+                // Put the unsaved edits back on top of the on-disk text. No
+                // markClean(): a draft is work that was never saved.
+                if (indexOf(raw) != currentIndex_) {
+                    setCurrentIndex(indexOf(raw));
+                }
+                raw->adoptDraftId(draftIt->id);
+                raw->setEncoding(draftIt->encoding);
+                raw->setLineEnding(draftIt->lineEnding);
+                editor_->setText(draftIt->text);
+                draftHashes_.insert(draftIt->id, qHash(draftIt->text));
+            }
+        }
+
+        raw->setViewState({entry.caretLine, entry.caretColumn, entry.firstVisibleLine});
+        if (indexOf(raw) == currentIndex_) {
+            editor_->setCursorPosition(entry.caretLine, entry.caretColumn);
+            editor_->setFirstVisibleLine(entry.firstVisibleLine);
+        }
+    }
+
+    // Bring back any draft the session did not name (written in the last
+    // moments before the crash that also ate the session file).
+    QList<Draft> unreferenced;
+    for (const Draft& draft : drafts) {
+        bool referenced = false;
+        for (const SessionDocument& entry : session.documents) {
+            if (entry.draftId == draft.id) {
+                referenced = true;
+                break;
+            }
+        }
+        if (!referenced) {
+            unreferenced.append(draft);
+        }
+    }
+    if (!unreferenced.isEmpty()) {
+        restoreDrafts(unreferenced);
+    }
+
+    // Drop draft files for buffers that did not come back (their file was
+    // gone), so they do not resurface as phantom recoveries next launch.
+    if (draftStore_) {
+        QSet<QString> live;
+        for (const auto& document : documents_) {
+            live.insert(document->draftId());
+        }
+        draftStore_->retainOnly(live);
+    }
+
+    refreshWatch();
+}
+
 void DocumentManager::dropDraft(const Document* document)
 {
     if (!draftStore_ || document == nullptr) {
@@ -454,15 +563,25 @@ void DocumentManager::setCurrentIndex(int index)
     if (index < 0 || index >= count() || index == currentIndex_) {
         return;
     }
-    // The buffer we are leaving cannot change while it is off screen, so this
-    // snapshot stays exact and lets autosave read it without a pointer swap.
+    // Neither the text nor the caret of an off-screen buffer can change, so
+    // these snapshots stay exact: autosave reads the text without a pointer
+    // swap and a later switch-back restores the caret and scroll offset.
     if (Document* leaving = current()) {
         leaving->setSnapshotText(editor_->text());
+        leaving->setViewState(
+            {editor_->cursorLine(), editor_->cursorColumn(), editor_->firstVisibleLine()});
     }
     currentIndex_ = index;
     Document* document = documents_[static_cast<std::size_t>(index)].get();
     editor_->attachDocument(document);
     document->setModified(editor_->isModified());
+
+    // Scintilla resets the caret to the top on a document swap; put it back
+    // where this buffer was last seen.
+    const ViewState view = document->viewState();
+    editor_->setCursorPosition(view.caretLine, view.caretColumn);
+    editor_->setFirstVisibleLine(view.firstVisibleLine);
+
     emit currentChanged(index);
 }
 

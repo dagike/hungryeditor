@@ -150,4 +150,15 @@ void DraftStore::clear()
     }
 }
 
+void DraftStore::retainOnly(const QSet<QString>& ids)
+{
+    QDir dir(directory_);
+    const QStringList names = dir.entryList({QStringLiteral("*.json")}, QDir::Files);
+    for (const QString& name : names) {
+        if (!ids.contains(QFileInfo(name).completeBaseName())) {
+            dir.remove(name);
+        }
+    }
+}
+
 } // namespace hungryeditor

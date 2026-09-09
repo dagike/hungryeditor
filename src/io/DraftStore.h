@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QList>
+#include <QSet>
 #include <QString>
 
 #include "io/TextFile.h" // Encoding, LineEnding
@@ -39,6 +40,10 @@ public:
 
     /// Delete every draft file.
     void clear();
+
+    /// Delete every draft file whose id is not in `ids` — used after a
+    /// session restore to drop drafts left by buffers that are no longer open.
+    void retainOnly(const QSet<QString>& ids);
 
 private:
     QString directory_;

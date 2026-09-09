@@ -11,6 +11,14 @@ class IDocumentEditable;
 
 namespace hungryeditor {
 
+/// Where the caret and viewport sat the last time a buffer was on screen.
+struct ViewState
+{
+    int caretLine = 0;
+    int caretColumn = 0;
+    int firstVisibleLine = 0;
+};
+
 /// One open buffer: a Scintilla document pointer plus the metadata needed to
 /// save it back where it came from.
 ///
@@ -66,6 +74,13 @@ public:
     QString snapshotText() const { return snapshotText_; }
     void setSnapshotText(const QString& text) { snapshotText_ = text; }
 
+    /// Caret and scroll position as of the last time this buffer was visible.
+    /// DocumentManager captures it on switch-away and re-applies it on
+    /// switch-in, so tab switches and session restore both land where you
+    /// left off.
+    ViewState viewState() const { return viewState_; }
+    void setViewState(const ViewState& state) { viewState_ = state; }
+
 private:
     Scintilla::IDocumentEditable* pointer_ = nullptr;
     QString path_;
@@ -77,6 +92,7 @@ private:
     QDateTime diskModified_;
     QString draftId_;
     QString snapshotText_;
+    ViewState viewState_;
 };
 
 } // namespace hungryeditor

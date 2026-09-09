@@ -168,6 +168,16 @@ void Editor::setCursorPosition(int line, int column)
     call_.GotoPos(pos);
 }
 
+int Editor::firstVisibleLine() const
+{
+    return static_cast<int>(call_.FirstVisibleLine());
+}
+
+void Editor::setFirstVisibleLine(int line)
+{
+    call_.SetFirstVisibleLine(line);
+}
+
 void Editor::setEditorFont(const QFont& font)
 {
     font_ = font;

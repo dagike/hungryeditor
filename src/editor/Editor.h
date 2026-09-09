@@ -63,6 +63,11 @@ public:
     int cursorColumn() const;
     void setCursorPosition(int line, int column);
 
+    /// Document line shown at the top of the viewport, zero-based. Persisted
+    /// per tab so a switch or a restart returns to the same scroll offset.
+    int firstVisibleLine() const;
+    void setFirstVisibleLine(int line);
+
     /// Monospace font used for the text area. Changing it re-applies all
     /// derived styling (line-number margin width included).
     QFont editorFont() const { return font_; }

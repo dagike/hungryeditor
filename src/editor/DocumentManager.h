@@ -7,8 +7,9 @@
 #include <QHash>
 #include <QObject>
 
-#include "io/DraftStore.h" // Draft, DraftStore
-#include "io/TextFile.h"   // FileError
+#include "io/DraftStore.h"   // Draft, DraftStore
+#include "io/SessionStore.h" // Session, SessionDocument
+#include "io/TextFile.h"     // FileError
 
 class QFileSystemWatcher;
 class QTimer;
@@ -75,6 +76,16 @@ public:
 
     /// Delete every recovery draft — for a clean shutdown.
     void clearDrafts();
+
+    /// A snapshot of every open tab for the next launch: paths, order, the
+    /// active tab and each caret/scroll position. The caller adds the window
+    /// geometry.
+    Session buildSession() const;
+
+    /// Reopen the tabs `session` recorded, in order, overlaying any matching
+    /// recovery draft from `drafts` and restoring each caret/scroll position.
+    /// Drafts left by buffers no longer in the session are dropped.
+    void restoreSession(const Session& session, const QList<Draft>& drafts);
 
     /// Close the document at `index`. Always leaves at least one document
     /// open: closing the last one replaces it with a fresh untitled buffer.

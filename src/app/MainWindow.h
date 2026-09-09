@@ -16,6 +16,7 @@ namespace hungryeditor {
 class Document;
 class DocumentManager;
 class Editor;
+class SessionStore;
 class TabBar;
 
 /// The application's single top-level window. It hosts one editor widget
@@ -76,6 +77,20 @@ public:
     /// `askFirst` the user is prompted; declining discards the drafts.
     void restoreUnsavedFromLastSession(bool askFirst = true);
 
+    /// Point recovery drafts and the session file at `directory` (drafts in a
+    /// `drafts/` subdirectory, the session in `session.json`). Called with the
+    /// app data location on construction; overridden by tests.
+    void setStateDirectory(const QString& directory);
+
+    /// Restore the tabs, caret positions and window geometry left by the last
+    /// clean exit. With no session file this falls back to crash recovery
+    /// (restoreUnsavedFromLastSession), forwarding `askFirst`.
+    void restoreLastSession(bool askFirst = true);
+
+    /// Write the current tabs, carets and geometry to the session file. Run
+    /// from the aboutToQuit hook; exposed for tests.
+    void saveSession();
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -113,6 +128,7 @@ private:
     Editor* editor_ = nullptr;
     TabBar* tabBar_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
+    std::unique_ptr<SessionStore> sessionStore_;
     QAction* saveAction_ = nullptr;
     QString lastError_;
     bool syncingTabs_ = false;

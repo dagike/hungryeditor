@@ -20,6 +20,7 @@
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
 #include "io/DraftStore.h"
+#include "io/SessionStore.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -47,14 +48,15 @@ QStringList localFilesFromMime(const QMimeData* mime)
     return paths;
 }
 
-/// Where autosaved recovery drafts live between sessions.
-QString defaultDraftDirectory()
+/// Base directory for this app's persisted state — recovery drafts and the
+/// session file. Falls back to a temp path when the platform offers none.
+QString defaultStateDirectory()
 {
     QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (base.isEmpty()) {
         base = QDir::tempPath() + QLatin1String("/hungryeditor");
     }
-    return base + QLatin1String("/drafts");
+    return base;
 }
 } // namespace
 
@@ -75,8 +77,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setCentralWidget(container);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
-    documents_->setDraftDirectory(defaultDraftDirectory());
-    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { documents_->clearDrafts(); });
+    setStateDirectory(defaultStateDirectory());
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
     buildMenus();
 
@@ -306,6 +308,44 @@ void MainWindow::restoreUnsavedFromLastSession(bool askFirst)
     documents_->restoreDrafts(drafts);
     dropInitialBlankBuffer();
     updateWindowTitle();
+}
+
+void MainWindow::setStateDirectory(const QString& directory)
+{
+    documents_->setDraftDirectory(directory + QLatin1String("/drafts"));
+    sessionStore_ = std::make_unique<SessionStore>(directory + QLatin1String("/session.json"));
+}
+
+void MainWindow::restoreLastSession(bool askFirst)
+{
+    const Session session = sessionStore_ ? sessionStore_->load() : Session{};
+    if (!session.valid) {
+        // No clean-exit session — fall back to crash recovery.
+        restoreUnsavedFromLastSession(askFirst);
+        return;
+    }
+
+    if (!session.windowGeometry.isEmpty()) {
+        restoreGeometry(session.windowGeometry);
+    }
+    documents_->restoreSession(session, documents_->pendingDrafts());
+    dropInitialBlankBuffer();
+    if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
+        documents_->setCurrentIndex(session.currentIndex);
+    }
+    sessionStore_->clear(); // consumed; only a crash should leave one behind
+    updateWindowTitle();
+}
+
+void MainWindow::saveSession()
+{
+    if (!sessionStore_) {
+        return;
+    }
+    documents_->autosaveDirtyDocuments(); // flush the latest text into drafts
+    Session session = documents_->buildSession();
+    session.windowGeometry = saveGeometry();
+    sessionStore_->save(session);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)
