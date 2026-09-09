@@ -11,14 +11,13 @@
 #include <ScintillaEditBase.h>
 // clang-format on
 
-#include "io/TextFile.h" // Encoding, LineEnding
-
 namespace Scintilla {
 struct NotificationData;
 }
 
 namespace hungryeditor {
 
+class Document;
 class HighlightController;
 struct HighlightResult;
 
@@ -72,13 +71,11 @@ public:
     /// Style byte at a position — for tests to check colouring.
     int styleAt(int position) const;
 
-    /// Encoding and line ending carried with the document. The buffer always
-    /// holds "\n"; these record how the file was read and how it is written
-    /// back. Set them after loading; read them before saving.
-    Encoding encoding() const { return encoding_; }
-    void setEncoding(Encoding encoding) { encoding_ = encoding; }
-    LineEnding lineEnding() const { return lineEnding_; }
-    void setLineEnding(LineEnding eol) { lineEnding_ = eol; }
+    /// Show `document` in the buffer. The previously attached document keeps
+    /// its text, undo history and caret; this is an O(1) Scintilla pointer
+    /// swap. DocumentManager owns the documents and calls this on a switch.
+    void attachDocument(Document* document);
+    Document* document() const { return document_; }
 
     /// How the buffer is being coloured. Large files drop from the
     /// tree-sitter highlighter to Lexilla's stock lexer and then to plain
@@ -120,16 +117,16 @@ private:
     /// Resize the line-number margin to fit the current line count.
     void updateLineNumberMargin();
     /// Pick the highlighting tier for the current buffer size and, if it
-    /// changed, switch the lexer and the background highlighter to match.
-    void updateHighlightTier();
+    /// changed (or `force` is set), switch the lexer and the background
+    /// highlighter to match and repaint.
+    void updateHighlightTier(bool force = false);
 
     mutable Scintilla::ScintillaCall call_;
     HighlightController* highlight_ = nullptr;
+    Document* document_ = nullptr;
     QFont font_;
     bool modified_ = false;
     int lineDigits_ = 0;
-    Encoding encoding_ = Encoding::Utf8;
-    LineEnding lineEnding_ = LineEnding::Lf;
     HighlightTier tier_ = HighlightTier::TreeSitter;
     int lexillaByteLimit_ = 2 * 1024 * 1024;
     int plainTextByteLimit_ = 20 * 1024 * 1024;

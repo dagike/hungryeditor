@@ -7,6 +7,8 @@
 #include <QtTest>
 
 #include "app/MainWindow.h"
+#include "editor/Document.h"
+#include "editor/DocumentManager.h"
 #include "editor/Editor.h"
 
 class TestMainWindow : public QObject
@@ -23,6 +25,7 @@ private slots:
     void openPathLoadsFileAndClearsDirty();
     void savePathWritesBufferPreservingLineEnding();
     void openPathReportsMissingFile();
+    void newAndSwitchActionsChangeCurrentDocument();
 };
 
 void TestMainWindow::editorIsCentralWidget()
@@ -108,6 +111,7 @@ void TestMainWindow::openPathReportsMissingFile()
 void TestMainWindow::hasNamedActions_data()
 {
     QTest::addColumn<QString>("objectName");
+    QTest::newRow("new") << QStringLiteral("action.new");
     QTest::newRow("open") << QStringLiteral("action.open");
     QTest::newRow("save") << QStringLiteral("action.save");
     QTest::newRow("saveAs") << QStringLiteral("action.saveAs");
@@ -127,6 +131,22 @@ void TestMainWindow::showsWithoutCrashing()
     hungryeditor::MainWindow window;
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
+}
+
+void TestMainWindow::newAndSwitchActionsChangeCurrentDocument()
+{
+    hungryeditor::MainWindow window;
+    QCOMPARE(window.documents()->count(), 1);
+
+    window.findChild<QAction*>(QStringLiteral("action.new"))->trigger();
+    QCOMPARE(window.documents()->count(), 2);
+    QCOMPARE(window.documents()->currentIndex(), 1);
+
+    window.findChild<QAction*>(QStringLiteral("action.previousDocument"))->trigger();
+    QCOMPARE(window.documents()->currentIndex(), 0);
+
+    window.findChild<QAction*>(QStringLiteral("action.nextDocument"))->trigger();
+    QCOMPARE(window.documents()->currentIndex(), 1);
 }
 
 QTEST_MAIN(TestMainWindow)

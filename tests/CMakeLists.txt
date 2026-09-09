@@ -43,6 +43,10 @@ hungryeditor_add_test(test_text_file
     SOURCES test_text_file.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_document_manager
+    SOURCES test_document_manager.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_main_window
     SOURCES test_main_window.cpp
     LIBS hungryeditor::core)

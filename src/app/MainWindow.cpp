@@ -2,18 +2,23 @@
 
 #include <QApplication>
 #include <QFileDialog>
-#include <QFileInfo>
 #include <QMenuBar>
 #include <QMessageBox>
 
+#include "editor/Document.h"
+#include "editor/DocumentManager.h"
 #include "editor/Editor.h"
-#include "io/TextFile.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
 #endif
 
 namespace hungryeditor {
+
+namespace {
+const QString kFileFilter =
+    QStringLiteral("Markdown (*.md *.markdown *.mkd);;Text files (*.txt);;All files (*)");
+}
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
@@ -22,12 +27,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     editor_ = new Editor(this);
     setCentralWidget(editor_);
 
+    documents_ = std::make_unique<DocumentManager>(editor_);
+
     buildMenus();
 
-    connect(editor_, &Editor::modifiedChanged, this, [this](bool modified) {
-        saveAction_->setEnabled(modified);
-        updateWindowTitle();
-    });
+    connect(documents_.get(), &DocumentManager::currentChanged, this,
+            [this](int) { updateWindowTitle(); });
+    connect(documents_.get(), &DocumentManager::modifiedChanged, this,
+            [this](int index, bool modified) {
+                if (index == documents_->currentIndex()) {
+                    saveAction_->setEnabled(modified);
+                }
+                updateWindowTitle();
+            });
 
     updateWindowTitle();
 }
@@ -37,6 +49,10 @@ MainWindow::~MainWindow() = default;
 void MainWindow::buildMenus()
 {
     QMenu* fileMenu = menuBar()->addMenu(tr("&File"));
+
+    QAction* newAction = fileMenu->addAction(tr("&New"), this, &MainWindow::newDocument);
+    newAction->setShortcut(QKeySequence::New);
+    newAction->setObjectName(QStringLiteral("action.new"));
 
     QAction* openAction = fileMenu->addAction(tr("&Open…"), this, &MainWindow::openFileDialog);
     openAction->setShortcut(QKeySequence::Open);
@@ -53,6 +69,18 @@ void MainWindow::buildMenus()
 
     fileMenu->addSeparator();
 
+    QAction* nextAction =
+        fileMenu->addAction(tr("&Next Document"), this, &MainWindow::nextDocument);
+    nextAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageDown));
+    nextAction->setObjectName(QStringLiteral("action.nextDocument"));
+
+    QAction* prevAction =
+        fileMenu->addAction(tr("&Previous Document"), this, &MainWindow::previousDocument);
+    prevAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp));
+    prevAction->setObjectName(QStringLiteral("action.previousDocument"));
+
+    fileMenu->addSeparator();
+
     QAction* quitAction = fileMenu->addAction(tr("&Quit"), qApp, &QApplication::quit);
     quitAction->setShortcut(QKeySequence::Quit);
     quitAction->setMenuRole(QAction::QuitRole);
@@ -65,48 +93,47 @@ void MainWindow::buildMenus()
     aboutAction->setObjectName(QStringLiteral("action.about"));
 }
 
+QString MainWindow::currentPath() const
+{
+    const Document* document = documents_->current();
+    return document != nullptr ? document->path() : QString();
+}
+
 bool MainWindow::openPath(const QString& path)
 {
     FileError error;
-    const TextDocument doc = loadFile(path, &error);
-    if (!error.ok) {
+    if (documents_->openDocument(path, &error) == nullptr) {
         lastError_ = error.message;
         return false;
     }
-
-    editor_->setText(doc.text);
-    editor_->setEncoding(doc.encoding);
-    editor_->setLineEnding(doc.lineEnding);
-    editor_->markClean();
-
-    currentPath_ = path;
     lastError_.clear();
-    saveAction_->setEnabled(false);
-    updateWindowTitle();
     return true;
 }
 
 bool MainWindow::savePath(const QString& path)
 {
-    const TextDocument doc{editor_->text(), editor_->encoding(), editor_->lineEnding()};
+    Document* document = documents_->current();
+    if (document == nullptr) {
+        return false;
+    }
     FileError error;
-    if (!saveFile(path, doc, &error)) {
+    if (!documents_->saveDocument(document, path, &error)) {
         lastError_ = error.message;
         return false;
     }
-
-    editor_->markClean();
-    currentPath_ = path;
     lastError_.clear();
-    updateWindowTitle();
     return true;
+}
+
+void MainWindow::newDocument()
+{
+    documents_->newDocument();
 }
 
 void MainWindow::openFileDialog()
 {
-    const QString path = QFileDialog::getOpenFileName(
-        this, tr("Open File"), currentPath_,
-        tr("Markdown (*.md *.markdown *.mkd);;Text files (*.txt);;All files (*)"));
+    const QString path =
+        QFileDialog::getOpenFileName(this, tr("Open File"), currentPath(), kFileFilter);
     if (path.isEmpty()) {
         return;
     }
@@ -117,20 +144,20 @@ void MainWindow::openFileDialog()
 
 void MainWindow::save()
 {
-    if (currentPath_.isEmpty()) {
+    const Document* document = documents_->current();
+    if (document == nullptr || document->isUntitled()) {
         saveAsDialog();
         return;
     }
-    if (!savePath(currentPath_)) {
+    if (!savePath(document->path())) {
         QMessageBox::warning(this, tr("Save Failed"), lastError_);
     }
 }
 
 void MainWindow::saveAsDialog()
 {
-    const QString path = QFileDialog::getSaveFileName(
-        this, tr("Save File As"), currentPath_,
-        tr("Markdown (*.md *.markdown *.mkd);;Text files (*.txt);;All files (*)"));
+    const QString path =
+        QFileDialog::getSaveFileName(this, tr("Save File As"), currentPath(), kFileFilter);
     if (path.isEmpty()) {
         return;
     }
@@ -139,11 +166,28 @@ void MainWindow::saveAsDialog()
     }
 }
 
+void MainWindow::nextDocument()
+{
+    const int n = documents_->count();
+    if (n > 1) {
+        documents_->setCurrentIndex((documents_->currentIndex() + 1) % n);
+    }
+}
+
+void MainWindow::previousDocument()
+{
+    const int n = documents_->count();
+    if (n > 1) {
+        documents_->setCurrentIndex((documents_->currentIndex() + n - 1) % n);
+    }
+}
+
 void MainWindow::updateWindowTitle()
 {
-    const QString name =
-        currentPath_.isEmpty() ? tr("Untitled") : QFileInfo(currentPath_).fileName();
-    const QString marker = editor_->isModified() ? QStringLiteral("*") : QString();
+    const Document* document = documents_->current();
+    const QString name = document != nullptr ? document->displayName() : tr("Untitled");
+    const QString marker =
+        (document != nullptr && document->isModified()) ? QStringLiteral("*") : QString();
     setWindowTitle(QStringLiteral("%1%2 — hungryeditor").arg(marker, name));
 }
 

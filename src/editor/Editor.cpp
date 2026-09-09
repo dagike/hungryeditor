@@ -16,6 +16,7 @@
 #include <ScintillaTypes.h>
 #include <tree_sitter/api.h>
 
+#include "editor/Document.h"
 #include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
@@ -107,7 +108,7 @@ void Editor::setText(const QString& text)
     const QByteArray utf8 = text.toUtf8();
     call_.SetText(utf8.constData());
     // The buffer is kept newline-only regardless of what the caller passed;
-    // the document's real line ending is tracked separately (see lineEnding()).
+    // the real line ending lives on the Document (see Document::lineEnding()).
     call_.ConvertEOLs(Scintilla::EndOfLine::Lf);
 }
 
@@ -171,6 +172,25 @@ void Editor::setEditorFont(const QFont& font)
 {
     font_ = font;
     applyVisualDefaults();
+}
+
+void Editor::attachDocument(Document* document)
+{
+    document_ = document;
+    call_.SetDocPointer(document != nullptr ? document->pointer() : nullptr);
+
+    const bool nowModified = call_.Modify();
+    if (nowModified != modified_) {
+        modified_ = nowModified;
+        emit modifiedChanged(modified_);
+    }
+
+    // Style definitions are per-view and survive the swap; the style bytes and
+    // buffer size are per-document, so re-pick the size tier and repaint the
+    // newly-visible text unconditionally.
+    updateHighlightTier(/*force=*/true);
+    lineDigits_ = 0;
+    updateLineNumberMargin();
 }
 
 void Editor::applyVisualDefaults()
@@ -262,7 +282,7 @@ void Editor::applyLexillaMarkdownStyles()
     call_.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
 }
 
-void Editor::updateHighlightTier()
+void Editor::updateHighlightTier(bool force)
 {
     const int bytes = length();
     HighlightTier wanted = HighlightTier::TreeSitter;
@@ -271,7 +291,7 @@ void Editor::updateHighlightTier()
     } else if (bytes > lexillaByteLimit_) {
         wanted = HighlightTier::Lexilla;
     }
-    if (wanted == tier_) {
+    if (wanted == tier_ && !force) {
         return;
     }
     tier_ = wanted;
