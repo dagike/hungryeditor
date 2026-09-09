@@ -11,4 +11,13 @@ void PreviewBridge::setContent(const QString& html)
     emit contentChanged(content_);
 }
 
+void PreviewBridge::setThemeCss(const QString& css)
+{
+    if (css == themeCss_) {
+        return;
+    }
+    themeCss_ = css;
+    emit themeCssChanged(themeCss_);
+}
+
 } // namespace hungryeditor

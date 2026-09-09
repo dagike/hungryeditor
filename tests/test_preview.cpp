@@ -5,9 +5,11 @@
 #include <QtTest>
 
 #include "preview/QtWebEnginePreview.h"
+#include "theme/Theme.h"
 
 using hungryeditor::PreviewBackend;
 using hungryeditor::QtWebEnginePreview;
+using hungryeditor::Theme;
 
 class TestPreview : public QObject
 {
@@ -19,6 +21,7 @@ private slots:
     void streamsContentThroughTheBridge();
     void scrollToSourceLineMovesTheViewport();
     void scrollingThePageReportsASourceLine();
+    void themeCssStylesTheRenderedContent();
 };
 
 namespace {
@@ -165,6 +168,21 @@ void TestPreview::scrollingThePageReportsASourceLine()
     }
     QVERIFY(!scrolled.isEmpty());
     QVERIFY(scrolled.last().at(0).toInt() > 0);
+}
+
+void TestPreview::themeCssStylesTheRenderedContent()
+{
+    QtWebEnginePreview preview;
+    preview.setThemeCss(Theme::builtin().previewCss());
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<h1 data-src-line=\"0\">Themed heading</h1>"));
+    QVERIFY(ready.wait(20000));
+
+    const QString color =
+        evalJs(preview, QStringLiteral("getComputedStyle(document.querySelector('h1')).color"))
+            .toString();
+    QCOMPARE(color, QStringLiteral("rgb(5, 80, 174)")); // #0550ae, the theme heading colour
 }
 
 QTEST_MAIN(TestPreview)

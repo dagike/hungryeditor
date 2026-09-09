@@ -74,6 +74,8 @@ add_library(hungryeditor_core STATIC
     preview/PreviewController.h
     preview/QtWebEnginePreview.cpp
     preview/QtWebEnginePreview.h
+    theme/Theme.cpp
+    theme/Theme.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

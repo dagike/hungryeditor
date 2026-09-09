@@ -30,6 +30,7 @@ const char* const kShellHtml = R"HTML(<!doctype html>
   }
   #hungryeditor-content > :first-child { margin-top: 0; }
 </style>
+<style id="he-theme"></style>
 </head>
 <body>
 <div id="hungryeditor-content"></div>
@@ -42,6 +43,7 @@ const char* const kShellHtml = R"HTML(<!doctype html>
       var target = document.getElementById("hungryeditor-content");
 
       function apply(html) { target.innerHTML = html; }
+      function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
 
       function blocks() { return target.querySelectorAll("[data-src-line]"); }
       function lineOf(el) { return parseInt(el.getAttribute("data-src-line"), 10) || 0; }
@@ -75,9 +77,11 @@ const char* const kShellHtml = R"HTML(<!doctype html>
       }
 
       bridge.contentChanged.connect(apply);
+      bridge.themeCssChanged.connect(applyTheme);
       bridge.scrollToLineRequested.connect(scrollToLine);
       window.addEventListener("scroll", reportScroll, { passive: true });
 
+      applyTheme(bridge.themeCss);
       apply(bridge.content);
       bridge.notifyReady();
     });
@@ -133,6 +137,11 @@ void QtWebEnginePreview::runJavaScript(const QString& script,
     } else {
         view_->page()->runJavaScript(script);
     }
+}
+
+void QtWebEnginePreview::setThemeCss(const QString& css)
+{
+    bridge_->setThemeCss(css);
 }
 
 void QtWebEnginePreview::scrollToSourceLine(int line)

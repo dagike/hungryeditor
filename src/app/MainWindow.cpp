@@ -29,6 +29,7 @@
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
+#include "theme/Theme.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -92,6 +93,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     preview_ = std::make_unique<QtWebEnginePreview>();
     previewController_ = std::make_unique<PreviewController>(preview_.get());
+    preview_->setThemeCss(Theme::builtin().previewCss());
     QWidget* previewWidget = preview_->widget();
     previewWidget->setMinimumWidth(160);
     splitter_->addWidget(previewWidget);

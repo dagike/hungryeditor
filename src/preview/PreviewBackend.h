@@ -36,6 +36,10 @@ public:
     /// `bodyHtml` in over the bridge. `baseUrl` resolves relative asset paths.
     virtual void setContent(const QString& bodyHtml, const QUrl& baseUrl = QUrl()) = 0;
 
+    /// Install the preview stylesheet (from Theme::previewCss()). Applied live,
+    /// without a reload; safe to call before the shell is up.
+    virtual void setThemeCss(const QString& css) = 0;
+
     /// Evaluate `script` in the page. When `callback` is given it receives the
     /// result once available (an invalid QVariant if the script returned
     /// nothing or the page is gone).
