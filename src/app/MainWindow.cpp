@@ -3,10 +3,12 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QDir>
+#include <QDockWidget>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -31,6 +33,8 @@
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
 #include "ui/FindReplaceBar.h"
+#include "ui/SearchResultsPanel.h"
+#include "workspace/FileSearch.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -105,6 +109,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
     connect(findBar_, &FindReplaceBar::queryChanged, this, &MainWindow::refreshFindHighlight);
     connect(findBar_, &FindReplaceBar::dismissed, this, &MainWindow::closeFindBar);
+
+    searchResults_ = new SearchResultsPanel(this);
+    searchDock_ = new QDockWidget(tr("Find in Files"), this);
+    searchDock_->setObjectName(QStringLiteral("dock.searchResults"));
+    searchDock_->setWidget(searchResults_);
+    addDockWidget(Qt::BottomDockWidgetArea, searchDock_);
+    searchDock_->hide();
+    connect(searchResults_, &SearchResultsPanel::resultActivated, this,
+            [this](const QString& path, int line) {
+                if (openPath(path)) {
+                    editor_->setCursorPosition(line, 0);
+                }
+            });
 
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
@@ -247,6 +264,11 @@ void MainWindow::buildMenus()
         editMenu->addAction(tr("&Replace…"), this, [openFindBar] { openFindBar(true); });
     replaceAction->setShortcut(QKeySequence::Replace);
     replaceAction->setObjectName(QStringLiteral("action.replace"));
+
+    QAction* findInFilesAction =
+        editMenu->addAction(tr("Find in &Files…"), this, &MainWindow::findInFiles);
+    findInFilesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    findInFilesAction->setObjectName(QStringLiteral("action.findInFiles"));
 
     editMenu->addSeparator();
 
@@ -421,6 +443,26 @@ void MainWindow::closeFindBar()
     findBar_->hide();
     editor_->markAllMatches(QString(), {});
     editor_->setFocus();
+}
+
+void MainWindow::findInFiles()
+{
+    const QString current = currentPath();
+    const QString directory =
+        current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath();
+
+    bool accepted = false;
+    const QString query = QInputDialog::getText(
+        this, tr("Find in Files"), tr("Search %1 for:").arg(QDir::toNativeSeparators(directory)),
+        QLineEdit::Normal, editor_->selectedText(), &accepted);
+    if (!accepted || query.isEmpty()) {
+        return;
+    }
+
+    const QList<FileSearchHit> hits = searchDirectory(directory, query, {});
+    searchResults_->showResults(query, hits);
+    searchDock_->show();
+    searchDock_->raise();
 }
 
 QString MainWindow::currentPath() const

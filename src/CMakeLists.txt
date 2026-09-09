@@ -80,6 +80,10 @@ add_library(hungryeditor_core STATIC
     theme/Theme.h
     ui/FindReplaceBar.cpp
     ui/FindReplaceBar.h
+    ui/SearchResultsPanel.cpp
+    ui/SearchResultsPanel.h
+    workspace/FileSearch.cpp
+    workspace/FileSearch.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

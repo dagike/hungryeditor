@@ -27,6 +27,8 @@
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "ui/FindReplaceBar.h"
+#include "ui/SearchResultsPanel.h"
+#include "workspace/FileSearch.h"
 
 class TestMainWindow : public QObject
 {
@@ -65,6 +67,7 @@ private slots:
     void clickingAPreviewHeadingMovesTheCaret();
     void selectNextActionAddsACaret();
     void findBarSearchesAndReplaces();
+    void activatingASearchResultOpensTheFile();
 };
 
 namespace {
@@ -509,6 +512,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("about") << QStringLiteral("action.about");
     QTest::newRow("find") << QStringLiteral("action.find");
     QTest::newRow("replace") << QStringLiteral("action.replace");
+    QTest::newRow("findInFiles") << QStringLiteral("action.findInFiles");
     QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
@@ -714,6 +718,27 @@ void TestMainWindow::findBarSearchesAndReplaces()
     QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
     QCoreApplication::sendEvent(bar, &esc);
     QVERIFY(bar->isHidden());
+}
+
+void TestMainWindow::activatingASearchResultOpensTheFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString file =
+        writeText(dir.filePath(QStringLiteral("notes.md")), "line one\nfind me here\nline three\n");
+
+    hungryeditor::MainWindow window;
+    auto* panel = window.searchResultsPanel();
+    QVERIFY(panel != nullptr);
+
+    const auto hits = hungryeditor::searchDirectory(dir.path(), QStringLiteral("find me"),
+                                                    hungryeditor::FileSearchOptions{});
+    panel->showResults(QStringLiteral("find me"), hits);
+    QCOMPARE(panel->hits().size(), 1);
+
+    panel->activateResult(0);
+    QCOMPARE(window.currentPath(), file);
+    QCOMPARE(window.editor()->cursorLine(), 1);
 }
 
 QTEST_MAIN(TestMainWindow)
