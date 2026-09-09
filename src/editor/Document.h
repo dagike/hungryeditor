@@ -54,6 +54,18 @@ public:
     bool hasDiskState() const { return diskSize_ >= 0; }
     bool matchesDiskState(qint64 size, const QDateTime& modified) const;
 
+    /// Stable id for this buffer's crash-recovery draft file. Adopting an id
+    /// lets a restored document keep updating the draft it came from.
+    QString draftId() const { return draftId_; }
+    void adoptDraftId(const QString& id);
+
+    /// Text of the buffer as of the last time it was the visible document.
+    /// DocumentManager refreshes this whenever the document stops being
+    /// current; a non-current buffer cannot change, so it stays exact and can
+    /// be autosaved without a Scintilla pointer swap.
+    QString snapshotText() const { return snapshotText_; }
+    void setSnapshotText(const QString& text) { snapshotText_ = text; }
+
 private:
     Scintilla::IDocumentEditable* pointer_ = nullptr;
     QString path_;
@@ -63,6 +75,8 @@ private:
     bool modified_ = false;
     qint64 diskSize_ = -1;
     QDateTime diskModified_;
+    QString draftId_;
+    QString snapshotText_;
 };
 
 } // namespace hungryeditor

@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
@@ -8,6 +9,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -17,6 +19,7 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "io/DraftStore.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -43,6 +46,16 @@ QStringList localFilesFromMime(const QMimeData* mime)
     }
     return paths;
 }
+
+/// Where autosaved recovery drafts live between sessions.
+QString defaultDraftDirectory()
+{
+    QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (base.isEmpty()) {
+        base = QDir::tempPath() + QLatin1String("/hungryeditor");
+    }
+    return base + QLatin1String("/drafts");
+}
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
@@ -62,6 +75,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setCentralWidget(container);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
+    documents_->setDraftDirectory(defaultDraftDirectory());
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { documents_->clearDrafts(); });
 
     buildMenus();
 
@@ -243,17 +258,54 @@ bool MainWindow::openFiles(const QStringList& paths)
 
     if (firstOpened != nullptr) {
         documents_->setCurrentIndex(documents_->indexOf(firstOpened));
-
-        // Drop the blank buffer the window starts with so a command-line or
-        // drag-and-drop open does not leave a stray "Untitled" tab behind.
-        Document* first = documents_->documentAt(0);
-        if (documents_->count() > 1 && first->isUntitled() && !first->isModified()) {
-            documents_->closeDocument(0);
-        }
+        dropInitialBlankBuffer();
     }
 
     lastError_ = failures.join(QLatin1Char('\n'));
     return failures.isEmpty();
+}
+
+void MainWindow::dropInitialBlankBuffer()
+{
+    // Drop the blank buffer the window starts with once real content has
+    // arrived, so a command-line open, a drop or a draft restore does not
+    // leave a stray "Untitled" tab behind.
+    if (documents_->count() < 2) {
+        return;
+    }
+    Document* first = documents_->documentAt(0);
+    if (first->isUntitled() && !first->isModified()) {
+        documents_->closeDocument(0);
+    }
+}
+
+bool MainWindow::hasRecoverableDrafts() const
+{
+    return !documents_->pendingDrafts().isEmpty();
+}
+
+void MainWindow::restoreUnsavedFromLastSession(bool askFirst)
+{
+    const QList<Draft> drafts = documents_->pendingDrafts();
+    if (drafts.isEmpty()) {
+        return;
+    }
+
+    if (askFirst) {
+        const auto choice = QMessageBox::question(
+            this, tr("Restore Unsaved Work"),
+            tr("hungryeditor closed with %n unsaved document(s). Restore them?", nullptr,
+               static_cast<int>(drafts.size())),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+        if (choice != QMessageBox::Yes) {
+            documents_->clearDrafts();
+            return;
+        }
+    }
+
+    documents_->restoreDrafts(drafts);
+    dropInitialBlankBuffer();
+    updateWindowTitle();
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)

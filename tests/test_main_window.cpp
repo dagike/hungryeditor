@@ -15,6 +15,7 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "io/DraftStore.h"
 
 class TestMainWindow : public QObject
 {
@@ -35,6 +36,8 @@ private slots:
     void droppedFilesOpenInTheEditor();
     void externalEditReloadsACleanBuffer();
     void externalEditDoesNotClobberADirtyBuffer();
+    void restoresUnsavedDraftsOnStartup();
+    void cleanShutdownClearsDrafts();
     void newAndSwitchActionsChangeCurrentDocument();
 };
 
@@ -246,6 +249,44 @@ void TestMainWindow::externalEditDoesNotClobberADirtyBuffer()
     QVERIFY(window.reloadDocumentAt(window.documents()->currentIndex()));
     QCOMPARE(window.editor()->text(), QStringLiteral("disk changed underneath\n"));
     QVERIFY(!window.editor()->isModified());
+}
+
+void TestMainWindow::restoresUnsavedDraftsOnStartup()
+{
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+    {
+        hungryeditor::DraftStore seed(drafts.path());
+        hungryeditor::Draft draft;
+        draft.id = QStringLiteral("restore-me");
+        draft.text = QStringLiteral("half-written paragraph\n");
+        QVERIFY(seed.write(draft));
+    }
+
+    hungryeditor::MainWindow window;
+    window.documents()->setDraftDirectory(drafts.path());
+    QVERIFY(window.hasRecoverableDrafts());
+
+    window.restoreUnsavedFromLastSession(/*askFirst=*/false);
+
+    QCOMPARE(window.documents()->count(), 1); // stray blank buffer dropped
+    QCOMPARE(window.editor()->text(), QStringLiteral("half-written paragraph\n"));
+    QVERIFY(window.editor()->isModified());
+}
+
+void TestMainWindow::cleanShutdownClearsDrafts()
+{
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+
+    hungryeditor::MainWindow window;
+    window.documents()->setDraftDirectory(drafts.path());
+    window.editor()->setText(QStringLiteral("unsaved edits\n"));
+    window.documents()->autosaveDirtyDocuments();
+    QVERIFY(!hungryeditor::DraftStore(drafts.path()).loadAll().isEmpty());
+
+    window.documents()->clearDrafts(); // what the aboutToQuit hook runs
+    QVERIFY(hungryeditor::DraftStore(drafts.path()).loadAll().isEmpty());
 }
 
 void TestMainWindow::hasNamedActions_data()

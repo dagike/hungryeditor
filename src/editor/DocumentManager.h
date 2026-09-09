@@ -1,11 +1,14 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
+#include <QHash>
 #include <QObject>
 
-#include "io/TextFile.h" // FileError
+#include "io/DraftStore.h" // Draft, DraftStore
+#include "io/TextFile.h"   // FileError
 
 class QFileSystemWatcher;
 class QTimer;
@@ -53,6 +56,26 @@ public:
     /// saw. Driven by a QFileSystemWatcher; called directly from tests.
     void pollExternalChanges();
 
+    /// Point autosave at `directory`: a couple of seconds after each change
+    /// every dirty buffer is written there as a recovery draft. With no
+    /// directory set (the default) autosave does nothing.
+    void setDraftDirectory(const QString& directory);
+    void setAutosaveInterval(int milliseconds);
+
+    /// Write a draft now for every dirty buffer and drop the drafts of clean
+    /// ones. Normally run by a timer; called directly from tests.
+    void autosaveDirtyDocuments();
+
+    /// Drafts left on disk by a previous session (a non-empty list means it
+    /// did not exit cleanly).
+    QList<Draft> pendingDrafts() const;
+
+    /// Recreate a modified buffer for each draft, keeping its draft id.
+    void restoreDrafts(const QList<Draft>& drafts);
+
+    /// Delete every recovery draft — for a clean shutdown.
+    void clearDrafts();
+
     /// Close the document at `index`. Always leaves at least one document
     /// open: closing the last one replaces it with a fresh untitled buffer.
     void closeDocument(int index);
@@ -79,6 +102,7 @@ private:
     void onEditorModifiedChanged(bool modified);
     void captureDiskState(Document* document);
     void refreshWatch();
+    void dropDraft(const Document* document);
 
     Editor* editor_ = nullptr;
     std::vector<std::unique_ptr<Document>> documents_;
@@ -86,6 +110,9 @@ private:
     int nextUntitledNumber_ = 0;
     QFileSystemWatcher* watcher_ = nullptr;
     QTimer* pollTimer_ = nullptr;
+    QTimer* autosaveTimer_ = nullptr;
+    std::unique_ptr<DraftStore> draftStore_;
+    QHash<QString, std::size_t> draftHashes_; ///< draft id -> hash of its last-written text
 };
 
 } // namespace hungryeditor

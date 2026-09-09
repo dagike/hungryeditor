@@ -7,9 +7,12 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "io/DraftStore.h"
 
 using hungryeditor::Document;
 using hungryeditor::DocumentManager;
+using hungryeditor::Draft;
+using hungryeditor::DraftStore;
 using hungryeditor::Editor;
 
 namespace {
@@ -46,6 +49,11 @@ private slots:
     void deletingThenRecreatingTheFileIsReported();
     void watcherDeliversAnExternalEditThroughTheEventLoop();
     void reloadRejectsAnUntitledDocument();
+    void autosaveWritesADraftPerDirtyBuffer();
+    void autosaveReadsNonCurrentBuffersFromTheirSnapshot();
+    void savingAndClosingDropTheDraft();
+    void restoreDraftsRecreatesModifiedBuffers();
+    void autosaveTimerWritesADraftOnItsOwn();
 };
 
 void TestDocumentManager::startsWithOneUntitledDocument()
@@ -314,6 +322,123 @@ void TestDocumentManager::reloadRejectsAnUntitledDocument()
     hungryeditor::FileError error;
     QVERIFY(!manager.reloadDocument(manager.current(), &error));
     QVERIFY(!error.ok);
+}
+
+void TestDocumentManager::autosaveWritesADraftPerDirtyBuffer()
+{
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.setDraftDirectory(drafts.path());
+
+    editor.setText(QStringLiteral("first dirty\n"));
+    manager.newDocument();
+    editor.setText(QStringLiteral("second dirty\n"));
+
+    manager.autosaveDirtyDocuments();
+
+    QStringList texts;
+    for (const Draft& draft : DraftStore(drafts.path()).loadAll()) {
+        texts << draft.text;
+    }
+    QCOMPARE(texts.size(), 2);
+    QVERIFY(texts.contains(QStringLiteral("first dirty\n")));
+    QVERIFY(texts.contains(QStringLiteral("second dirty\n")));
+}
+
+void TestDocumentManager::autosaveReadsNonCurrentBuffersFromTheirSnapshot()
+{
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.setDraftDirectory(drafts.path());
+
+    Document* first = manager.current();
+    editor.setText(QStringLiteral("typed into the first buffer\n"));
+    manager.newDocument(); // first is no longer current; its text is snapshotted
+
+    manager.autosaveDirtyDocuments();
+
+    bool found = false;
+    for (const Draft& draft : DraftStore(drafts.path()).loadAll()) {
+        if (draft.id == first->draftId()) {
+            QCOMPARE(draft.text, QStringLiteral("typed into the first buffer\n"));
+            found = true;
+        }
+    }
+    QVERIFY(found);
+}
+
+void TestDocumentManager::savingAndClosingDropTheDraft()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.setDraftDirectory(drafts.path());
+
+    editor.setText(QStringLiteral("to be saved\n"));
+    manager.newDocument();
+    editor.setText(QStringLiteral("to be closed\n"));
+    manager.autosaveDirtyDocuments();
+    QCOMPARE(DraftStore(drafts.path()).loadAll().size(), 2);
+
+    QVERIFY(manager.saveDocument(manager.documentAt(0), dir.filePath(QStringLiteral("s.md"))));
+    QCOMPARE(DraftStore(drafts.path()).loadAll().size(), 1);
+
+    manager.closeDocument(1);
+    QCOMPARE(DraftStore(drafts.path()).loadAll().size(), 0);
+}
+
+void TestDocumentManager::restoreDraftsRecreatesModifiedBuffers()
+{
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+    {
+        DraftStore seed(drafts.path());
+        Draft draft;
+        draft.id = QStringLiteral("recover1");
+        draft.text = QStringLiteral("work in progress\n");
+        QVERIFY(seed.write(draft));
+    }
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.setDraftDirectory(drafts.path());
+
+    const QList<Draft> pending = manager.pendingDrafts();
+    QCOMPARE(pending.size(), 1);
+    manager.restoreDrafts(pending);
+
+    QCOMPARE(manager.count(), 2); // startup untitled + the restored buffer
+    manager.setCurrentIndex(1);
+    QCOMPARE(editor.text(), QStringLiteral("work in progress\n"));
+    QVERIFY(manager.current()->isModified());
+    QCOMPARE(manager.current()->draftId(), QStringLiteral("recover1"));
+}
+
+void TestDocumentManager::autosaveTimerWritesADraftOnItsOwn()
+{
+    QTemporaryDir drafts;
+    QVERIFY(drafts.isValid());
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    manager.setAutosaveInterval(50);
+    manager.setDraftDirectory(drafts.path());
+
+    editor.setText(QStringLiteral("typed and left alone\n"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!DraftStore(drafts.path()).loadAll().isEmpty(), 3000);
+    QCOMPARE(DraftStore(drafts.path()).loadAll().first().text,
+             QStringLiteral("typed and left alone\n"));
 }
 
 QTEST_MAIN(TestDocumentManager)

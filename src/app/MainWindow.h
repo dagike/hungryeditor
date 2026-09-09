@@ -68,6 +68,14 @@ public:
     /// handling.
     bool reloadDocumentAt(int index);
 
+    /// True when a previous session left recovery drafts behind (it did not
+    /// exit cleanly).
+    bool hasRecoverableDrafts() const;
+
+    /// Recreate the buffers a previous session left as recovery drafts. With
+    /// `askFirst` the user is prompted; declining discards the drafts.
+    void restoreUnsavedFromLastSession(bool askFirst = true);
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -88,6 +96,7 @@ private:
 
     // Tab strip <-> document model wiring.
     void primeTabs();
+    void dropInitialBlankBuffer();
     void syncTabText(int index);
     void onDocumentAdded(int index);
     void onDocumentClosed(int index);

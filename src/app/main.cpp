@@ -23,6 +23,7 @@ int main(int argc, char** argv)
 
     hungryeditor::MainWindow window;
     window.openFiles(hungryeditor::filesFromCommandLine(parser));
+    window.restoreUnsavedFromLastSession();
     window.show();
 
     return QApplication::exec();

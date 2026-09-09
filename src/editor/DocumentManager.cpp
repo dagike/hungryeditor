@@ -44,6 +44,10 @@ DocumentManager::DocumentManager(Editor* editor, QObject* parent) : QObject(pare
     connect(watcher_, &QFileSystemWatcher::fileChanged, this, schedulePoll);
     connect(watcher_, &QFileSystemWatcher::directoryChanged, this, schedulePoll);
 
+    autosaveTimer_ = new QTimer(this);
+    autosaveTimer_->setInterval(2000);
+    connect(autosaveTimer_, &QTimer::timeout, this, &DocumentManager::autosaveDirtyDocuments);
+
     newDocument();
 }
 
@@ -172,6 +176,7 @@ bool DocumentManager::saveDocument(Document* document, const QString& path, File
     document->setPath(path);
     editor_->markClean();
     document->setModified(false);
+    dropDraft(document);
     // Record the state we just wrote so the watcher notification our own save
     // triggers is recognised as ours, then re-arm the watch (the atomic
     // rename QSaveFile does drops the file from the watcher).
@@ -217,6 +222,7 @@ bool DocumentManager::reloadDocument(Document* document, FileError* error)
         editor_->setCursorPosition(qMin(caretLine, editor_->lineCount() - 1), 0);
     }
     document->setModified(false);
+    dropDraft(document);
     captureDiskState(document);
     refreshWatch();
 
@@ -296,11 +302,107 @@ void DocumentManager::refreshWatch()
     }
 }
 
+void DocumentManager::setDraftDirectory(const QString& directory)
+{
+    draftStore_ = std::make_unique<DraftStore>(directory);
+    if (!autosaveTimer_->isActive()) {
+        autosaveTimer_->start();
+    }
+}
+
+void DocumentManager::setAutosaveInterval(int milliseconds)
+{
+    autosaveTimer_->setInterval(milliseconds);
+}
+
+void DocumentManager::autosaveDirtyDocuments()
+{
+    if (!draftStore_) {
+        return;
+    }
+    for (int i = 0; i < count(); ++i) {
+        Document* document = documents_[static_cast<std::size_t>(i)].get();
+        const QString id = document->draftId();
+
+        if (!document->isModified()) {
+            if (draftHashes_.remove(id) > 0) {
+                draftStore_->remove(id);
+            }
+            continue;
+        }
+
+        const QString text = (i == currentIndex_) ? editor_->text() : document->snapshotText();
+        const std::size_t hash = qHash(text);
+        const auto existing = draftHashes_.constFind(id);
+        if (existing != draftHashes_.constEnd() && existing.value() == hash) {
+            continue;
+        }
+
+        Draft draft;
+        draft.id = id;
+        draft.originalPath = document->path();
+        draft.text = text;
+        draft.encoding = document->encoding();
+        draft.lineEnding = document->lineEnding();
+        if (draftStore_->write(draft)) {
+            draftHashes_.insert(id, hash);
+        }
+    }
+}
+
+QList<Draft> DocumentManager::pendingDrafts() const
+{
+    return draftStore_ ? draftStore_->loadAll() : QList<Draft>();
+}
+
+void DocumentManager::restoreDrafts(const QList<Draft>& drafts)
+{
+    for (const Draft& draft : drafts) {
+        const bool untitled = draft.originalPath.isEmpty();
+        auto document =
+            std::make_unique<Document>(createScintillaDocument(editor_), draft.originalPath,
+                                       untitled ? nextUntitledNumber_++ : 0);
+        document->setEncoding(draft.encoding);
+        document->setLineEnding(draft.lineEnding);
+        document->adoptDraftId(draft.id);
+        Document* raw = addDocument(std::move(document));
+
+        setCurrentIndex(indexOf(raw));
+        editor_->setText(draft.text);
+        // Deliberately no EmptyUndoBuffer()/markClean(): a draft is unsaved
+        // work. Leaving the insert on the undo stack keeps the buffer off its
+        // save point, so it stays marked modified.
+        if (!raw->isUntitled()) {
+            captureDiskState(raw);
+        }
+        draftHashes_.insert(draft.id, qHash(draft.text));
+    }
+    refreshWatch();
+}
+
+void DocumentManager::clearDrafts()
+{
+    if (draftStore_) {
+        draftStore_->clear();
+    }
+    draftHashes_.clear();
+}
+
+void DocumentManager::dropDraft(const Document* document)
+{
+    if (!draftStore_ || document == nullptr) {
+        return;
+    }
+    draftStore_->remove(document->draftId());
+    draftHashes_.remove(document->draftId());
+}
+
 void DocumentManager::closeDocument(int index)
 {
     if (index < 0 || index >= count()) {
         return;
     }
+    dropDraft(documents_[static_cast<std::size_t>(index)].get());
     const bool closingCurrent = (index == currentIndex_);
 
     if (count() == 1) {
@@ -351,6 +453,11 @@ void DocumentManager::setCurrentIndex(int index)
 {
     if (index < 0 || index >= count() || index == currentIndex_) {
         return;
+    }
+    // The buffer we are leaving cannot change while it is off screen, so this
+    // snapshot stays exact and lets autosave read it without a pointer swap.
+    if (Document* leaving = current()) {
+        leaving->setSnapshotText(editor_->text());
     }
     currentIndex_ = index;
     Document* document = documents_[static_cast<std::size_t>(index)].get();

@@ -3,12 +3,21 @@
 #include <utility>
 
 #include <QFileInfo>
+#include <QUuid>
 
 namespace hungryeditor {
 
 Document::Document(Scintilla::IDocumentEditable* pointer, QString path, int untitledNumber)
-    : pointer_(pointer), path_(std::move(path)), untitledNumber_(untitledNumber)
+    : pointer_(pointer), path_(std::move(path)), untitledNumber_(untitledNumber),
+      draftId_(QUuid::createUuid().toString(QUuid::Id128))
 {
+}
+
+void Document::adoptDraftId(const QString& id)
+{
+    if (!id.isEmpty()) {
+        draftId_ = id;
+    }
 }
 
 void Document::recordDiskState(qint64 size, const QDateTime& modified)

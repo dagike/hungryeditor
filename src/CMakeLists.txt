@@ -57,6 +57,8 @@ add_library(hungryeditor_core STATIC
     highlight/HighlightWorker.h
     highlight/HighlightController.cpp
     highlight/HighlightController.h
+    io/DraftStore.cpp
+    io/DraftStore.h
     io/TextFile.cpp
     io/TextFile.h
 )
