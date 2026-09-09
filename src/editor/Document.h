@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDateTime>
 #include <QString>
 
 #include "io/TextFile.h" // Encoding, LineEnding
@@ -45,6 +46,14 @@ public:
     bool isModified() const { return modified_; }
     void setModified(bool modified) { modified_ = modified; }
 
+    /// The file's size and modification time as last seen on disk — recorded
+    /// on load, save and reload so DocumentManager can tell an external edit
+    /// from our own write. Cleared while the file does not exist.
+    void recordDiskState(qint64 size, const QDateTime& modified);
+    void clearDiskState();
+    bool hasDiskState() const { return diskSize_ >= 0; }
+    bool matchesDiskState(qint64 size, const QDateTime& modified) const;
+
 private:
     Scintilla::IDocumentEditable* pointer_ = nullptr;
     QString path_;
@@ -52,6 +61,8 @@ private:
     Encoding encoding_ = Encoding::Utf8;
     LineEnding lineEnding_ = LineEnding::Lf;
     bool modified_ = false;
+    qint64 diskSize_ = -1;
+    QDateTime diskModified_;
 };
 
 } // namespace hungryeditor

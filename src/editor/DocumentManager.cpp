@@ -3,7 +3,10 @@
 #include <memory>
 #include <utility>
 
+#include <QDateTime>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QTimer>
 
 #include "editor/Document.h"
 #include "editor/Editor.h"
@@ -31,6 +34,16 @@ Scintilla::IDocumentEditable* createScintillaDocument(Editor* editor)
 DocumentManager::DocumentManager(Editor* editor, QObject* parent) : QObject(parent), editor_(editor)
 {
     connect(editor_, &Editor::modifiedChanged, this, &DocumentManager::onEditorModifiedChanged);
+
+    watcher_ = new QFileSystemWatcher(this);
+    pollTimer_ = new QTimer(this);
+    pollTimer_->setSingleShot(true);
+    pollTimer_->setInterval(60);
+    connect(pollTimer_, &QTimer::timeout, this, &DocumentManager::pollExternalChanges);
+    const auto schedulePoll = [this] { pollTimer_->start(); };
+    connect(watcher_, &QFileSystemWatcher::fileChanged, this, schedulePoll);
+    connect(watcher_, &QFileSystemWatcher::directoryChanged, this, schedulePoll);
+
     newDocument();
 }
 
@@ -125,6 +138,8 @@ Document* DocumentManager::openDocument(const QString& path, FileError* error)
     editor_->call().EmptyUndoBuffer();
     editor_->markClean();
     raw->setModified(false);
+    captureDiskState(raw);
+    refreshWatch();
 
     if (error != nullptr) {
         *error = {};
@@ -157,11 +172,128 @@ bool DocumentManager::saveDocument(Document* document, const QString& path, File
     document->setPath(path);
     editor_->markClean();
     document->setModified(false);
+    // Record the state we just wrote so the watcher notification our own save
+    // triggers is recognised as ours, then re-arm the watch (the atomic
+    // rename QSaveFile does drops the file from the watcher).
+    captureDiskState(document);
+    refreshWatch();
     if (error != nullptr) {
         *error = {};
     }
     emit modifiedChanged(index, false);
     return true;
+}
+
+bool DocumentManager::reloadDocument(Document* document, FileError* error)
+{
+    const int index = indexOf(document);
+    if (index < 0 || document->isUntitled()) {
+        if (error != nullptr) {
+            *error = {false, tr("The document has no file to reload from.")};
+        }
+        return false;
+    }
+
+    FileError localError;
+    const TextDocument loaded = loadFile(document->path(), &localError);
+    if (!localError.ok) {
+        if (error != nullptr) {
+            *error = localError;
+        }
+        return false;
+    }
+
+    if (index != currentIndex_) {
+        setCurrentIndex(index);
+    }
+    const int caretLine = editor_->cursorLine();
+
+    document->setEncoding(loaded.encoding);
+    document->setLineEnding(loaded.lineEnding);
+    editor_->setText(loaded.text);
+    editor_->call().EmptyUndoBuffer();
+    editor_->markClean();
+    if (editor_->lineCount() > 0) {
+        editor_->setCursorPosition(qMin(caretLine, editor_->lineCount() - 1), 0);
+    }
+    document->setModified(false);
+    captureDiskState(document);
+    refreshWatch();
+
+    if (error != nullptr) {
+        *error = {};
+    }
+    emit modifiedChanged(index, false);
+    return true;
+}
+
+void DocumentManager::pollExternalChanges()
+{
+    for (int i = 0; i < count(); ++i) {
+        Document* document = documents_[static_cast<std::size_t>(i)].get();
+        if (document->isUntitled()) {
+            continue;
+        }
+        const QFileInfo info(document->path());
+
+        if (!document->hasDiskState()) {
+            // The file went missing earlier; report it if it has come back.
+            if (info.exists()) {
+                document->recordDiskState(info.size(), info.lastModified());
+                emit fileChangedExternally(i);
+            }
+            continue;
+        }
+
+        if (!info.exists()) {
+            document->clearDiskState();
+            emit fileRemovedExternally(i);
+            continue;
+        }
+
+        if (!document->matchesDiskState(info.size(), info.lastModified())) {
+            document->recordDiskState(info.size(), info.lastModified());
+            emit fileChangedExternally(i);
+        }
+    }
+    refreshWatch();
+}
+
+void DocumentManager::captureDiskState(Document* document)
+{
+    const QFileInfo info(document->path());
+    if (info.exists()) {
+        document->recordDiskState(info.size(), info.lastModified());
+    } else {
+        document->clearDiskState();
+    }
+}
+
+void DocumentManager::refreshWatch()
+{
+    const QStringList tracked = watcher_->files() + watcher_->directories();
+    if (!tracked.isEmpty()) {
+        watcher_->removePaths(tracked);
+    }
+
+    QStringList wanted;
+    for (const auto& document : documents_) {
+        if (document->isUntitled()) {
+            continue;
+        }
+        const QFileInfo info(document->path());
+        const QString file = info.absoluteFilePath();
+        if (info.exists() && !wanted.contains(file)) {
+            wanted.append(file);
+        }
+        const QString parent = info.absolutePath();
+        if (!parent.isEmpty() && QFileInfo::exists(parent) && !wanted.contains(parent)) {
+            wanted.append(parent);
+        }
+    }
+    if (!wanted.isEmpty()) {
+        watcher_->addPaths(wanted);
+    }
 }
 
 void DocumentManager::closeDocument(int index)
@@ -188,6 +320,7 @@ void DocumentManager::closeDocument(int index)
     if (currentIndex_ > index) {
         --currentIndex_;
     }
+    refreshWatch();
 
     emit documentClosed(index);
     emit currentChanged(currentIndex_);

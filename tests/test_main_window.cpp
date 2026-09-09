@@ -33,8 +33,23 @@ private slots:
     void openFilesOpensEachActivatingTheFirst();
     void openFilesReportsFailuresAndOpensTheRest();
     void droppedFilesOpenInTheEditor();
+    void externalEditReloadsACleanBuffer();
+    void externalEditDoesNotClobberADirtyBuffer();
     void newAndSwitchActionsChangeCurrentDocument();
 };
+
+namespace {
+
+QString writeText(const QString& path, const QByteArray& bytes)
+{
+    QFile file(path);
+    file.open(QIODevice::WriteOnly);
+    file.write(bytes);
+    file.close();
+    return path;
+}
+
+} // namespace
 
 void TestMainWindow::editorSitsBelowTheTabBar()
 {
@@ -190,6 +205,47 @@ void TestMainWindow::droppedFilesOpenInTheEditor()
 
     QCOMPARE(window.currentPath(), path);
     QCOMPARE(window.editor()->text(), QStringLiteral("dropped content\n"));
+}
+
+void TestMainWindow::externalEditReloadsACleanBuffer()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeText(dir.filePath(QStringLiteral("live.md")), "before\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(path));
+    QVERIFY(!window.editor()->isModified());
+
+    writeText(path, "after the external edit\n");
+    window.documents()->pollExternalChanges();
+
+    QCOMPARE(window.editor()->text(), QStringLiteral("after the external edit\n"));
+    QVERIFY(!window.editor()->isModified());
+}
+
+void TestMainWindow::externalEditDoesNotClobberADirtyBuffer()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeText(dir.filePath(QStringLiteral("mine.md")), "disk original\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(path));
+    window.editor()->setText(QStringLiteral("my unsaved edits\n"));
+    QVERIFY(window.editor()->isModified());
+
+    writeText(path, "disk changed underneath\n");
+    window.documents()->pollExternalChanges();
+
+    // The prompt is deferred; without an event loop turn the buffer is untouched.
+    QCOMPARE(window.editor()->text(), QStringLiteral("my unsaved edits\n"));
+    QVERIFY(window.editor()->isModified());
+
+    // Choosing to reload explicitly replaces it.
+    QVERIFY(window.reloadDocumentAt(window.documents()->currentIndex()));
+    QCOMPARE(window.editor()->text(), QStringLiteral("disk changed underneath\n"));
+    QVERIFY(!window.editor()->isModified());
 }
 
 void TestMainWindow::hasNamedActions_data()

@@ -11,6 +11,23 @@ Document::Document(Scintilla::IDocumentEditable* pointer, QString path, int unti
 {
 }
 
+void Document::recordDiskState(qint64 size, const QDateTime& modified)
+{
+    diskSize_ = size;
+    diskModified_ = modified;
+}
+
+void Document::clearDiskState()
+{
+    diskSize_ = -1;
+    diskModified_ = QDateTime();
+}
+
+bool Document::matchesDiskState(qint64 size, const QDateTime& modified) const
+{
+    return diskSize_ == size && diskModified_ == modified;
+}
+
 QString Document::displayName() const
 {
     if (!path_.isEmpty()) {

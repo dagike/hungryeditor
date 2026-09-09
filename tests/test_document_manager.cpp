@@ -41,6 +41,11 @@ private slots:
     void closingLastLeavesOneUntitled();
     void modifiedChangedSignalCarriesIndex();
     void saveUpdatesPathAndClearsDirty();
+    void externalEditIsDetectedAndReloads();
+    void savingDoesNotLookLikeAnExternalChange();
+    void deletingThenRecreatingTheFileIsReported();
+    void watcherDeliversAnExternalEditThroughTheEventLoop();
+    void reloadRejectsAnUntitledDocument();
 };
 
 void TestDocumentManager::startsWithOneUntitledDocument()
@@ -213,6 +218,102 @@ void TestDocumentManager::saveUpdatesPathAndClearsDirty()
     QFile written(path);
     QVERIFY(written.open(QIODevice::ReadOnly));
     QCOMPARE(written.readAll(), QByteArray("hello\nworld\n"));
+}
+
+void TestDocumentManager::externalEditIsDetectedAndReloads()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeFile(dir, QStringLiteral("watched.md"), "first\n");
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    Document* opened = manager.openDocument(path);
+    QVERIFY(opened != nullptr);
+
+    writeFile(dir, QStringLiteral("watched.md"), "second, longer line\n");
+
+    QSignalSpy changed(&manager, &DocumentManager::fileChangedExternally);
+    manager.pollExternalChanges();
+
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(changed.first().at(0).toInt(), manager.indexOf(opened));
+
+    QVERIFY(manager.reloadDocument(opened));
+    QCOMPARE(editor.text(), QStringLiteral("second, longer line\n"));
+    QVERIFY(!opened->isModified());
+
+    // A second poll with nothing else changed stays quiet.
+    QSignalSpy again(&manager, &DocumentManager::fileChangedExternally);
+    manager.pollExternalChanges();
+    QCOMPARE(again.count(), 0);
+}
+
+void TestDocumentManager::savingDoesNotLookLikeAnExternalChange()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    editor.setText(QStringLiteral("body\n"));
+    const QString path = dir.filePath(QStringLiteral("out.md"));
+    QVERIFY(manager.saveDocument(manager.current(), path));
+
+    QSignalSpy changed(&manager, &DocumentManager::fileChangedExternally);
+    manager.pollExternalChanges();
+    QCOMPARE(changed.count(), 0);
+}
+
+void TestDocumentManager::deletingThenRecreatingTheFileIsReported()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeFile(dir, QStringLiteral("gone.md"), "here\n");
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    Document* opened = manager.openDocument(path);
+    QVERIFY(opened != nullptr);
+
+    QVERIFY(QFile::remove(path));
+    QSignalSpy removed(&manager, &DocumentManager::fileRemovedExternally);
+    manager.pollExternalChanges();
+    QCOMPARE(removed.count(), 1);
+    QCOMPARE(removed.first().at(0).toInt(), manager.indexOf(opened));
+
+    writeFile(dir, QStringLiteral("gone.md"), "back again\n");
+    QSignalSpy changed(&manager, &DocumentManager::fileChangedExternally);
+    manager.pollExternalChanges();
+    QCOMPARE(changed.count(), 1);
+}
+
+void TestDocumentManager::watcherDeliversAnExternalEditThroughTheEventLoop()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeFile(dir, QStringLiteral("poll.md"), "one\n");
+
+    Editor editor;
+    DocumentManager manager(&editor);
+    QVERIFY(manager.openDocument(path) != nullptr);
+
+    QSignalSpy changed(&manager, &DocumentManager::fileChangedExternally);
+    writeFile(dir, QStringLiteral("poll.md"), "two, changed on disk\n");
+
+    // No manual poll: the QFileSystemWatcher and the debounce timer must run it.
+    QVERIFY(changed.wait(5000));
+    QCOMPARE(changed.count(), 1);
+}
+
+void TestDocumentManager::reloadRejectsAnUntitledDocument()
+{
+    Editor editor;
+    DocumentManager manager(&editor);
+
+    hungryeditor::FileError error;
+    QVERIFY(!manager.reloadDocument(manager.current(), &error));
+    QVERIFY(!error.ok);
 }
 
 QTEST_MAIN(TestDocumentManager)

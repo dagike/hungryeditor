@@ -3,6 +3,7 @@
 #include <memory>
 
 #include <QMainWindow>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -12,6 +13,7 @@ class QDropEvent;
 
 namespace hungryeditor {
 
+class Document;
 class DocumentManager;
 class Editor;
 class TabBar;
@@ -61,6 +63,11 @@ public:
     /// Close the document at `index`, prompting to discard unsaved changes.
     void closeDocumentAt(int index);
 
+    /// Re-read the document at `index` from disk. Returns false on an I/O
+    /// error (see lastError()). Exposed for tests and the change-on-disk
+    /// handling.
+    bool reloadDocumentAt(int index);
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -86,6 +93,11 @@ private:
     void onDocumentClosed(int index);
     void onCurrentChanged(int index);
 
+    // External file-change handling.
+    void onFileChangedExternally(int index);
+    void onFileRemovedExternally(int index);
+    bool confirmReloadOverLocalChanges(const QString& name);
+
     // The editor is owned by the QObject tree; the document manager is a
     // plain member so it is destroyed (releasing its Scintilla document
     // pointers through the editor) while the editor is still alive.
@@ -96,6 +108,12 @@ private:
     QString lastError_;
     bool syncingTabs_ = false;
     bool reorderingTabs_ = false;
+
+    // Documents with a reload prompt already queued for the next event-loop
+    // turn, and files whose disappearance has already been reported — so
+    // neither warning stacks up while the watcher keeps firing.
+    QSet<Document*> pendingReloadPrompts_;
+    QSet<QString> reportedMissingFiles_;
 };
 
 } // namespace hungryeditor

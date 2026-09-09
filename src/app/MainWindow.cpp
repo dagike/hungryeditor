@@ -7,6 +7,8 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPushButton>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -82,6 +84,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             documents_->setCurrentIndex(index);
         }
     });
+    connect(documents_.get(), &DocumentManager::fileChangedExternally, this,
+            &MainWindow::onFileChangedExternally);
+    connect(documents_.get(), &DocumentManager::fileRemovedExternally, this,
+            &MainWindow::onFileRemovedExternally);
+
     connect(tabBar_, &QTabBar::tabCloseRequested, this, &MainWindow::closeDocumentAt);
     connect(tabBar_, &QTabBar::tabMoved, this, [this](int from, int to) {
         if (syncingTabs_) {
@@ -299,6 +306,95 @@ void MainWindow::closeDocumentAt(int index)
         }
     }
     documents_->closeDocument(index);
+}
+
+bool MainWindow::reloadDocumentAt(int index)
+{
+    Document* document = documents_->documentAt(index);
+    if (document == nullptr) {
+        return false;
+    }
+    FileError error;
+    if (!documents_->reloadDocument(document, &error)) {
+        lastError_ = error.message;
+        return false;
+    }
+    lastError_.clear();
+    updateWindowTitle();
+    return true;
+}
+
+void MainWindow::onFileChangedExternally(int index)
+{
+    Document* document = documents_->documentAt(index);
+    if (document == nullptr) {
+        return;
+    }
+    reportedMissingFiles_.remove(document->path());
+
+    if (!document->isModified()) {
+        reloadDocumentAt(index); // no local work to lose — just take the new text
+        return;
+    }
+
+    if (pendingReloadPrompts_.contains(document)) {
+        return;
+    }
+    pendingReloadPrompts_.insert(document);
+
+    // Ask on the next event-loop turn rather than interrupting an edit from
+    // inside a change notification.
+    QTimer::singleShot(0, this, [this, document] {
+        pendingReloadPrompts_.remove(document);
+        const int current = documents_->indexOf(document);
+        if (current < 0) {
+            return;
+        }
+        if (!document->isModified()) {
+            reloadDocumentAt(current);
+            return;
+        }
+        if (confirmReloadOverLocalChanges(document->displayName())) {
+            if (!reloadDocumentAt(current)) {
+                QMessageBox::warning(this, tr("Reload Failed"), lastError_);
+            }
+        }
+    });
+}
+
+void MainWindow::onFileRemovedExternally(int index)
+{
+    Document* document = documents_->documentAt(index);
+    if (document == nullptr || document->path().isEmpty()) {
+        return;
+    }
+    if (reportedMissingFiles_.contains(document->path())) {
+        return;
+    }
+    reportedMissingFiles_.insert(document->path());
+
+    QTimer::singleShot(0, this, [this, document] {
+        if (documents_->indexOf(document) < 0) {
+            return;
+        }
+        QMessageBox::warning(
+            this, tr("File Removed"),
+            tr("“%1” no longer exists on disk. It stays open here — save it to write it back.")
+                .arg(document->displayName()));
+    });
+}
+
+bool MainWindow::confirmReloadOverLocalChanges(const QString& name)
+{
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(tr("File Changed on Disk"));
+    box.setText(tr("“%1” has changed on disk.").arg(name));
+    box.setInformativeText(tr("Reload it and lose your unsaved changes?"));
+    QPushButton* reload = box.addButton(tr("Reload"), QMessageBox::AcceptRole);
+    box.addButton(tr("Keep My Changes"), QMessageBox::RejectRole);
+    box.exec();
+    return box.clickedButton() == reload;
 }
 
 void MainWindow::newDocument()

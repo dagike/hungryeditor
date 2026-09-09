@@ -7,6 +7,9 @@
 
 #include "io/TextFile.h" // FileError
 
+class QFileSystemWatcher;
+class QTimer;
+
 namespace hungryeditor {
 
 class Document;
@@ -40,6 +43,16 @@ public:
     /// Write `document` to `path`, updating its metadata and clean state.
     bool saveDocument(Document* document, const QString& path, FileError* error = nullptr);
 
+    /// Re-read `document` from its file, replacing the buffer, emptying undo
+    /// and marking it clean. The caret line is kept where it can be. Returns
+    /// false (and fills `error`) for an untitled document or an I/O failure.
+    bool reloadDocument(Document* document, FileError* error = nullptr);
+
+    /// Re-stat every open file and emit fileChangedExternally() /
+    /// fileRemovedExternally() for the ones that no longer match what we last
+    /// saw. Driven by a QFileSystemWatcher; called directly from tests.
+    void pollExternalChanges();
+
     /// Close the document at `index`. Always leaves at least one document
     /// open: closing the last one replaces it with a fresh untitled buffer.
     void closeDocument(int index);
@@ -57,16 +70,22 @@ signals:
     void documentMoved(int from, int to);
     void currentChanged(int index);
     void modifiedChanged(int index, bool modified);
+    void fileChangedExternally(int index);
+    void fileRemovedExternally(int index);
 
 private:
     Document* addDocument(std::unique_ptr<Document> document);
     void releasePointer(Document* document);
     void onEditorModifiedChanged(bool modified);
+    void captureDiskState(Document* document);
+    void refreshWatch();
 
     Editor* editor_ = nullptr;
     std::vector<std::unique_ptr<Document>> documents_;
     int currentIndex_ = -1;
     int nextUntitledNumber_ = 0;
+    QFileSystemWatcher* watcher_ = nullptr;
+    QTimer* pollTimer_ = nullptr;
 };
 
 } // namespace hungryeditor
