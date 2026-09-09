@@ -240,6 +240,12 @@ void Editor::selectNextOccurrence()
     call_.ScrollCaret();
 }
 
+void Editor::selectColumn(int anchorLine, int anchorColumn, int caretLine, int caretColumn)
+{
+    call_.SetRectangularSelectionAnchor(call_.FindColumn(anchorLine, anchorColumn));
+    call_.SetRectangularSelectionCaret(call_.FindColumn(caretLine, caretColumn));
+}
+
 int Editor::firstVisibleLine() const
 {
     return static_cast<int>(call_.FirstVisibleLine());
@@ -314,6 +320,15 @@ void Editor::applyVisualDefaults()
     call_.SetMultipleSelection(true);
     call_.SetAdditionalSelectionTyping(true);
     call_.SetMultiPaste(Scintilla::MultiPaste::Each);
+
+    // Rectangular (column) selection: Alt+drag, or hold Alt to switch a normal
+    // drag into a rectangular one. Alt+Shift+arrows is Scintilla's keyboard path.
+    call_.SetRectangularSelectionModifier(static_cast<int>(Scintilla::KeyMod::Alt));
+    call_.SetMouseSelectionRectangularSwitch(true);
+    call_.SetAdditionalCaretsBlink(true);
+    call_.SetAdditionalCaretFore(sciColour(palette.caret));
+    call_.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
+                           sciColour(palette.selection));
 
     call_.SetMarginTypeN(kLineNumberMargin, Scintilla::MarginType::Number);
     call_.SetMarginWidthN(kSymbolMargin, 0);

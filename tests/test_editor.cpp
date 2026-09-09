@@ -20,6 +20,7 @@ private slots:
     void viewportScrollEmitsASignal();
     void multipleSelectionIsEnabled();
     void selectNextOccurrenceGrowsTheSelection();
+    void rectangularSelectionSpansEveryLine();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -138,6 +139,20 @@ void TestEditor::selectNextOccurrenceGrowsTheSelection()
 
     editor.selectNextOccurrence(); // every occurrence is already selected
     QCOMPARE(editor.selectionCount(), 3);
+}
+
+void TestEditor::rectangularSelectionSpansEveryLine()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("abcdef\nabcdef\nabcdef\nabcdef\n"));
+
+    editor.selectColumn(0, 1, 2, 3); // columns 1..3 on lines 0, 1 and 2
+
+    QCOMPARE(editor.call().SelectionMode(), Scintilla::SelectionMode::Rectangle);
+    QCOMPARE(editor.selectionCount(), 3);
+    for (const QString& selected : editor.selectionTexts()) {
+        QCOMPARE(selected, QStringLiteral("bc"));
+    }
 }
 
 void TestEditor::visualDefaultsAreApplied()

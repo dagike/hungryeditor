@@ -74,6 +74,11 @@ public:
     /// extra caret and make it the main selection, wrapping past end of file.
     void selectNextOccurrence();
 
+    /// Rectangular (column) selection between two zero-based line/column
+    /// coordinates — one caret per spanned line. The interactive paths are
+    /// Alt+drag and Alt+Shift+arrows.
+    void selectColumn(int anchorLine, int anchorColumn, int caretLine, int caretColumn);
+
     /// Document line shown at the top of the viewport, zero-based. Persisted
     /// per tab so a switch or a restart returns to the same scroll offset.
     int firstVisibleLine() const;
