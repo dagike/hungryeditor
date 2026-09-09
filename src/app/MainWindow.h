@@ -4,8 +4,11 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QStringList>
 
 class QAction;
+class QDragEnterEvent;
+class QDropEvent;
 
 namespace hungryeditor {
 
@@ -42,9 +45,14 @@ public:
     QString lastError() const { return lastError_; }
 
     /// Load `path` into a document, replacing an already-open one for the
-    /// same path. Returns false on an I/O error (see lastError()). Exposed
-    /// for tests and for command-line / drag-and-drop callers in later phases.
+    /// same path. Returns false on an I/O error (see lastError()).
     bool openPath(const QString& path);
+
+    /// Open every path in `paths`, activating the first that loads. A pristine
+    /// untitled buffer is dropped so command-line and drag-and-drop opens do
+    /// not leave a stray tab. Returns false if any path failed; lastError()
+    /// then holds one line per failure.
+    bool openFiles(const QStringList& paths);
 
     /// Write the current document to `path` and mark it clean. Returns false
     /// on an I/O error (see lastError()).
@@ -52,6 +60,10 @@ public:
 
     /// Close the document at `index`, prompting to discard unsaved changes.
     void closeDocumentAt(int index);
+
+protected:
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
 private slots:
     void showAbout();

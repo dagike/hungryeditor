@@ -1,9 +1,13 @@
 #include "app/MainWindow.h"
 
 #include <QApplication>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileDialog>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMimeData>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -21,11 +25,28 @@ namespace hungryeditor {
 namespace {
 const QString kFileFilter =
     QStringLiteral("Markdown (*.md *.markdown *.mkd);;Text files (*.txt);;All files (*)");
+
+/// Local filesystem paths carried by a drag's mime data, in drop order.
+QStringList localFilesFromMime(const QMimeData* mime)
+{
+    QStringList paths;
+    if (mime == nullptr || !mime->hasUrls()) {
+        return paths;
+    }
+    for (const QUrl& url : mime->urls()) {
+        const QString local = url.toLocalFile();
+        if (!local.isEmpty()) {
+            paths.append(local);
+        }
+    }
+    return paths;
 }
+} // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
     resize(1000, 720);
+    setAcceptDrops(true);
 
     auto* container = new QWidget(this);
     auto* layout = new QVBoxLayout(container);
@@ -70,6 +91,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         documents_->moveDocument(from, to);
         documents_->setCurrentIndex(tabBar_->currentIndex());
         reorderingTabs_ = false;
+    });
+
+    // A file dropped onto the text area comes through Scintilla as a URI.
+    connect(editor_, &ScintillaEditBase::uriDropped, this, [this](const QString& uri) {
+        const QString local = QUrl(uri).toLocalFile();
+        if (!local.isEmpty() && !openFiles({local})) {
+            QMessageBox::warning(this, tr("Open Failed"), lastError_);
+        }
     });
 
     primeTabs();
@@ -188,13 +217,55 @@ QString MainWindow::currentPath() const
 
 bool MainWindow::openPath(const QString& path)
 {
-    FileError error;
-    if (documents_->openDocument(path, &error) == nullptr) {
-        lastError_ = error.message;
-        return false;
+    return openFiles({path});
+}
+
+bool MainWindow::openFiles(const QStringList& paths)
+{
+    QStringList failures;
+    Document* firstOpened = nullptr;
+    for (const QString& path : paths) {
+        FileError error;
+        Document* document = documents_->openDocument(path, &error);
+        if (document == nullptr) {
+            failures.append(QStringLiteral("%1: %2").arg(path, error.message));
+        } else if (firstOpened == nullptr) {
+            firstOpened = document;
+        }
     }
-    lastError_.clear();
-    return true;
+
+    if (firstOpened != nullptr) {
+        documents_->setCurrentIndex(documents_->indexOf(firstOpened));
+
+        // Drop the blank buffer the window starts with so a command-line or
+        // drag-and-drop open does not leave a stray "Untitled" tab behind.
+        Document* first = documents_->documentAt(0);
+        if (documents_->count() > 1 && first->isUntitled() && !first->isModified()) {
+            documents_->closeDocument(0);
+        }
+    }
+
+    lastError_ = failures.join(QLatin1Char('\n'));
+    return failures.isEmpty();
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (!localFilesFromMime(event->mimeData()).isEmpty()) {
+        event->acceptProposedAction();
+    }
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+    const QStringList paths = localFilesFromMime(event->mimeData());
+    if (paths.isEmpty()) {
+        return;
+    }
+    event->acceptProposedAction();
+    if (!openFiles(paths)) {
+        QMessageBox::warning(this, tr("Open Failed"), lastError_);
+    }
 }
 
 bool MainWindow::savePath(const QString& path)

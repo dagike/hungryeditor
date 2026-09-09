@@ -35,6 +35,8 @@ hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueri
     "kLangYaml|${_gr}/yaml/queries/highlights.scm")
 
 add_library(hungryeditor_core STATIC
+    app/CommandLine.cpp
+    app/CommandLine.h
     app/MainWindow.cpp
     app/MainWindow.h
     app/TabBar.cpp

@@ -1,7 +1,9 @@
 // hungryeditor — a fast native Markdown editor.
 
 #include <QApplication>
+#include <QCommandLineParser>
 
+#include "app/CommandLine.h"
 #include "app/MainWindow.h"
 
 #ifndef HUNGRYEDITOR_VERSION
@@ -15,7 +17,12 @@ int main(int argc, char** argv)
     QApplication::setApplicationVersion(QStringLiteral(HUNGRYEDITOR_VERSION));
     QApplication::setOrganizationName(QStringLiteral("hungryeditor"));
 
+    QCommandLineParser parser;
+    hungryeditor::configureCommandLineParser(parser);
+    parser.process(app);
+
     hungryeditor::MainWindow window;
+    window.openFiles(hungryeditor::filesFromCommandLine(parser));
     window.show();
 
     return QApplication::exec();

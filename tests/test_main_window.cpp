@@ -1,10 +1,14 @@
 // Smoke coverage for the application window.
 
 #include <QAction>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFile>
 #include <QMenuBar>
+#include <QMimeData>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QUrl>
 
 #include "app/MainWindow.h"
 #include "app/TabBar.h"
@@ -26,6 +30,9 @@ private slots:
     void openPathLoadsFileAndClearsDirty();
     void savePathWritesBufferPreservingLineEnding();
     void openPathReportsMissingFile();
+    void openFilesOpensEachActivatingTheFirst();
+    void openFilesReportsFailuresAndOpensTheRest();
+    void droppedFilesOpenInTheEditor();
     void newAndSwitchActionsChangeCurrentDocument();
 };
 
@@ -112,6 +119,77 @@ void TestMainWindow::openPathReportsMissingFile()
     hungryeditor::MainWindow window;
     QVERIFY(!window.openPath(dir.filePath(QStringLiteral("absent.md"))));
     QVERIFY(!window.lastError().isEmpty());
+}
+
+void TestMainWindow::openFilesOpensEachActivatingTheFirst()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString first = dir.filePath(QStringLiteral("first.md"));
+    const QString second = dir.filePath(QStringLiteral("second.md"));
+    {
+        QFile a(first);
+        QVERIFY(a.open(QIODevice::WriteOnly));
+        a.write("first\n");
+        QFile b(second);
+        QVERIFY(b.open(QIODevice::WriteOnly));
+        b.write("second\n");
+    }
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({first, second}));
+
+    // The pristine untitled buffer is dropped, leaving just the two files.
+    QCOMPARE(window.documents()->count(), 2);
+    QCOMPARE(window.currentPath(), first);
+    QCOMPARE(window.editor()->text(), QStringLiteral("first\n"));
+}
+
+void TestMainWindow::openFilesReportsFailuresAndOpensTheRest()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString good = dir.filePath(QStringLiteral("good.md"));
+    {
+        QFile file(good);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("ok\n");
+    }
+    const QString missing = dir.filePath(QStringLiteral("missing.md"));
+
+    hungryeditor::MainWindow window;
+    QVERIFY(!window.openFiles({missing, good}));
+    QVERIFY(window.lastError().contains(QStringLiteral("missing.md")));
+
+    QCOMPARE(window.currentPath(), good);
+    QCOMPARE(window.editor()->text(), QStringLiteral("ok\n"));
+}
+
+void TestMainWindow::droppedFilesOpenInTheEditor()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("dropped.md"));
+    {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("dropped content\n");
+    }
+
+    hungryeditor::MainWindow window;
+
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(path)});
+
+    QDragEnterEvent enter(QPoint(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(&window, &enter);
+    QVERIFY(enter.isAccepted());
+
+    QDropEvent drop(QPointF(5, 5), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(&window, &drop);
+
+    QCOMPARE(window.currentPath(), path);
+    QCOMPARE(window.editor()->text(), QStringLiteral("dropped content\n"));
 }
 
 void TestMainWindow::hasNamedActions_data()
