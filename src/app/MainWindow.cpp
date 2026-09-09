@@ -301,6 +301,28 @@ void MainWindow::buildMenus()
     selectNextAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     selectNextAction->setObjectName(QStringLiteral("action.selectNext"));
 
+    editMenu->addSeparator();
+
+    const auto addLineAction = [&](const QString& text, const QString& objectName,
+                                   const QKeySequence& shortcut, void (Editor::*op)()) {
+        QAction* action = editMenu->addAction(text, this, [this, op] { (editor_->*op)(); });
+        action->setShortcut(shortcut);
+        action->setObjectName(objectName);
+        return action;
+    };
+    addLineAction(tr("Move Line &Up"), QStringLiteral("action.moveLineUp"),
+                  QKeySequence(Qt::ALT | Qt::Key_Up), &Editor::moveLinesUp);
+    addLineAction(tr("Move Line &Down"), QStringLiteral("action.moveLineDown"),
+                  QKeySequence(Qt::ALT | Qt::Key_Down), &Editor::moveLinesDown);
+    addLineAction(tr("D&uplicate Line"), QStringLiteral("action.duplicateLine"),
+                  QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D), &Editor::duplicateSelection);
+    addLineAction(tr("De&lete Line"), QStringLiteral("action.deleteLine"),
+                  QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), &Editor::deleteLines);
+    addLineAction(tr("&Join Lines"), QStringLiteral("action.joinLines"),
+                  QKeySequence(Qt::CTRL | Qt::Key_J), &Editor::joinLines);
+    addLineAction(tr("Toggle &Comment"), QStringLiteral("action.toggleComment"),
+                  QKeySequence(Qt::CTRL | Qt::Key_Slash), &Editor::toggleLineComment);
+
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewModeGroup_ = new QActionGroup(this);
 

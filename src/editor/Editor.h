@@ -81,6 +81,18 @@ public:
     /// Alt+drag and Alt+Shift+arrows.
     void selectColumn(int anchorLine, int anchorColumn, int caretLine, int caretColumn);
 
+    /// Whole-line editing operating on every line the selection touches.
+    void moveLinesUp();
+    void moveLinesDown();
+    void duplicateSelection();
+    void deleteLines();
+    void joinLines();
+
+    /// Toggle an HTML comment (`<!-- … -->`) on each selected line, after its
+    /// indentation. This is Markdown's comment form; per-language comment
+    /// tokens arrive with the grammar registry.
+    void toggleLineComment();
+
     /// How a find/replace matches.
     struct SearchOptions
     {

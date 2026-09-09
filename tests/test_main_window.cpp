@@ -69,6 +69,7 @@ private slots:
     void scrollSyncsBothWays();
     void clickingAPreviewHeadingMovesTheCaret();
     void selectNextActionAddsACaret();
+    void lineActionsEditTheBuffer();
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
     void commandPaletteRunsTheChosenAction();
@@ -521,6 +522,11 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("quickOpen") << QStringLiteral("action.quickOpen");
     QTest::newRow("commandPalette") << QStringLiteral("action.commandPalette");
     QTest::newRow("selectNext") << QStringLiteral("action.selectNext");
+    QTest::newRow("moveLineUp") << QStringLiteral("action.moveLineUp");
+    QTest::newRow("duplicateLine") << QStringLiteral("action.duplicateLine");
+    QTest::newRow("deleteLine") << QStringLiteral("action.deleteLine");
+    QTest::newRow("joinLines") << QStringLiteral("action.joinLines");
+    QTest::newRow("toggleComment") << QStringLiteral("action.toggleComment");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -690,6 +696,20 @@ void TestMainWindow::selectNextActionAddsACaret()
     QCOMPARE(window.editor()->selectionCount(), 1);
     selectNext->trigger();
     QCOMPARE(window.editor()->selectionCount(), 2);
+}
+
+void TestMainWindow::lineActionsEditTheBuffer()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("keep me\n"));
+    window.editor()->setCursorPosition(0, 0);
+
+    window.findChild<QAction*>(QStringLiteral("action.duplicateLine"))->trigger();
+    QCOMPARE(window.editor()->text(), QStringLiteral("keep me\nkeep me\n"));
+
+    window.editor()->setCursorPosition(0, 0);
+    window.findChild<QAction*>(QStringLiteral("action.toggleComment"))->trigger();
+    QCOMPARE(window.editor()->text(), QStringLiteral("<!-- keep me -->\nkeep me\n"));
 }
 
 void TestMainWindow::findBarSearchesAndReplaces()

@@ -24,6 +24,9 @@ private slots:
     void findNextSelectsAndWraps();
     void findHonoursCaseWholeWordAndRegex();
     void replaceAllRewritesEveryMatch();
+    void movesDuplicatesAndDeletesLines();
+    void joinsLines();
+    void togglesHtmlCommentIdempotently();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -209,6 +212,55 @@ void TestEditor::replaceAllRewritesEveryMatch()
                                QStringLiteral("\\3/\\2/\\1"), rx),
              1);
     QCOMPARE(editor.text(), QStringLiteral("02/01/2024\n"));
+}
+
+void TestEditor::movesDuplicatesAndDeletesLines()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("one\ntwo\nthree\n"));
+
+    editor.setCursorPosition(1, 0); // "two"
+    editor.moveLinesDown();
+    QCOMPARE(editor.text(), QStringLiteral("one\nthree\ntwo\n"));
+    editor.moveLinesUp();
+    QCOMPARE(editor.text(), QStringLiteral("one\ntwo\nthree\n"));
+
+    editor.setCursorPosition(0, 1);
+    editor.duplicateSelection();
+    QCOMPARE(editor.text(), QStringLiteral("one\none\ntwo\nthree\n"));
+
+    editor.setCursorPosition(0, 2);
+    editor.deleteLines();
+    QCOMPARE(editor.text(), QStringLiteral("one\ntwo\nthree\n"));
+}
+
+void TestEditor::joinsLines()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("alpha\nbeta\ngamma\n"));
+    editor.setCursorPosition(0, 0);
+    editor.joinLines();
+    QCOMPARE(editor.text(), QStringLiteral("alpha beta\ngamma\n"));
+}
+
+void TestEditor::togglesHtmlCommentIdempotently()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("  hello world\n"));
+
+    editor.setCursorPosition(0, 4);
+    editor.toggleLineComment();
+    QCOMPARE(editor.text(), QStringLiteral("  <!-- hello world -->\n"));
+
+    editor.setCursorPosition(0, 4);
+    editor.toggleLineComment();
+    QCOMPARE(editor.text(), QStringLiteral("  hello world\n"));
+
+    // A multi-line selection comments every touched line.
+    editor.setText(QStringLiteral("first\nsecond\n"));
+    editor.call().SetSelection(editor.call().PositionFromLine(1) + 3, 0);
+    editor.toggleLineComment();
+    QCOMPARE(editor.text(), QStringLiteral("<!-- first -->\n<!-- second -->\n"));
 }
 
 void TestEditor::visualDefaultsAreApplied()

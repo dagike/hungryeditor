@@ -279,6 +279,143 @@ void Editor::selectColumn(int anchorLine, int anchorColumn, int caretLine, int c
     call_.SetRectangularSelectionCaret(call_.FindColumn(caretLine, caretColumn));
 }
 
+void Editor::moveLinesUp()
+{
+    call_.MoveSelectedLinesUp();
+}
+
+void Editor::moveLinesDown()
+{
+    call_.MoveSelectedLinesDown();
+}
+
+void Editor::duplicateSelection()
+{
+    if (call_.SelectionStart() == call_.SelectionEnd()) {
+        call_.LineDuplicate();
+    } else {
+        call_.SelectionDuplicate();
+    }
+}
+
+void Editor::deleteLines()
+{
+    const Scintilla::Line firstLine = call_.LineFromPosition(call_.SelectionStart());
+    const Scintilla::Line lastLine = call_.LineFromPosition(call_.SelectionEnd());
+    const Scintilla::Position from = call_.PositionFromLine(firstLine);
+    const Scintilla::Position to = (lastLine + 1 >= call_.LineCount())
+                                       ? call_.TextLength()
+                                       : call_.PositionFromLine(lastLine + 1);
+    call_.SetTargetRange(from, to);
+    call_.ReplaceTarget(0, "");
+}
+
+void Editor::joinLines()
+{
+    using Line = Scintilla::Line;
+    using Position = Scintilla::Position;
+
+    const Line firstLine = call_.LineFromPosition(call_.SelectionStart());
+    const Line lastLine = call_.LineFromPosition(call_.SelectionEnd());
+    const Line throughLine = (lastLine > firstLine) ? lastLine : firstLine + 1;
+    if (throughLine >= call_.LineCount()) {
+        return;
+    }
+
+    call_.BeginUndoAction();
+    // Bottom-up so earlier positions stay valid as text shrinks.
+    for (Line line = throughLine; line > firstLine; --line) {
+        const Position joinAt = call_.LineEndPosition(line - 1);
+        Position nextContent = call_.PositionFromLine(line);
+        const Position nextEnd = call_.LineEndPosition(line);
+        while (nextContent < nextEnd) {
+            const int ch = call_.CharAt(nextContent);
+            if (ch != ' ' && ch != '\t') {
+                break;
+            }
+            ++nextContent;
+        }
+        const bool addSpace = joinAt > call_.PositionFromLine(line - 1); // prev line had content
+        call_.SetTargetRange(joinAt, nextContent);
+        call_.ReplaceTarget(addSpace ? 1 : 0, addSpace ? " " : "");
+    }
+    call_.EndUndoAction();
+}
+
+namespace {
+
+std::string trimmed(const std::string& s)
+{
+    const std::size_t begin = s.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) {
+        return {};
+    }
+    return s.substr(begin, s.find_last_not_of(" \t\r\n") - begin + 1);
+}
+
+bool isHtmlComment(const std::string& body)
+{
+    const std::string t = trimmed(body);
+    return t.size() >= 7 && t.rfind("<!--", 0) == 0 && t.compare(t.size() - 3, 3, "-->") == 0;
+}
+
+} // namespace
+
+void Editor::toggleLineComment()
+{
+    const Scintilla::Line firstLine = call_.LineFromPosition(call_.SelectionStart());
+    Scintilla::Line lastLine = call_.LineFromPosition(call_.SelectionEnd());
+    if (lastLine > firstLine && call_.SelectionEnd() == call_.PositionFromLine(lastLine)) {
+        --lastLine; // a selection ending at a line start doesn't include that line
+    }
+
+    const auto lineBody = [this](Scintilla::Line line) {
+        return call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+    };
+
+    bool addComments = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body = lineBody(line);
+        if (trimmed(body).empty()) {
+            continue;
+        }
+        if (!isHtmlComment(body)) {
+            addComments = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body = lineBody(line);
+        const std::string trimmedBody = trimmed(body);
+        if (trimmedBody.empty()) {
+            continue;
+        }
+        const std::size_t indentEnd = body.find_first_not_of(" \t");
+        const std::string indent = body.substr(0, indentEnd);
+
+        std::string replacement;
+        if (addComments) {
+            replacement = indent + "<!-- " + trimmedBody + " -->";
+        } else if (isHtmlComment(body)) {
+            std::string inner = trimmedBody.substr(4, trimmedBody.size() - 7);
+            if (!inner.empty() && inner.front() == ' ') {
+                inner.erase(0, 1);
+            }
+            if (!inner.empty() && inner.back() == ' ') {
+                inner.pop_back();
+            }
+            replacement = indent + inner;
+        } else {
+            continue;
+        }
+        call_.SetTargetRange(call_.PositionFromLine(line), call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
 bool Editor::findNext(const QString& query, const SearchOptions& options, bool forward, bool wrap)
 {
     if (query.isEmpty()) {
