@@ -8,7 +8,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede in-progress runs on a branch/PR, but let every push to main run so
+  # a fast series of commits cannot skip CI.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -65,6 +67,29 @@ jobs:
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
         env:
           QT_QPA_PLATFORM: offscreen
+
+      # On Windows a failing Qt Test's buffered stdout never reaches ctest, so
+      # --output-on-failure prints nothing. Re-run the failed executables under
+      # cdb, which flushes their output and also yields a stack on a real crash.
+      - name: Report crashed/failed tests (Windows)
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe"
+          if (-not (Test-Path $cdb)) { Write-Host "cdb not found; skipping"; exit 0 }
+          $log = & ctest --preset ${{ matrix.preset }} 2>&1
+          $failed = [regex]::Matches(($log -join "`n"), '(?m)^\s*\d+ - (\S+) \(Failed\)') |
+            ForEach-Object { $_.Groups[1].Value }
+          if (-not $failed) { Write-Host "no failed tests to trace"; exit 0 }
+          foreach ($name in $failed) {
+            $exe = "build/${{ matrix.preset }}/bin/$name.exe"
+            Write-Host "::group::cdb $name"
+            & $cdb -G -lines -c "sxe av; g; .lastevent; .exr -1; kn 200; q" $exe 2>&1 |
+              Select-String -NotMatch 'PASS   :|SKIP   :|QDEBUG :'
+            Write-Host "::endgroup::"
+          }
 
   format:
     name: clang-format
