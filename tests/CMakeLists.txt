@@ -70,3 +70,12 @@ hungryeditor_add_test(test_main_window
 hungryeditor_add_test(test_tab_bar
     SOURCES test_tab_bar.cpp
     LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_preview
+    SOURCES test_preview.cpp
+    LIBS hungryeditor::core)
+# Qt WebEngine (Chromium) needs the sandbox off and software rendering to come
+# up headless on CI.
+set_property(TEST test_preview APPEND PROPERTY ENVIRONMENT
+    "QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu --disable-dev-shm-usage")
+set_property(TEST test_preview APPEND PROPERTY ENVIRONMENT "QTWEBENGINE_DISABLE_SANDBOX=1")
