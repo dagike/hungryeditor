@@ -19,6 +19,13 @@ function(hungryeditor_add_test name)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endfunction()
 
+# Tests that construct a Qt WebEngine view need Chromium to come up headless.
+function(hungryeditor_test_needs_webengine name)
+    set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
+        "QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu --disable-dev-shm-usage")
+    set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "QTWEBENGINE_DISABLE_SANDBOX=1")
+endfunction()
+
 hungryeditor_add_test(test_vendor
     SOURCES test_vendor.cpp
     LIBS hungryeditor::scintilla hungryeditor::lexilla hungryeditor::treesitter Qt6::Widgets)
@@ -66,6 +73,7 @@ hungryeditor_add_test(test_document_manager
 hungryeditor_add_test(test_main_window
     SOURCES test_main_window.cpp
     LIBS hungryeditor::core)
+hungryeditor_test_needs_webengine(test_main_window)
 
 hungryeditor_add_test(test_tab_bar
     SOURCES test_tab_bar.cpp
@@ -82,8 +90,4 @@ hungryeditor_add_test(test_preview_controller
 hungryeditor_add_test(test_preview
     SOURCES test_preview.cpp
     LIBS hungryeditor::core)
-# Qt WebEngine (Chromium) needs the sandbox off and software rendering to come
-# up headless on CI.
-set_property(TEST test_preview APPEND PROPERTY ENVIRONMENT
-    "QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu --disable-dev-shm-usage")
-set_property(TEST test_preview APPEND PROPERTY ENVIRONMENT "QTWEBENGINE_DISABLE_SANDBOX=1")
+hungryeditor_test_needs_webengine(test_preview)

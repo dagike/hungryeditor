@@ -1,5 +1,6 @@
 #include "app/MainWindow.h"
 
+#include <QActionGroup>
 #include <QApplication>
 #include <QDir>
 #include <QDragEnterEvent>
@@ -11,6 +12,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QSplitter>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
@@ -24,6 +26,9 @@
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "preview/PreviewBackend.h"
+#include "preview/PreviewController.h"
+#include "preview/QtWebEnginePreview.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -75,15 +80,28 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     tabBar_ = new TabBar(container);
     editor_ = new Editor(container);
+    splitter_ = new QSplitter(Qt::Horizontal, container);
+    splitter_->setChildrenCollapsible(false);
+    splitter_->addWidget(editor_);
     layout->addWidget(tabBar_);
-    layout->addWidget(editor_);
+    layout->addWidget(splitter_);
     setCentralWidget(container);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
+    preview_ = std::make_unique<QtWebEnginePreview>();
+    previewController_ = std::make_unique<PreviewController>(preview_.get());
+    QWidget* previewWidget = preview_->widget();
+    previewWidget->setMinimumWidth(160);
+    splitter_->addWidget(previewWidget);
+    splitter_->setStretchFactor(0, 1);
+    splitter_->setStretchFactor(1, 1);
+    connect(editor_, &Editor::textChanged, this, &MainWindow::refreshPreview);
+
     buildMenus();
     setStateDirectory(defaultStateDirectory());
+    applyViewMode();
 
     connect(documents_.get(), &DocumentManager::documentAdded, this, &MainWindow::onDocumentAdded);
     connect(documents_.get(), &DocumentManager::documentClosed, this,
@@ -184,6 +202,26 @@ void MainWindow::buildMenus()
     quitAction->setMenuRole(QAction::QuitRole);
     quitAction->setObjectName(QStringLiteral("action.quit"));
 
+    QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
+    viewModeGroup_ = new QActionGroup(this);
+
+    const auto addViewMode = [&](const QString& text, const QString& objectName, ViewMode mode,
+                                 const QKeySequence& shortcut) {
+        QAction* action = viewMenu->addAction(text, this, [this, mode] { setViewMode(mode); });
+        action->setCheckable(true);
+        action->setShortcut(shortcut);
+        action->setObjectName(objectName);
+        action->setData(static_cast<int>(mode));
+        viewModeGroup_->addAction(action);
+        return action;
+    };
+    addViewMode(tr("&Editor Only"), QStringLiteral("action.viewEditor"), ViewMode::Editor,
+                QKeySequence(Qt::CTRL | Qt::Key_1));
+    addViewMode(tr("&Split"), QStringLiteral("action.viewSplit"), ViewMode::Split,
+                QKeySequence(Qt::CTRL | Qt::Key_2));
+    addViewMode(tr("&Preview Only"), QStringLiteral("action.viewPreview"), ViewMode::Preview,
+                QKeySequence(Qt::CTRL | Qt::Key_3));
+
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction* aboutAction =
         helpMenu->addAction(tr("&About hungryeditor"), this, &MainWindow::showAbout);
@@ -239,6 +277,54 @@ void MainWindow::onCurrentChanged(int index)
     }
     syncingTabs_ = false;
     updateWindowTitle();
+
+    // A tab switch replaces the buffer wholesale; push it now rather than
+    // leaving the preview a debounce behind the visible document.
+    if (viewMode_ != ViewMode::Editor) {
+        previewController_->setMarkdown(editor_->text());
+        previewController_->flush();
+    }
+}
+
+QWidget* MainWindow::previewWidget() const
+{
+    return preview_ != nullptr ? preview_->widget() : nullptr;
+}
+
+void MainWindow::setViewMode(ViewMode mode)
+{
+    if (viewMode_ == mode) {
+        return;
+    }
+    viewMode_ = mode;
+    applyViewMode();
+
+    // Newly revealed, the preview needs the current buffer straight away.
+    if (viewMode_ != ViewMode::Editor) {
+        previewController_->setMarkdown(editor_->text());
+        previewController_->flush();
+    }
+}
+
+void MainWindow::applyViewMode()
+{
+    editor_->setVisible(viewMode_ != ViewMode::Preview);
+    preview_->widget()->setVisible(viewMode_ != ViewMode::Editor);
+
+    if (viewModeGroup_ != nullptr) {
+        for (QAction* action : viewModeGroup_->actions()) {
+            if (action->data().toInt() == static_cast<int>(viewMode_)) {
+                action->setChecked(true);
+            }
+        }
+    }
+}
+
+void MainWindow::refreshPreview()
+{
+    if (viewMode_ != ViewMode::Editor) {
+        previewController_->setMarkdown(editor_->text());
+    }
 }
 
 QString MainWindow::currentPath() const

@@ -8,23 +8,27 @@
 #include <QStringList>
 
 class QAction;
+class QActionGroup;
 class QDragEnterEvent;
 class QDropEvent;
 class QMenu;
+class QSplitter;
 
 namespace hungryeditor {
 
 class Document;
 class DocumentManager;
 class Editor;
+class PreviewBackend;
+class PreviewController;
 class RecentFiles;
 class SessionStore;
 class TabBar;
 
 /// The application's single top-level window. It hosts one editor widget
 /// backed by a DocumentManager (multiple open buffers, switched in place),
-/// a tab strip, a menu bar and open/save file handling. The preview pane is
-/// added in a later phase.
+/// a tab strip, a menu bar, open/save file handling and a live HTML preview
+/// beside the editor.
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -32,6 +36,23 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
+
+    /// Which panes the window shows.
+    enum class ViewMode
+    {
+        Editor,  ///< editor only
+        Split,   ///< editor and preview side by side
+        Preview, ///< preview only
+    };
+
+    ViewMode viewMode() const { return viewMode_; }
+    void setViewMode(ViewMode mode);
+
+    /// The debounce-and-render controller feeding the preview. Exposed for tests.
+    PreviewController* previewController() const { return previewController_.get(); }
+
+    /// The preview pane widget, for tests to check visibility.
+    QWidget* previewWidget() const;
 
     /// The editor widget filling the window. Exposed for tests.
     Editor* editor() const { return editor_; }
@@ -118,6 +139,11 @@ private:
     void buildMenus();
     void updateWindowTitle();
 
+    // Live preview: created on construction, fed the editor's text (debounced)
+    // whenever a preview pane is visible.
+    void applyViewMode();
+    void refreshPreview();
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);
@@ -140,11 +166,18 @@ private:
     // pointers through the editor) while the editor is still alive.
     Editor* editor_ = nullptr;
     TabBar* tabBar_ = nullptr;
+    QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;
     std::unique_ptr<RecentFiles> recentFiles_;
+    // previewController_ is declared after preview_ so it is torn down first —
+    // it holds a raw pointer to the backend.
+    std::unique_ptr<PreviewBackend> preview_;
+    std::unique_ptr<PreviewController> previewController_;
     QAction* saveAction_ = nullptr;
     QMenu* recentMenu_ = nullptr;
+    QActionGroup* viewModeGroup_ = nullptr;
+    ViewMode viewMode_ = ViewMode::Split;
     QString lastError_;
     bool syncingTabs_ = false;
     bool reorderingTabs_ = false;

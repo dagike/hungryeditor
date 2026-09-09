@@ -7,6 +7,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
+#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -20,6 +21,7 @@
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "preview/PreviewController.h"
 
 class TestMainWindow : public QObject
 {
@@ -50,6 +52,10 @@ private slots:
     void pinnedRecentSurvivesManyOpens();
     void clearRecentFilesKeepsPinned();
     void newAndSwitchActionsChangeCurrentDocument();
+    void defaultsToSplitViewWithBothPanes();
+    void viewModeActionsTogglePaneVisibility();
+    void editorTextFlowsIntoThePreview();
+    void switchingDocumentsRefreshesThePreview();
 };
 
 namespace {
@@ -93,7 +99,7 @@ void TestMainWindow::editorSitsBelowTheTabBar()
 void TestMainWindow::hasExpectedMenus()
 {
     hungryeditor::MainWindow window;
-    QCOMPARE(window.menuBar()->actions().size(), 2);
+    QCOMPARE(window.menuBar()->actions().size(), 3); // File, View, Help
 }
 
 void TestMainWindow::saveActionFollowsDirtyState()
@@ -492,6 +498,9 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("close") << QStringLiteral("action.close");
     QTest::newRow("quit") << QStringLiteral("action.quit");
     QTest::newRow("about") << QStringLiteral("action.about");
+    QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
+    QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
+    QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
 }
 
 void TestMainWindow::hasNamedActions()
@@ -522,6 +531,67 @@ void TestMainWindow::newAndSwitchActionsChangeCurrentDocument()
 
     window.findChild<QAction*>(QStringLiteral("action.nextDocument"))->trigger();
     QCOMPARE(window.documents()->currentIndex(), 1);
+}
+
+void TestMainWindow::defaultsToSplitViewWithBothPanes()
+{
+    hungryeditor::MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QCOMPARE(window.viewMode(), hungryeditor::MainWindow::ViewMode::Split);
+    QVERIFY(window.editor()->isVisible());
+    QVERIFY(window.previewWidget() != nullptr);
+    QVERIFY(window.previewWidget()->isVisible());
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.viewSplit"))->isChecked());
+}
+
+void TestMainWindow::viewModeActionsTogglePaneVisibility()
+{
+    hungryeditor::MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.findChild<QAction*>(QStringLiteral("action.viewPreview"))->trigger();
+    QCOMPARE(window.viewMode(), hungryeditor::MainWindow::ViewMode::Preview);
+    QVERIFY(!window.editor()->isVisible());
+    QVERIFY(window.previewWidget()->isVisible());
+
+    window.findChild<QAction*>(QStringLiteral("action.viewEditor"))->trigger();
+    QCOMPARE(window.viewMode(), hungryeditor::MainWindow::ViewMode::Editor);
+    QVERIFY(window.editor()->isVisible());
+    QVERIFY(!window.previewWidget()->isVisible());
+}
+
+void TestMainWindow::editorTextFlowsIntoThePreview()
+{
+    hungryeditor::MainWindow window;
+    QSignalSpy rendered(window.previewController(), &hungryeditor::PreviewController::rendered);
+
+    window.editor()->setText(QStringLiteral("# Live Heading\n\nsome prose\n"));
+
+    QVERIFY(rendered.wait(2000));
+    const QString html = rendered.last().at(0).toString();
+    QVERIFY(html.contains(QStringLiteral(">Live Heading</h1>")));
+    QVERIFY(html.contains(QStringLiteral(">some prose</p>")));
+}
+
+void TestMainWindow::switchingDocumentsRefreshesThePreview()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "# Doc A\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "# Doc B\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b}));
+    window.documents()->setCurrentIndex(1); // sitting on b
+
+    QSignalSpy rendered(window.previewController(), &hungryeditor::PreviewController::rendered);
+    window.documents()->setCurrentIndex(0); // switch back to a
+
+    QVERIFY(rendered.count() >= 1 || rendered.wait(2000));
+    QVERIFY(rendered.last().at(0).toString().contains(QStringLiteral(">Doc A</h1>")));
 }
 
 QTEST_MAIN(TestMainWindow)
