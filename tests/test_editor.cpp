@@ -17,6 +17,7 @@ private slots:
     void textChangedSignalFires();
     void undoRedo();
     void cursorPositionReporting();
+    void viewportScrollEmitsASignal();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -88,6 +89,23 @@ void TestEditor::cursorPositionReporting()
     editor.setCursorPosition(1, 4);
     QCOMPARE(editor.cursorLine(), 1);
     QCOMPARE(editor.cursorColumn(), 4);
+}
+
+void TestEditor::viewportScrollEmitsASignal()
+{
+    hungryeditor::Editor editor;
+    editor.resize(400, 120);
+    QString many;
+    for (int i = 0; i < 200; ++i) {
+        many += QStringLiteral("line %1\n").arg(i);
+    }
+    editor.setText(many);
+
+    QSignalSpy spy(&editor, &hungryeditor::Editor::viewportScrolled);
+    editor.setFirstVisibleLine(80);
+
+    QVERIFY(!spy.isEmpty());
+    QCOMPARE(editor.firstVisibleLine(), 80);
 }
 
 void TestEditor::visualDefaultsAreApplied()

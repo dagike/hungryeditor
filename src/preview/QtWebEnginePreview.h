@@ -31,8 +31,10 @@ public:
     QWidget* widget() override;
     void setHtml(const QString& html, const QUrl& baseUrl = QUrl()) override;
     void setContent(const QString& bodyHtml, const QUrl& baseUrl = QUrl()) override;
+    void setThemeCss(const QString& css) override;
     void runJavaScript(const QString& script,
                        const std::function<void(const QVariant&)>& callback = {}) override;
+    void scrollToSourceLine(int line) override;
 
 private:
     // Owned until widget() is embedded in a layout, which reparents it; the

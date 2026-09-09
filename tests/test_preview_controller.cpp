@@ -19,7 +19,9 @@ public:
     QWidget* widget() override { return nullptr; }
     void setHtml(const QString&, const QUrl&) override {}
     void setContent(const QString& bodyHtml, const QUrl&) override { pushes << bodyHtml; }
+    void setThemeCss(const QString&) override {}
     void runJavaScript(const QString&, const std::function<void(const QVariant&)>&) override {}
+    void scrollToSourceLine(int) override {}
 
     QStringList pushes;
 };

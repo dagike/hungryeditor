@@ -107,6 +107,8 @@ signals:
     void cursorPositionChanged(int line, int column);
     /// Emitted after a background highlight pass has been applied.
     void highlightingApplied();
+    /// Emitted when the vertical scroll position changes, for preview sync.
+    void viewportScrolled();
 
 private:
     void onNotify(Scintilla::NotificationData* notification);

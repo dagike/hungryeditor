@@ -99,4 +99,17 @@ int styleForCapture(std::string_view captureName)
     return StylePlain;
 }
 
+std::string styleCssClass(int style)
+{
+    const auto& table = styleTable();
+    if (style <= StylePlain || style >= static_cast<int>(table.size())) {
+        return {};
+    }
+    std::string name = "tok-";
+    for (const char* c = table[static_cast<std::size_t>(style)].key; *c != '\0'; ++c) {
+        name += (*c == '.') ? '-' : *c;
+    }
+    return name;
+}
+
 } // namespace hungryeditor

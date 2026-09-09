@@ -14,6 +14,8 @@ private slots:
     void rendersCommonMarkBlocks();
     void tagsBlocksWithTheirSourceLine();
     void fencedCodeKeepsLanguageAndEscapes();
+    void fencedCodeIsSyntaxHighlighted();
+    void unknownFenceLanguageStaysPlain();
     void escapesHtmlInProseButKeepsEntities();
     void rendersInlineSpansAndLinks();
     void emptyInputProducesEmptyFragment();
@@ -47,13 +49,37 @@ void TestMd4cRenderer::tagsBlocksWithTheirSourceLine()
 void TestMd4cRenderer::fencedCodeKeepsLanguageAndEscapes()
 {
     Md4cRenderer renderer;
-    const QString html =
-        renderer.toHtml(QStringLiteral("```rust\nfn main() { let x = a < b && c > d; }\n```\n"));
+    const QString html = renderer.toHtml(QStringLiteral("```rust\nlet s = a < b && c > d;\n```\n"));
 
     QVERIFY(
         html.contains(QStringLiteral("<pre data-src-line=\"0\"><code class=\"language-rust\">")));
-    QVERIFY(html.contains(QStringLiteral("a &lt; b &amp;&amp; c &gt; d")));
     QVERIFY(html.contains(QStringLiteral("</code></pre>")));
+    // The angle brackets and ampersands are still escaped, even with token
+    // spans woven through the code.
+    QVERIFY(html.contains(QStringLiteral("&lt;")));
+    QVERIFY(html.contains(QStringLiteral("&gt;")));
+    QVERIFY(html.contains(QStringLiteral("&amp;&amp;")));
+    QVERIFY(!html.contains(QStringLiteral("<b ")));
+}
+
+void TestMd4cRenderer::fencedCodeIsSyntaxHighlighted()
+{
+    Md4cRenderer renderer;
+    const QString html =
+        renderer.toHtml(QStringLiteral("```rust\nfn demo() { let x = 1; }\n```\n"));
+
+    QVERIFY(html.contains(QStringLiteral("<span class=\"tok-keyword\">fn</span>")));
+    QVERIFY(html.contains(QStringLiteral("<span class=\"tok-keyword\">let</span>")));
+    QVERIFY(html.contains(QStringLiteral("<span class=\"tok-function\">demo</span>")));
+}
+
+void TestMd4cRenderer::unknownFenceLanguageStaysPlain()
+{
+    Md4cRenderer renderer;
+    const QString html = renderer.toHtml(QStringLiteral("```nonesuch\nkeep me < plain\n```\n"));
+
+    QVERIFY(html.contains(QStringLiteral(">keep me &lt; plain\n</code></pre>")));
+    QVERIFY(!html.contains(QStringLiteral("tok-")));
 }
 
 void TestMd4cRenderer::escapesHtmlInProseButKeepsEntities()

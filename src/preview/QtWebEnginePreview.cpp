@@ -30,6 +30,7 @@ const char* const kShellHtml = R"HTML(<!doctype html>
   }
   #hungryeditor-content > :first-child { margin-top: 0; }
 </style>
+<style id="he-theme"></style>
 </head>
 <body>
 <div id="hungryeditor-content"></div>
@@ -40,8 +41,55 @@ const char* const kShellHtml = R"HTML(<!doctype html>
     new QWebChannel(qt.webChannelTransport, function (channel) {
       var bridge = channel.objects.bridge;
       var target = document.getElementById("hungryeditor-content");
+
       function apply(html) { target.innerHTML = html; }
+      function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
+
+      function blocks() { return target.querySelectorAll("[data-src-line]"); }
+      function lineOf(el) { return parseInt(el.getAttribute("data-src-line"), 10) || 0; }
+
+      // Ignore the scroll events our own scrollToLine() triggers.
+      var muteReportUntil = 0;
+
+      function scrollToLine(line) {
+        var list = blocks();
+        var chosen = null;
+        for (var i = 0; i < list.length; i++) {
+          if (lineOf(list[i]) >= line) { chosen = list[i]; break; }
+        }
+        muteReportUntil = Date.now() + 250;
+        var y = chosen ? Math.max(0, chosen.offsetTop - 8) : document.body.scrollHeight;
+        window.scrollTo(0, y);
+      }
+
+      function reportScroll() {
+        if (Date.now() < muteReportUntil) return;
+        var list = blocks();
+        var line = 0;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].getBoundingClientRect().top <= 4) {
+            line = lineOf(list[i]);
+          } else {
+            break;
+          }
+        }
+        bridge.reportScroll(line);
+      }
+
+      function reportHeadingClick(event) {
+        var el = event.target.closest("h1, h2, h3, h4, h5, h6");
+        if (el && el.hasAttribute("data-src-line")) {
+          bridge.reportClick(lineOf(el));
+        }
+      }
+
       bridge.contentChanged.connect(apply);
+      bridge.themeCssChanged.connect(applyTheme);
+      bridge.scrollToLineRequested.connect(scrollToLine);
+      window.addEventListener("scroll", reportScroll, { passive: true });
+      target.addEventListener("click", reportHeadingClick);
+
+      applyTheme(bridge.themeCss);
       apply(bridge.content);
       bridge.notifyReady();
     });
@@ -62,6 +110,8 @@ QtWebEnginePreview::QtWebEnginePreview(QObject* parent)
 
     connect(view_.get(), &QWebEngineView::loadFinished, this, &PreviewBackend::loadFinished);
     connect(bridge_, &PreviewBridge::pageReady, this, &PreviewBackend::ready);
+    connect(bridge_, &PreviewBridge::viewerScrolled, this, &PreviewBackend::scrolledToSourceLine);
+    connect(bridge_, &PreviewBridge::headingClicked, this, &PreviewBackend::clickedSourceLine);
 }
 
 QtWebEnginePreview::~QtWebEnginePreview() = default;
@@ -96,6 +146,16 @@ void QtWebEnginePreview::runJavaScript(const QString& script,
     } else {
         view_->page()->runJavaScript(script);
     }
+}
+
+void QtWebEnginePreview::setThemeCss(const QString& css)
+{
+    bridge_->setThemeCss(css);
+}
+
+void QtWebEnginePreview::scrollToSourceLine(int line)
+{
+    bridge_->requestScrollToLine(line);
 }
 
 } // namespace hungryeditor

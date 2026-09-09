@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -52,5 +53,9 @@ const std::vector<StyleDef>& styleTable();
 /// to a style id, falling back through dotted prefixes. Returns StylePlain
 /// when nothing matches.
 int styleForCapture(std::string_view captureName);
+
+/// The CSS class the preview wraps a token of `style` in, e.g.
+/// "tok-string-escape". Empty for StylePlain / out-of-range ids.
+std::string styleCssClass(int style);
 
 } // namespace hungryeditor

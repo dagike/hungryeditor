@@ -49,6 +49,8 @@ add_library(hungryeditor_core STATIC
     editor/Editor.h
     highlight/CaptureStyles.cpp
     highlight/CaptureStyles.h
+    highlight/CodeHighlighter.cpp
+    highlight/CodeHighlighter.h
     highlight/GrammarRegistry.cpp
     highlight/GrammarRegistry.h
     highlight/TreeSitterEngine.cpp
@@ -74,6 +76,8 @@ add_library(hungryeditor_core STATIC
     preview/PreviewController.h
     preview/QtWebEnginePreview.cpp
     preview/QtWebEnginePreview.h
+    theme/Theme.cpp
+    theme/Theme.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

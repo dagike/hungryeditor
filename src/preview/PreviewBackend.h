@@ -36,11 +36,19 @@ public:
     /// `bodyHtml` in over the bridge. `baseUrl` resolves relative asset paths.
     virtual void setContent(const QString& bodyHtml, const QUrl& baseUrl = QUrl()) = 0;
 
+    /// Install the preview stylesheet (from Theme::previewCss()). Applied live,
+    /// without a reload; safe to call before the shell is up.
+    virtual void setThemeCss(const QString& css) = 0;
+
     /// Evaluate `script` in the page. When `callback` is given it receives the
     /// result once available (an invalid QVariant if the script returned
     /// nothing or the page is gone).
     virtual void runJavaScript(const QString& script,
                                const std::function<void(const QVariant&)>& callback = {}) = 0;
+
+    /// Scroll the preview so the block that came from source line `line` (or the
+    /// next one after it) sits at the top of the viewport.
+    virtual void scrollToSourceLine(int line) = 0;
 
 signals:
     /// Emitted once a setHtml() load settles; `ok` is false on a load error.
@@ -49,6 +57,13 @@ signals:
     /// Emitted once the preview shell is up and the bridge is connected, so
     /// the first setContent() has somewhere to land.
     void ready();
+
+    /// The viewer scrolled the preview; `line` is the source line of the block
+    /// now at the top. Not emitted for scrollToSourceLine()'s own movement.
+    void scrolledToSourceLine(int line);
+
+    /// The viewer clicked a heading in the preview; `line` is its source line.
+    void clickedSourceLine(int line);
 };
 
 } // namespace hungryeditor

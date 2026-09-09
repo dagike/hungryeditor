@@ -5,9 +5,11 @@
 #include <QtTest>
 
 #include "preview/QtWebEnginePreview.h"
+#include "theme/Theme.h"
 
 using hungryeditor::PreviewBackend;
 using hungryeditor::QtWebEnginePreview;
+using hungryeditor::Theme;
 
 class TestPreview : public QObject
 {
@@ -17,7 +19,44 @@ private slots:
     void exposesAnEmbeddableWidget();
     void rendersHtmlAndEvaluatesScript();
     void streamsContentThroughTheBridge();
+    void scrollToSourceLineMovesTheViewport();
+    void scrollingThePageReportsASourceLine();
+    void themeCssStylesTheRenderedContent();
+    void clickingAHeadingReportsItsSourceLine();
 };
+
+namespace {
+
+/// Evaluate `script` and block (pumping the event loop) until the result lands.
+QVariant evalJs(hungryeditor::QtWebEnginePreview& preview, const QString& script)
+{
+    QVariant result;
+    bool done = false;
+    preview.runJavaScript(script, [&](const QVariant& value) {
+        result = value;
+        done = true;
+    });
+    QElapsedTimer clock;
+    clock.start();
+    while (!done && clock.elapsed() < 5000) {
+        QTest::qWait(20);
+    }
+    return result;
+}
+
+/// A tall document: 60 paragraphs, each tagged with its source line.
+QString tallBody()
+{
+    QString html;
+    for (int i = 0; i < 60; ++i) {
+        html += QStringLiteral("<p data-src-line=\"%1\">Paragraph number %1 with enough text to "
+                               "take a full line of the preview pane.</p>")
+                    .arg(i);
+    }
+    return html;
+}
+
+} // namespace
 
 void TestPreview::exposesAnEmbeddableWidget()
 {
@@ -85,6 +124,89 @@ void TestPreview::streamsContentThroughTheBridge()
     }
     QVERIFY(updated.contains(QStringLiteral("Replaced")));
     QCOMPARE(loads.count(), 0); // no page reload for a content swap
+}
+
+void TestPreview::scrollToSourceLineMovesTheViewport()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(360, 200);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(tallBody());
+    QVERIFY(ready.wait(20000));
+
+    QCOMPARE(evalJs(preview, QStringLiteral("Math.round(window.scrollY)")).toInt(), 0);
+
+    preview.scrollToSourceLine(40);
+
+    int scrollY = 0;
+    QElapsedTimer clock;
+    clock.start();
+    while (scrollY == 0 && clock.elapsed() < 10000) {
+        scrollY = evalJs(preview, QStringLiteral("Math.round(window.scrollY)")).toInt();
+    }
+    QVERIFY(scrollY > 0);
+}
+
+void TestPreview::scrollingThePageReportsASourceLine()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(360, 200);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(tallBody());
+    QVERIFY(ready.wait(20000));
+
+    QSignalSpy scrolled(&preview, &PreviewBackend::scrolledToSourceLine);
+    evalJs(preview, QStringLiteral("window.scrollTo(0, document.body.scrollHeight); void 0"));
+
+    QElapsedTimer clock;
+    clock.start();
+    while (scrolled.isEmpty() && clock.elapsed() < 5000) {
+        QTest::qWait(50);
+    }
+    QVERIFY(!scrolled.isEmpty());
+    QVERIFY(scrolled.last().at(0).toInt() > 0);
+}
+
+void TestPreview::themeCssStylesTheRenderedContent()
+{
+    QtWebEnginePreview preview;
+    preview.setThemeCss(Theme::builtin().previewCss());
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<h1 data-src-line=\"0\">Themed heading</h1>"));
+    QVERIFY(ready.wait(20000));
+
+    const QString color =
+        evalJs(preview, QStringLiteral("getComputedStyle(document.querySelector('h1')).color"))
+            .toString();
+    QCOMPARE(color, QStringLiteral("rgb(5, 80, 174)")); // #0550ae, the theme heading colour
+}
+
+void TestPreview::clickingAHeadingReportsItsSourceLine()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<h2 data-src-line=\"7\">Clickable</h2>"
+                                      "<p data-src-line=\"9\">not a heading</p>"));
+    QVERIFY(ready.wait(20000));
+
+    QSignalSpy clicked(&preview, &PreviewBackend::clickedSourceLine);
+    evalJs(preview, QStringLiteral("document.querySelector('p').click(); void 0"));
+    QTest::qWait(200);
+    QVERIFY(clicked.isEmpty()); // paragraphs are not clickable
+
+    evalJs(preview, QStringLiteral("document.querySelector('h2').click(); void 0"));
+    QElapsedTimer clock;
+    clock.start();
+    while (clicked.isEmpty() && clock.elapsed() < 5000) {
+        QTest::qWait(50);
+    }
+    QVERIFY(!clicked.isEmpty());
+    QCOMPARE(clicked.last().at(0).toInt(), 7);
 }
 
 QTEST_MAIN(TestPreview)
