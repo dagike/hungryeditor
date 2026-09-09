@@ -151,6 +151,9 @@ private:
     void syncPreviewToEditor();
     void syncEditorToPreview(int line);
 
+    // Clicking a heading in the preview drops the editor caret on its source.
+    void jumpEditorToLine(int line);
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);

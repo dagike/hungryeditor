@@ -61,6 +61,9 @@ signals:
     /// The viewer scrolled the preview; `line` is the source line of the block
     /// now at the top. Not emitted for scrollToSourceLine()'s own movement.
     void scrolledToSourceLine(int line);
+
+    /// The viewer clicked a heading in the preview; `line` is its source line.
+    void clickedSourceLine(int line);
 };
 
 } // namespace hungryeditor

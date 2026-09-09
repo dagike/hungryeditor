@@ -76,10 +76,18 @@ const char* const kShellHtml = R"HTML(<!doctype html>
         bridge.reportScroll(line);
       }
 
+      function reportHeadingClick(event) {
+        var el = event.target.closest("h1, h2, h3, h4, h5, h6");
+        if (el && el.hasAttribute("data-src-line")) {
+          bridge.reportClick(lineOf(el));
+        }
+      }
+
       bridge.contentChanged.connect(apply);
       bridge.themeCssChanged.connect(applyTheme);
       bridge.scrollToLineRequested.connect(scrollToLine);
       window.addEventListener("scroll", reportScroll, { passive: true });
+      target.addEventListener("click", reportHeadingClick);
 
       applyTheme(bridge.themeCss);
       apply(bridge.content);
@@ -103,6 +111,7 @@ QtWebEnginePreview::QtWebEnginePreview(QObject* parent)
     connect(view_.get(), &QWebEngineView::loadFinished, this, &PreviewBackend::loadFinished);
     connect(bridge_, &PreviewBridge::pageReady, this, &PreviewBackend::ready);
     connect(bridge_, &PreviewBridge::viewerScrolled, this, &PreviewBackend::scrolledToSourceLine);
+    connect(bridge_, &PreviewBridge::headingClicked, this, &PreviewBackend::clickedSourceLine);
 }
 
 QtWebEnginePreview::~QtWebEnginePreview() = default;

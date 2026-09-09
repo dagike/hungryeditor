@@ -42,12 +42,18 @@ signals:
     /// The viewer scrolled the page; `line` is the source line now at the top.
     void viewerScrolled(int line);
 
+    /// The viewer clicked a heading; `line` is its source line.
+    void headingClicked(int line);
+
 public slots:
     /// Called from the page once its QWebChannel handshake completes.
     void notifyReady() { emit pageReady(); }
 
     /// Called from the page's scroll handler.
     void reportScroll(int line) { emit viewerScrolled(line); }
+
+    /// Called from the page's heading click handler.
+    void reportClick(int line) { emit headingClicked(line); }
 
 private:
     QString content_;

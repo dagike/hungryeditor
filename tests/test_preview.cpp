@@ -22,6 +22,7 @@ private slots:
     void scrollToSourceLineMovesTheViewport();
     void scrollingThePageReportsASourceLine();
     void themeCssStylesTheRenderedContent();
+    void clickingAHeadingReportsItsSourceLine();
 };
 
 namespace {
@@ -183,6 +184,29 @@ void TestPreview::themeCssStylesTheRenderedContent()
         evalJs(preview, QStringLiteral("getComputedStyle(document.querySelector('h1')).color"))
             .toString();
     QCOMPARE(color, QStringLiteral("rgb(5, 80, 174)")); // #0550ae, the theme heading colour
+}
+
+void TestPreview::clickingAHeadingReportsItsSourceLine()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<h2 data-src-line=\"7\">Clickable</h2>"
+                                      "<p data-src-line=\"9\">not a heading</p>"));
+    QVERIFY(ready.wait(20000));
+
+    QSignalSpy clicked(&preview, &PreviewBackend::clickedSourceLine);
+    evalJs(preview, QStringLiteral("document.querySelector('p').click(); void 0"));
+    QTest::qWait(200);
+    QVERIFY(clicked.isEmpty()); // paragraphs are not clickable
+
+    evalJs(preview, QStringLiteral("document.querySelector('h2').click(); void 0"));
+    QElapsedTimer clock;
+    clock.start();
+    while (clicked.isEmpty() && clock.elapsed() < 5000) {
+        QTest::qWait(50);
+    }
+    QVERIFY(!clicked.isEmpty());
+    QCOMPARE(clicked.last().at(0).toInt(), 7);
 }
 
 QTEST_MAIN(TestPreview)

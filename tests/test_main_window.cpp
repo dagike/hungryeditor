@@ -59,6 +59,7 @@ private slots:
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
+    void clickingAPreviewHeadingMovesTheCaret();
 };
 
 namespace {
@@ -635,6 +636,26 @@ void TestMainWindow::scrollSyncsBothWays()
     window.previewBackend()->runJavaScript(
         QStringLiteral("window.scrollTo(0, document.body.scrollHeight); void 0"));
     QTRY_VERIFY_WITH_TIMEOUT(window.editor()->firstVisibleLine() > 0, 10000);
+}
+
+void TestMainWindow::clickingAPreviewHeadingMovesTheCaret()
+{
+    hungryeditor::MainWindow window;
+    window.resize(720, 320);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    //                              line 0        1  2      3  4       5  6
+    const QString doc = QStringLiteral("# One\n\npara\n\n## Two\n\nmore\n");
+    QSignalSpy ready(window.previewBackend(), &hungryeditor::PreviewBackend::ready);
+    window.editor()->setText(doc);
+    QVERIFY(ready.wait(20000));
+
+    window.editor()->setCursorPosition(0, 0);
+    window.previewBackend()->runJavaScript(
+        QStringLiteral("document.querySelectorAll('h2')[0].click(); void 0"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(window.editor()->cursorLine(), 4, 10000);
 }
 
 QTEST_MAIN(TestMainWindow)

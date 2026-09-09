@@ -103,6 +103,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(editor_, &Editor::viewportScrolled, this, &MainWindow::syncPreviewToEditor);
     connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
             &MainWindow::syncEditorToPreview);
+    connect(preview_.get(), &PreviewBackend::clickedSourceLine, this,
+            &MainWindow::jumpEditorToLine);
 
     buildMenus();
     setStateDirectory(defaultStateDirectory());
@@ -350,6 +352,14 @@ void MainWindow::syncEditorToPreview(int line)
     syncingScroll_ = true;
     editor_->setFirstVisibleLine(line);
     syncingScroll_ = false;
+}
+
+void MainWindow::jumpEditorToLine(int line)
+{
+    editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
+    if (viewMode_ == ViewMode::Split) {
+        editor_->setFocus();
+    }
 }
 
 QString MainWindow::currentPath() const
