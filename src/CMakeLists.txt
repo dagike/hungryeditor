@@ -3,7 +3,7 @@
 # Application logic lives in the `hungryeditor_core` static library so that it
 # can be exercised by the test tree; `hungryeditor` is a thin entry point.
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel)
 
 qt_standard_project_setup()
 
@@ -68,6 +68,10 @@ add_library(hungryeditor_core STATIC
     markdown/Md4cRenderer.cpp
     markdown/Md4cRenderer.h
     preview/PreviewBackend.h
+    preview/PreviewBridge.cpp
+    preview/PreviewBridge.h
+    preview/PreviewController.cpp
+    preview/PreviewController.h
     preview/QtWebEnginePreview.cpp
     preview/QtWebEnginePreview.h
 )
@@ -94,6 +98,7 @@ target_link_libraries(hungryeditor_core PUBLIC
 # preview do not drag Chromium into their link.
 target_link_libraries(hungryeditor_core PRIVATE
     Qt6::WebEngineWidgets
+    Qt6::WebChannel
     hungryeditor::md4c
 )
 
