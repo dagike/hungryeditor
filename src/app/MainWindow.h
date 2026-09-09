@@ -10,12 +10,14 @@
 class QAction;
 class QDragEnterEvent;
 class QDropEvent;
+class QMenu;
 
 namespace hungryeditor {
 
 class Document;
 class DocumentManager;
 class Editor;
+class RecentFiles;
 class SessionStore;
 class TabBar;
 
@@ -36,6 +38,13 @@ public:
 
     /// The document tab strip. Exposed for tests.
     TabBar* tabBar() const { return tabBar_; }
+
+    /// The "Open Recent" submenu. Exposed for tests.
+    QMenu* recentFilesMenu() const { return recentMenu_; }
+
+    /// Repopulate the "Open Recent" submenu from the stored list. Normally run
+    /// from the menu's aboutToShow; exposed for tests.
+    void refreshRecentFilesMenu();
 
     /// The open-document model. Exposed for tests.
     DocumentManager* documents() const { return documents_.get(); }
@@ -109,6 +118,10 @@ private:
     void buildMenus();
     void updateWindowTitle();
 
+    // Recent-files list and its menu.
+    void recordRecent(const QString& path);
+    void openRecent(const QString& path);
+
     // Tab strip <-> document model wiring.
     void primeTabs();
     void dropInitialBlankBuffer();
@@ -129,7 +142,9 @@ private:
     TabBar* tabBar_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;
+    std::unique_ptr<RecentFiles> recentFiles_;
     QAction* saveAction_ = nullptr;
+    QMenu* recentMenu_ = nullptr;
     QString lastError_;
     bool syncingTabs_ = false;
     bool reorderingTabs_ = false;

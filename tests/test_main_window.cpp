@@ -4,6 +4,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFile>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
 #include <QStandardPaths>
@@ -17,6 +18,7 @@
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
 #include "io/DraftStore.h"
+#include "io/RecentFiles.h"
 #include "io/SessionStore.h"
 
 class TestMainWindow : public QObject
@@ -43,6 +45,10 @@ private slots:
     void cleanShutdownWritesASession();
     void restoresTabsAndGeometryFromACleanSession();
     void sessionRestoreFallsBackToDraftRecovery();
+    void recentFilesMenuFillsAsFilesOpen();
+    void recentEntryReopensItsFile();
+    void pinnedRecentSurvivesManyOpens();
+    void clearRecentFilesKeepsPinned();
     void newAndSwitchActionsChangeCurrentDocument();
 };
 
@@ -55,6 +61,19 @@ QString writeText(const QString& path, const QByteArray& bytes)
     file.write(bytes);
     file.close();
     return path;
+}
+
+/// Paths of the file entries in the "Open Recent" submenu, top to bottom.
+QStringList recentEntryPaths(const QMenu* menu)
+{
+    QStringList paths;
+    for (const QAction* action : menu->actions()) {
+        const QString path = action->data().toString();
+        if (!path.isEmpty()) {
+            paths << path;
+        }
+    }
+    return paths;
 }
 
 } // namespace
@@ -352,6 +371,111 @@ void TestMainWindow::sessionRestoreFallsBackToDraftRecovery()
     QCOMPARE(window.documents()->count(), 1);
     QCOMPARE(window.editor()->text(), QStringLiteral("recovered text\n"));
     QVERIFY(window.editor()->isModified());
+}
+
+void TestMainWindow::recentFilesMenuFillsAsFilesOpen()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "a\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    QVERIFY(window.openPath(a));
+    QVERIFY(window.openPath(b));
+
+    window.refreshRecentFilesMenu();
+    const QStringList paths = recentEntryPaths(window.recentFilesMenu());
+    QCOMPARE(paths.size(), 2);
+    QCOMPARE(paths.at(0), b); // most recent first
+    QCOMPARE(paths.at(1), a);
+}
+
+void TestMainWindow::recentEntryReopensItsFile()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "aaa\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "bbb\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    QVERIFY(window.openPath(a));
+    QVERIFY(window.openPath(b));
+    QCOMPARE(window.currentPath(), b);
+
+    window.refreshRecentFilesMenu();
+    QAction* entryForA = nullptr;
+    for (QAction* action : window.recentFilesMenu()->actions()) {
+        if (action->data().toString() == a) {
+            entryForA = action;
+        }
+    }
+    QVERIFY(entryForA != nullptr);
+    entryForA->trigger();
+
+    QCOMPARE(window.currentPath(), a);
+    QCOMPARE(window.editor()->text(), QStringLiteral("aaa\n"));
+}
+
+void TestMainWindow::pinnedRecentSurvivesManyOpens()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString keep = writeText(files.filePath(QStringLiteral("keep.md")), "keep\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    QVERIFY(window.openPath(keep));
+
+    window.refreshRecentFilesMenu();
+    QAction* pin = window.findChild<QAction*>(QStringLiteral("action.pinCurrentFile"));
+    QVERIFY(pin != nullptr);
+    QVERIFY(pin->isEnabled());
+    QVERIFY(!pin->isChecked());
+    pin->trigger(); // pins keep.md
+
+    for (int i = 0; i < hungryeditor::RecentFiles::kMaxRecent + 5; ++i) {
+        const QString p = writeText(files.filePath(QStringLiteral("f%1.md").arg(i)), "x\n");
+        QVERIFY(window.openPath(p));
+    }
+
+    window.refreshRecentFilesMenu();
+    const QStringList paths = recentEntryPaths(window.recentFilesMenu());
+    QVERIFY(paths.contains(keep));
+    QCOMPARE(paths.first(), keep); // pinned entries lead the list
+}
+
+void TestMainWindow::clearRecentFilesKeepsPinned()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "a\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    QVERIFY(window.openPath(a));
+    window.refreshRecentFilesMenu();
+    window.findChild<QAction*>(QStringLiteral("action.pinCurrentFile"))->trigger(); // pin a
+    QVERIFY(window.openPath(b));
+
+    window.refreshRecentFilesMenu();
+    window.findChild<QAction*>(QStringLiteral("action.clearRecentFiles"))->trigger();
+
+    window.refreshRecentFilesMenu();
+    const QStringList paths = recentEntryPaths(window.recentFilesMenu());
+    QCOMPARE(paths.size(), 1);
+    QCOMPARE(paths.first(), a);
 }
 
 void TestMainWindow::hasNamedActions_data()

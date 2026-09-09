@@ -5,6 +5,8 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
@@ -20,6 +22,7 @@
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
 #include "io/DraftStore.h"
+#include "io/RecentFiles.h"
 #include "io/SessionStore.h"
 
 #ifndef HUNGRYEDITOR_VERSION
@@ -77,10 +80,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setCentralWidget(container);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
-    setStateDirectory(defaultStateDirectory());
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
     buildMenus();
+    setStateDirectory(defaultStateDirectory());
 
     connect(documents_.get(), &DocumentManager::documentAdded, this, &MainWindow::onDocumentAdded);
     connect(documents_.get(), &DocumentManager::documentClosed, this,
@@ -142,6 +145,11 @@ void MainWindow::buildMenus()
     QAction* openAction = fileMenu->addAction(tr("&Open…"), this, &MainWindow::openFileDialog);
     openAction->setShortcut(QKeySequence::Open);
     openAction->setObjectName(QStringLiteral("action.open"));
+
+    recentMenu_ = fileMenu->addMenu(tr("Open &Recent"));
+    recentMenu_->setObjectName(QStringLiteral("menu.openRecent"));
+    recentMenu_->menuAction()->setObjectName(QStringLiteral("action.openRecent"));
+    connect(recentMenu_, &QMenu::aboutToShow, this, &MainWindow::refreshRecentFilesMenu);
 
     saveAction_ = fileMenu->addAction(tr("&Save"), this, &MainWindow::save);
     saveAction_->setShortcut(QKeySequence::Save);
@@ -253,8 +261,11 @@ bool MainWindow::openFiles(const QStringList& paths)
         Document* document = documents_->openDocument(path, &error);
         if (document == nullptr) {
             failures.append(QStringLiteral("%1: %2").arg(path, error.message));
-        } else if (firstOpened == nullptr) {
-            firstOpened = document;
+        } else {
+            recordRecent(document->path());
+            if (firstOpened == nullptr) {
+                firstOpened = document;
+            }
         }
     }
 
@@ -314,6 +325,82 @@ void MainWindow::setStateDirectory(const QString& directory)
 {
     documents_->setDraftDirectory(directory + QLatin1String("/drafts"));
     sessionStore_ = std::make_unique<SessionStore>(directory + QLatin1String("/session.json"));
+    recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));
+    refreshRecentFilesMenu();
+}
+
+void MainWindow::refreshRecentFilesMenu()
+{
+    if (recentMenu_ == nullptr || recentFiles_ == nullptr) {
+        return;
+    }
+    // Rebuilt only from aboutToShow (or a test), never from inside an action's
+    // own handler — clearing the menu there would delete the running action.
+    recentMenu_->clear();
+
+    bool anyShown = false;
+    for (const RecentFile& entry : recentFiles_->entries()) {
+        if (!QFileInfo::exists(entry.path)) {
+            continue; // keep it on disk, just do not offer a dead link
+        }
+        const QString name = QFileInfo(entry.path).fileName();
+        const QString label =
+            entry.pinned ? QString(QChar(0x2605)) + QLatin1String("  ") + name : name;
+        QAction* action = recentMenu_->addAction(label);
+        action->setData(entry.path);
+        action->setToolTip(entry.path);
+        const QString path = entry.path;
+        connect(action, &QAction::triggered, this, [this, path] { openRecent(path); });
+        anyShown = true;
+    }
+    if (!anyShown) {
+        QAction* none = recentMenu_->addAction(tr("No Recent Files"));
+        none->setEnabled(false);
+    }
+
+    recentMenu_->addSeparator();
+
+    const QString current = currentPath();
+    QAction* pin = recentMenu_->addAction(tr("Pin Current File"));
+    pin->setObjectName(QStringLiteral("action.pinCurrentFile"));
+    pin->setCheckable(true);
+    pin->setEnabled(!current.isEmpty());
+    pin->setChecked(!current.isEmpty() && recentFiles_->isPinned(current));
+    connect(pin, &QAction::triggered, this, [this](bool checked) {
+        const QString path = currentPath();
+        if (!path.isEmpty()) {
+            recentFiles_->setPinned(path, checked);
+            recentFiles_->save();
+        }
+    });
+
+    QAction* clear = recentMenu_->addAction(tr("Clear Recent Files"));
+    clear->setObjectName(QStringLiteral("action.clearRecentFiles"));
+    connect(clear, &QAction::triggered, this, [this] {
+        recentFiles_->clearUnpinned();
+        recentFiles_->save();
+    });
+}
+
+void MainWindow::recordRecent(const QString& path)
+{
+    if (path.isEmpty() || recentFiles_ == nullptr) {
+        return;
+    }
+    recentFiles_->noteOpened(path);
+    recentFiles_->save();
+}
+
+void MainWindow::openRecent(const QString& path)
+{
+    if (openPath(path)) {
+        return;
+    }
+    if (recentFiles_ != nullptr) {
+        recentFiles_->forget(path);
+        recentFiles_->save();
+    }
+    QMessageBox::warning(this, tr("Open Failed"), lastError_);
 }
 
 void MainWindow::restoreLastSession(bool askFirst)
@@ -379,6 +466,7 @@ bool MainWindow::savePath(const QString& path)
         return false;
     }
     lastError_.clear();
+    recordRecent(document->path());
     return true;
 }
 
