@@ -9,6 +9,7 @@
 #   tree-sitter      0.24.7 (MIT, see tree-sitter/LICENSE)
 #   tree-sitter-md   0.4.1  (MIT, see tree-sitter-markdown/LICENSE)
 #   grammars/*       18 language grammars (all MIT, see THIRD_PARTY.md)
+#   md4c             0.5.2  (MIT, see md4c/LICENSE.md)
 
 # --- helper: quiet a vendored target --------------------------------------
 function(_vendor_quiet target)
@@ -147,4 +148,25 @@ if(MSVC)
     target_compile_options(treesitter PRIVATE /w)
 else()
     target_compile_options(treesitter PRIVATE -w)
+endif()
+
+# =========================================================================
+# md4c  (CommonMark + GFM parser — feeds the HTML preview, C99)
+# =========================================================================
+set(_md4c "${CMAKE_CURRENT_SOURCE_DIR}/md4c")
+
+add_library(md4c STATIC "${_md4c}/src/md4c.c")
+add_library(hungryeditor::md4c ALIAS md4c)
+
+target_include_directories(md4c SYSTEM PUBLIC "${_md4c}/src")
+
+set_target_properties(md4c PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON)
+
+if(MSVC)
+    target_compile_options(md4c PRIVATE /w)
+else()
+    target_compile_options(md4c PRIVATE -w)
 endif()

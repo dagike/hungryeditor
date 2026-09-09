@@ -65,6 +65,8 @@ add_library(hungryeditor_core STATIC
     io/SessionStore.h
     io/TextFile.cpp
     io/TextFile.h
+    markdown/Md4cRenderer.cpp
+    markdown/Md4cRenderer.h
     preview/PreviewBackend.h
     preview/QtWebEnginePreview.cpp
     preview/QtWebEnginePreview.h
@@ -90,7 +92,10 @@ target_link_libraries(hungryeditor_core PUBLIC
 
 # Preview engine only — kept private so tests and code that never touch the
 # preview do not drag Chromium into their link.
-target_link_libraries(hungryeditor_core PRIVATE Qt6::WebEngineWidgets)
+target_link_libraries(hungryeditor_core PRIVATE
+    Qt6::WebEngineWidgets
+    hungryeditor::md4c
+)
 
 hungryeditor_set_warnings(hungryeditor_core)
 

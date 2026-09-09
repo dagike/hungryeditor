@@ -71,6 +71,10 @@ hungryeditor_add_test(test_tab_bar
     SOURCES test_tab_bar.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_md4c_renderer
+    SOURCES test_md4c_renderer.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_preview
     SOURCES test_preview.cpp
     LIBS hungryeditor::core)
