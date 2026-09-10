@@ -12,6 +12,8 @@
 #   md4c             0.5.2  (MIT, see md4c/LICENSE.md)
 #   mermaid          10.9.1 (MIT, see mermaid/LICENSE) — data file, embedded as a
 #                           Qt resource for the preview; no build target here
+#   KaTeX            0.16.11 (MIT, see katex/LICENSE) — js/css/woff2 data files,
+#                           embedded as Qt resources for the preview; no target
 
 # --- helper: quiet a vendored target --------------------------------------
 function(_vendor_quiet target)

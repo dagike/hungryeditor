@@ -112,6 +112,18 @@ qt_add_resources(hungryeditor_core "preview_assets"
     BASE "${CMAKE_SOURCE_DIR}/third_party/mermaid"
     FILES "${CMAKE_SOURCE_DIR}/third_party/mermaid/mermaid.min.js")
 
+# KaTeX: the script, its stylesheet, and the woff2 faces the stylesheet asks
+# for. Kept at the same prefix so katex.min.css resolves url(fonts/…) here.
+file(GLOB _katex_fonts CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/third_party/katex/fonts/*.woff2")
+qt_add_resources(hungryeditor_core "katex_assets"
+    PREFIX "/hungryeditor/preview"
+    BASE "${CMAKE_SOURCE_DIR}/third_party/katex"
+    FILES
+        "${CMAKE_SOURCE_DIR}/third_party/katex/katex.min.js"
+        "${CMAKE_SOURCE_DIR}/third_party/katex/katex.min.css"
+        ${_katex_fonts})
+
 target_include_directories(hungryeditor_core
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

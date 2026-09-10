@@ -342,6 +342,14 @@ int enterSpan(MD_SPANTYPE type, void* detail, void* userdata)
     case MD_SPAN_CODE:
         ctx.out += "<code>";
         break;
+    case MD_SPAN_LATEXMATH:
+        // The TeX body flows through as escaped text; KaTeX renders it in the
+        // preview shell, reading it back from the span's textContent.
+        ctx.out += "<span class=\"math-inline\">";
+        break;
+    case MD_SPAN_LATEXMATH_DISPLAY:
+        ctx.out += "<span class=\"math-display\">";
+        break;
     case MD_SPAN_A: {
         const auto* d = static_cast<const MD_SPAN_A_DETAIL*>(detail);
         ctx.out += "<a href=\"";
@@ -384,6 +392,10 @@ int leaveSpan(MD_SPANTYPE type, void* detail, void* userdata)
         break;
     case MD_SPAN_CODE:
         ctx.out += "</code>";
+        break;
+    case MD_SPAN_LATEXMATH:
+    case MD_SPAN_LATEXMATH_DISPLAY:
+        ctx.out += "</span>";
         break;
     case MD_SPAN_A:
         ctx.out += "</a>";
@@ -588,7 +600,8 @@ QString Md4cRenderer::toHtml(const QString& markdown) const
 
     MD_PARSER parser{};
     parser.abi_version = 0;
-    parser.flags = MD_DIALECT_GITHUB; // tables, task lists, strikethrough, autolinks
+    // tables, task lists, strikethrough, autolinks; plus $…$ / $$…$$ math spans
+    parser.flags = MD_DIALECT_GITHUB | MD_FLAG_LATEXMATHSPANS;
     parser.enter_block = enterBlock;
     parser.leave_block = leaveBlock;
     parser.enter_span = enterSpan;

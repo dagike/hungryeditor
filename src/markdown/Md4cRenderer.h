@@ -10,8 +10,10 @@ namespace hungryeditor {
 /// zero-based source line it originates from — so the preview can keep its
 /// scroll position aligned with the editor and move the caret when a heading
 /// is clicked. Parsing follows the GitHub dialect: tables, task lists,
-/// strikethrough and bare-URL autolinks. Footnotes (`[^id]` / `[^id]: text`),
-/// which md4c 0.5.2 has no native support for, are handled by a pre/post pass.
+/// strikethrough and bare-URL autolinks, plus `$…$` / `$$…$$` LaTeX math spans
+/// (emitted as `<span class="math-inline">` / `"math-display"` for the preview
+/// shell's KaTeX pass). Footnotes (`[^id]` / `[^id]: text`), which md4c 0.5.2
+/// has no native support for, are handled by a pre/post pass.
 class Md4cRenderer
 {
 public:

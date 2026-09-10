@@ -30,12 +30,14 @@ const char* const kShellHtml = R"HTML(<!doctype html>
   }
   #hungryeditor-content > :first-child { margin-top: 0; }
 </style>
+<link rel="stylesheet" href="qrc:///hungryeditor/preview/katex.min.css">
 <style id="he-theme"></style>
 </head>
 <body>
 <div id="hungryeditor-content"></div>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <script src="qrc:///hungryeditor/preview/mermaid.min.js"></script>
+<script src="qrc:///hungryeditor/preview/katex.min.js"></script>
 <script>
   "use strict";
 
@@ -43,6 +45,8 @@ const char* const kShellHtml = R"HTML(<!doctype html>
   if (mermaidReady) {
     mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
   }
+
+  var katexReady = typeof katex !== "undefined";
 
   window.addEventListener("load", function () {
     new QWebChannel(qt.webChannelTransport, function (channel) {
@@ -76,7 +80,21 @@ const char* const kShellHtml = R"HTML(<!doctype html>
         }
       }
 
-      function apply(html) { target.innerHTML = html; renderMermaid(); }
+      function renderMath() {
+        if (!katexReady) return;
+        var spans = target.querySelectorAll(".math-inline, .math-display");
+        for (var i = 0; i < spans.length; i++) {
+          var span = spans[i];
+          if (span.dataset.rendered) continue;
+          span.dataset.rendered = "1";
+          katex.render(span.textContent, span, {
+            displayMode: span.classList.contains("math-display"),
+            throwOnError: false
+          });
+        }
+      }
+
+      function apply(html) { target.innerHTML = html; renderMermaid(); renderMath(); }
       function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
 
       function blocks() { return target.querySelectorAll("[data-src-line]"); }

@@ -25,6 +25,7 @@ private slots:
     void clickingAHeadingReportsItsSourceLine();
     void togglingATaskCheckboxReportsItsLineAndState();
     void rendersABundledMermaidDiagram();
+    void rendersBundledKatexMath();
 };
 
 namespace {
@@ -267,6 +268,31 @@ void TestPreview::rendersABundledMermaidDiagram()
     QVERIFY(
         !evalJs(preview, QStringLiteral("document.querySelector('code.language-mermaid') != null"))
              .toBool()); // the <pre> was swapped out
+}
+
+void TestPreview::rendersBundledKatexMath()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral(
+        "<p data-src-line=\"0\">Mass energy: <span class=\"math-inline\">E = mc^2</span></p>"));
+    QVERIFY(ready.wait(20000));
+
+    // KaTeX renders synchronously once its bundle has parsed; poll for the
+    // markup it injects into the span.
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (probe.isEmpty() && clock.elapsed() < 20000) {
+        probe =
+            evalJs(preview, QStringLiteral("(function () {"
+                                           "  var s = document.querySelector('.math-inline');"
+                                           "  return s && s.querySelector('.katex') ? 'ok' : '';"
+                                           "})()"))
+                .toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("ok"));
 }
 
 QTEST_MAIN(TestPreview)

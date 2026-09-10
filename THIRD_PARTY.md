@@ -11,6 +11,7 @@ upstream as practical — only build scripts and IDE project files were removed.
 | tree-sitter-markdown | 0.4.1 | https://github.com/tree-sitter-grammars/tree-sitter-markdown | MIT — `third_party/tree-sitter-markdown/LICENSE` |
 | md4c | 0.5.2 (`release-0.5.2`) | https://github.com/mity/md4c | MIT — `third_party/md4c/LICENSE.md` |
 | mermaid | 10.9.1 | https://github.com/mermaid-js/mermaid | MIT — `third_party/mermaid/LICENSE` |
+| KaTeX | 0.16.11 | https://github.com/KaTeX/KaTeX | MIT — `third_party/katex/LICENSE` |
 
 ### Language grammars (`third_party/grammars/`)
 
@@ -68,6 +69,12 @@ Each grammar's `LICENSE` is kept alongside its sources.
   (`qrc:/hungryeditor/preview/mermaid.min.js`) and loaded by the preview shell
   page, so ` ```mermaid ` diagrams render with no network access. Nothing links
   against it.
+- **KaTeX** ships the same way: the pre-built `katex.min.js` / `katex.min.css`
+  from the npm tarball's `dist/`, plus the 20 `fonts/*.woff2` faces the
+  stylesheet requests (the `.woff` / `.ttf` fallbacks are dropped — every
+  supported browser picks woff2). All embedded at
+  `qrc:/hungryeditor/preview/`, so `$…$` / `$$…$$` math renders offline. Not
+  compiled, nothing links against it.
 - All components are used under permissive terms that require preserving the
   copyright notice and permission text, reproduced in the license files above
   and in the application's about box (added in a later phase).
