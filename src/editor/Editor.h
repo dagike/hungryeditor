@@ -137,6 +137,16 @@ public:
     /// to Scintilla. Bound to Ctrl+V and Shift+Insert.
     bool handleSmartPaste();
 
+    /// When the caret is inside a GFM pipe table, move it to the next (or
+    /// previous) cell — realigning the whole table and appending a blank row
+    /// when Tab steps past the last one — and select that cell's text. Returns
+    /// false (for a plain tab / dedent) when the caret is not in a table.
+    /// Bound to Tab and Shift+Tab.
+    bool navigateTableCell(bool forward);
+
+    /// Realign the pipe table under the caret in place. No-op otherwise.
+    void formatTable();
+
     /// Position of the bracket that pairs with the one at `position`, or -1 if
     /// there is no bracket there or it is unbalanced.
     int matchingBrace(int position) const;
@@ -223,6 +233,12 @@ private:
 
     /// Highlight the bracket pair around the caret (or flag an unmatched one).
     void updateBraceHighlight();
+    /// Shared engine for navigateTableCell()/formatTable(): realign the pipe
+    /// table around the caret, optionally moving the caret one cell (`forward`
+    /// direction) and selecting it. Returns false when the caret is not in a
+    /// table.
+    bool reflowTable(bool moveCaret, bool forward);
+
     /// Insert a newline that carries the current line's indentation and, if it
     /// is a Markdown list item, its (renumbered) marker — or, on an empty item,
     /// removes the marker instead. Returns false to fall back to a plain

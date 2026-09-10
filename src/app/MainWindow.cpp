@@ -379,6 +379,11 @@ void MainWindow::buildMenus()
                     QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_7),
                     [this] { editor_->toggleNumberedList(); });
 
+    formatMenu->addSeparator();
+    addFormatAction(tr("Format &Table"), QStringLiteral("action.formatTable"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T),
+                    [this] { editor_->formatTable(); });
+
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewModeGroup_ = new QActionGroup(this);
 

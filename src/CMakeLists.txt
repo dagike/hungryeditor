@@ -47,6 +47,8 @@ add_library(hungryeditor_core STATIC
     editor/DocumentManager.h
     editor/Editor.cpp
     editor/Editor.h
+    editor/MarkdownTable.cpp
+    editor/MarkdownTable.h
     highlight/CaptureStyles.cpp
     highlight/CaptureStyles.h
     highlight/CodeHighlighter.cpp

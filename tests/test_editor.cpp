@@ -39,6 +39,9 @@ private slots:
     void insertsMarkdownLinks();
     void smartPasteWrapsAUrlSelectionInALink();
     void smartPasteLeavesPlainTextAlone();
+    void tabNavigatesTableCellsAndAppendsRows();
+    void formatTableAlignsColumns();
+    void tabOutsideATableIsNotConsumed();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -447,6 +450,55 @@ void TestEditor::smartPasteLeavesPlainTextAlone()
     QVERIFY(!editor.handleSmartPaste());
 
     QCOMPARE(editor.text(), QStringLiteral("word\n"));
+}
+
+void TestEditor::tabNavigatesTableCellsAndAppendsRows()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("| A | B |\n|---|---|\n| 1 | 2 |\n"));
+    editor.setCursorPosition(0, 2); // inside "A"
+
+    QVERIFY(editor.navigateTableCell(true));
+    QCOMPARE(editor.selectedText(), QStringLiteral("B"));
+
+    QVERIFY(editor.navigateTableCell(true));
+    QCOMPARE(editor.selectedText(), QStringLiteral("1"));
+    QVERIFY(editor.navigateTableCell(true));
+    QCOMPARE(editor.selectedText(), QStringLiteral("2"));
+
+    QVERIFY(editor.navigateTableCell(true)); // past the last cell: new row
+    QCOMPARE(editor.selectedText(), QString());
+    QCOMPARE(editor.text(),
+             QStringLiteral("| A   | B   |\n| --- | --- |\n| 1   | 2   |\n|     |     |\n"));
+
+    QVERIFY(editor.navigateTableCell(false));
+    QCOMPARE(editor.selectedText(), QStringLiteral("2")); // Shift+Tab walks back
+}
+
+void TestEditor::formatTableAlignsColumns()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("| Name | Age |\n|:--|--:|\n| Bob | 3 |\n| Alexander | 42 |\n"));
+    editor.setCursorPosition(2, 4);
+
+    editor.formatTable();
+
+    QCOMPARE(editor.text(), QStringLiteral("| Name      | Age |\n"
+                                           "| :-------- | --: |\n"
+                                           "| Bob       |   3 |\n"
+                                           "| Alexander |  42 |\n"));
+    QVERIFY(editor.cursorLine() >= 0 && editor.cursorLine() <= 3);
+}
+
+void TestEditor::tabOutsideATableIsNotConsumed()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("just prose here\n"));
+    editor.call().GotoPos(editor.call().LineEndPosition(0));
+    QVERIFY(!editor.navigateTableCell(true));
+
+    editor.formatTable(); // a no-op that must not disturb the buffer
+    QCOMPARE(editor.text(), QStringLiteral("just prose here\n"));
 }
 
 void TestEditor::visualDefaultsAreApplied()

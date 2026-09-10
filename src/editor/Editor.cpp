@@ -25,6 +25,7 @@
 #include <tree_sitter/api.h>
 
 #include "editor/Document.h"
+#include "editor/MarkdownTable.h"
 #include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
@@ -777,6 +778,180 @@ void Editor::insertLink()
     call_.EndUndoAction();
 }
 
+namespace {
+
+int unescapedPipesBefore(const std::string& text)
+{
+    int pipes = 0;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\\') {
+            ++i;
+            continue;
+        }
+        if (text[i] == '|') {
+            ++pipes;
+        }
+    }
+    return pipes;
+}
+
+/// Byte offsets [start, end) of column `col`'s trimmed content within a
+/// rendered table line (which always begins and ends with a pipe).
+std::pair<int, int> cellContentSpan(const std::string& line, int col)
+{
+    int seen = 0;
+    int startPipe = -1;
+    int endPipe = -1;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '\\') {
+            ++i;
+            continue;
+        }
+        if (line[i] != '|') {
+            continue;
+        }
+        if (seen == col) {
+            startPipe = static_cast<int>(i);
+        } else if (seen == col + 1) {
+            endPipe = static_cast<int>(i);
+            break;
+        }
+        ++seen;
+    }
+    if (startPipe < 0) {
+        return {static_cast<int>(line.size()), static_cast<int>(line.size())};
+    }
+    auto start = static_cast<std::size_t>(startPipe + 1);
+    auto end = endPipe < 0 ? line.size() : static_cast<std::size_t>(endPipe);
+    while (start < end && line[start] == ' ') {
+        ++start;
+    }
+    while (end > start && line[end - 1] == ' ') {
+        --end;
+    }
+    return {static_cast<int>(start), static_cast<int>(end)};
+}
+
+} // namespace
+
+bool Editor::reflowTable(bool moveCaret, bool forward)
+{
+    if (call_.Selections() != 1) {
+        return false;
+    }
+
+    const Scintilla::Position caret = call_.CurrentPos();
+    const int caretLine = static_cast<int>(call_.LineFromPosition(caret));
+
+    const QStringList qlines = text().split(QLatin1Char('\n'));
+    std::vector<std::string> lines;
+    lines.reserve(static_cast<std::size_t>(qlines.size()));
+    for (const QString& line : qlines) {
+        lines.push_back(line.toStdString());
+    }
+    const auto lineAt = [&](int i) -> const std::string& {
+        return lines[static_cast<std::size_t>(i)];
+    };
+
+    const mdtable::TableRegion region = mdtable::findTableRegion(lines, caretLine);
+    if (!region.valid) {
+        return false;
+    }
+
+    const std::vector<mdtable::ColumnAlign> aligns =
+        mdtable::parseAlignments(lineAt(region.firstLine + 1));
+
+    // Content rows: the header plus every row below the delimiter.
+    std::vector<std::vector<std::string>> grid;
+    grid.push_back(mdtable::splitCells(lineAt(region.firstLine)));
+    for (int l = region.firstLine + 2; l <= region.lastLine; ++l) {
+        grid.push_back(mdtable::splitCells(lineAt(l)));
+    }
+
+    int columns = static_cast<int>(aligns.size());
+    for (const std::vector<std::string>& row : grid) {
+        columns = std::max(columns, static_cast<int>(row.size()));
+    }
+
+    // Which logical cell the caret sits in.
+    const std::string before = call_.StringOfSpan({call_.PositionFromLine(caretLine), caret});
+    const std::string& caretText = lineAt(caretLine);
+    const std::size_t firstNonSpace = caretText.find_first_not_of(" \t");
+    const bool leadingPipe = firstNonSpace != std::string::npos && caretText[firstNonSpace] == '|';
+    int col = std::clamp(unescapedPipesBefore(before) - (leadingPipe ? 1 : 0), 0, columns - 1);
+    int row = (caretLine <= region.firstLine + 1) ? 0 : caretLine - region.firstLine - 1;
+
+    if (moveCaret && forward) {
+        if (++col >= columns) {
+            col = 0;
+            ++row;
+        }
+        if (row >= static_cast<int>(grid.size())) {
+            grid.emplace_back();
+        }
+    } else if (moveCaret) {
+        if (--col < 0) {
+            if (--row < 0) {
+                row = 0;
+                col = 0;
+            } else {
+                col = columns - 1;
+            }
+        }
+    }
+
+    const std::string rendered = mdtable::renderAligned(grid, aligns);
+    const Scintilla::Position regionStart = call_.PositionFromLine(region.firstLine);
+    const Scintilla::Position regionEnd = call_.LineEndPosition(region.lastLine);
+
+    call_.BeginUndoAction();
+    call_.SetTargetRange(regionStart, regionEnd);
+    call_.ReplaceTarget(static_cast<Scintilla::Position>(rendered.size()), rendered.c_str());
+
+    // Locate the target cell in the freshly rendered text (row 0 is the header,
+    // row 1 the delimiter, so data rows shift down by one).
+    std::vector<std::string> renderedLines;
+    std::string current;
+    for (const char ch : rendered) {
+        if (ch == '\n') {
+            renderedLines.push_back(current);
+            current.clear();
+        } else {
+            current += ch;
+        }
+    }
+    renderedLines.push_back(current);
+
+    int renderedRow = (row == 0) ? 0 : row + 1;
+    renderedRow = std::min(renderedRow, static_cast<int>(renderedLines.size()) - 1);
+    Scintilla::Position lineOffset = 0;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(renderedRow); ++i) {
+        lineOffset += static_cast<Scintilla::Position>(renderedLines[i].size()) + 1;
+    }
+    const auto [cellStart, cellEnd] =
+        cellContentSpan(renderedLines[static_cast<std::size_t>(renderedRow)], col);
+
+    const Scintilla::Position selStart = regionStart + lineOffset + cellStart;
+    if (moveCaret) {
+        call_.SetSelection(regionStart + lineOffset + cellEnd, selStart);
+    } else {
+        call_.GotoPos(selStart);
+    }
+    call_.EndUndoAction();
+    call_.ScrollCaret();
+    return true;
+}
+
+bool Editor::navigateTableCell(bool forward)
+{
+    return reflowTable(/*moveCaret=*/true, forward);
+}
+
+void Editor::formatTable()
+{
+    reflowTable(/*moveCaret=*/false, /*forward=*/true);
+}
+
 void Editor::setImagePasteHandler(ImagePasteHandler handler)
 {
     imagePasteHandler_ = std::move(handler);
@@ -1370,6 +1545,18 @@ void Editor::keyPressEvent(QKeyEvent* event)
         (event->matches(QKeySequence::Paste) ||
          (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ShiftModifier));
     if (paste && handleSmartPaste()) {
+        event->accept();
+        return;
+    }
+
+    if (event->key() == Qt::Key_Tab && event->modifiers() == Qt::NoModifier &&
+        navigateTableCell(/*forward=*/true)) {
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Backtab &&
+        (event->modifiers() & ~Qt::ShiftModifier) == Qt::NoModifier &&
+        navigateTableCell(/*forward=*/false)) {
         event->accept();
         return;
     }
