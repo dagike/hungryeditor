@@ -184,6 +184,8 @@ private:
     void onDocumentAdded(int index);
     void onDocumentClosed(int index);
     void onCurrentChanged(int index);
+    /// Enable / check the "Fold Front Matter" action for the current buffer.
+    void updateFrontMatterAction();
 
     // External file-change handling.
     void onFileChangedExternally(int index);
@@ -210,6 +212,7 @@ private:
     std::unique_ptr<PreviewBackend> preview_;
     std::unique_ptr<PreviewController> previewController_;
     QAction* saveAction_ = nullptr;
+    QAction* foldFrontMatterAction_ = nullptr;
     QMenu* recentMenu_ = nullptr;
     QActionGroup* viewModeGroup_ = nullptr;
     ViewMode viewMode_ = ViewMode::Split;

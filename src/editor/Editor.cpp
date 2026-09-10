@@ -29,6 +29,7 @@
 #include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
+#include "markdown/FrontMatter.h"
 
 extern "C" const TSLanguage* tree_sitter_markdown(void);
 
@@ -70,6 +71,18 @@ constexpr int kFoldMargin = 2;
 constexpr int kMinLineDigits = 3;
 constexpr int kTabWidth = 4;
 constexpr int kFindIndicator = 20; // in the user range (8..31)
+constexpr int kFoldMarginWidth = 14;
+
+/// Build a Scintilla fold level: `SC_FOLDLEVELBASE + number`, with the header
+/// flag when `header` is set. The enum has no `operator|`.
+Scintilla::FoldLevel foldLevel(int number, bool header)
+{
+    int bits = static_cast<int>(Scintilla::FoldLevel::Base) + number;
+    if (header) {
+        bits |= static_cast<int>(Scintilla::FoldLevel::HeaderFlag);
+    }
+    return static_cast<Scintilla::FoldLevel>(bits);
+}
 
 Scintilla::FindOption searchFlags(const Editor::SearchOptions& options)
 {
@@ -1135,6 +1148,7 @@ void Editor::attachDocument(Document* document)
     updateHighlightTier(/*force=*/true);
     lineDigits_ = 0;
     updateLineNumberMargin();
+    updateFrontMatterFold();
 }
 
 void Editor::applyVisualDefaults()
@@ -1196,7 +1210,33 @@ void Editor::applyVisualDefaults()
 
     call_.SetMarginTypeN(kLineNumberMargin, Scintilla::MarginType::Number);
     call_.SetMarginWidthN(kSymbolMargin, 0);
-    call_.SetMarginWidthN(kFoldMargin, 0);
+
+    // Fold margin: used only for the YAML front-matter block, so it stays
+    // hidden (width 0) until updateFrontMatterFold() finds one.
+    call_.SetMarginTypeN(kFoldMargin, Scintilla::MarginType::Symbol);
+    call_.SetMarginMaskN(kFoldMargin, Scintilla::MaskFolders);
+    call_.SetMarginSensitiveN(kFoldMargin, true);
+    call_.SetMarginWidthN(kFoldMargin, frontMatterLastLine_ >= 0 ? kFoldMarginWidth : 0);
+    const auto defineFold = [&](Scintilla::MarkerOutline marker, Scintilla::MarkerSymbol symbol) {
+        const int n = static_cast<int>(marker);
+        call_.MarkerDefine(n, symbol);
+        call_.MarkerSetFore(n, sciColour(palette.lineNumberText));
+        call_.MarkerSetBack(n, sciColour(palette.background));
+    };
+    defineFold(Scintilla::MarkerOutline::Folder, Scintilla::MarkerSymbol::BoxPlus);
+    defineFold(Scintilla::MarkerOutline::FolderOpen, Scintilla::MarkerSymbol::BoxMinus);
+    defineFold(Scintilla::MarkerOutline::FolderEnd, Scintilla::MarkerSymbol::BoxPlusConnected);
+    defineFold(Scintilla::MarkerOutline::FolderOpenMid, Scintilla::MarkerSymbol::BoxMinusConnected);
+    defineFold(Scintilla::MarkerOutline::FolderMidTail, Scintilla::MarkerSymbol::TCorner);
+    defineFold(Scintilla::MarkerOutline::FolderSub, Scintilla::MarkerSymbol::VLine);
+    defineFold(Scintilla::MarkerOutline::FolderTail, Scintilla::MarkerSymbol::LCorner);
+    call_.SetAutomaticFold(
+        static_cast<Scintilla::AutomaticFold>(static_cast<int>(Scintilla::AutomaticFold::Show) |
+                                              static_cast<int>(Scintilla::AutomaticFold::Click) |
+                                              static_cast<int>(Scintilla::AutomaticFold::Change)));
+    call_.SetFoldFlags(Scintilla::FoldFlag::LineAfterContracted);
+    call_.SetDefaultFoldDisplayText(" \342\200\246"); // " ..."
+    call_.FoldDisplayTextSetStyle(Scintilla::FoldDisplayTextStyle::Standard);
 
     applySyntaxStyles();
 
@@ -1340,6 +1380,47 @@ void Editor::updateLineNumberMargin()
     call_.SetMarginWidthN(kLineNumberMargin, width);
 }
 
+void Editor::updateFrontMatterFold()
+{
+    const frontmatter::FrontMatter front = frontmatter::parse(text());
+    frontMatterLastLine_ = front.present ? front.lastLine : -1;
+
+    if (!front.present) {
+        call_.SetMarginWidthN(kFoldMargin, 0);
+        call_.SetFoldLevel(0, foldLevel(0, /*header=*/false));
+        return;
+    }
+
+    const int through = std::min(front.lastLine + 1, lineCount() - 1);
+    for (int line = 0; line <= through; ++line) {
+        const bool inside = line >= 1 && line <= front.lastLine;
+        call_.SetFoldLevel(line, foldLevel(inside ? 1 : 0, /*header=*/line == 0));
+    }
+    call_.SetMarginWidthN(kFoldMargin, kFoldMarginWidth);
+}
+
+bool Editor::hasFrontMatter() const
+{
+    return frontMatterLastLine_ >= 0;
+}
+
+bool Editor::isFrontMatterFolded() const
+{
+    return frontMatterLastLine_ >= 0 && !call_.FoldExpanded(0);
+}
+
+void Editor::setFrontMatterFolded(bool folded)
+{
+    if (frontMatterLastLine_ < 0) {
+        return;
+    }
+    const int caret = cursorLine();
+    if (caret >= 0 && caret <= frontMatterLastLine_) {
+        return; // don't collapse the block out from under the caret
+    }
+    call_.FoldLine(0, folded ? Scintilla::FoldAction::Contract : Scintilla::FoldAction::Expand);
+}
+
 void Editor::onNotify(Scintilla::NotificationData* notification)
 {
     using Scintilla::FlagSet;
@@ -1355,6 +1436,7 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
                 updateLineNumberMargin();
             }
             updateHighlightTier();
+            updateFrontMatterFold();
             emit textChanged();
         }
         break;

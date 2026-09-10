@@ -111,6 +111,10 @@ hungryeditor_add_test(test_code_highlighter
     SOURCES test_code_highlighter.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_front_matter
+    SOURCES test_front_matter.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_md4c_renderer
     SOURCES test_md4c_renderer.cpp
     LIBS hungryeditor::core)

@@ -14,6 +14,7 @@
 
 #include "highlight/CaptureStyles.h"
 #include "highlight/CodeHighlighter.h"
+#include "markdown/FrontMatter.h"
 
 namespace hungryeditor {
 
@@ -560,7 +561,19 @@ QString stripParagraphWrapper(QString html)
 
 QString Md4cRenderer::toHtml(const QString& markdown) const
 {
-    const FootnoteData footnotes = extractFootnotes(markdown);
+    // Lift a leading YAML front-matter block out before parsing — its lines are
+    // blanked (not removed) so every other block keeps its source line.
+    const frontmatter::FrontMatter front = frontmatter::parse(markdown);
+    QString source = markdown;
+    if (front.present) {
+        QStringList lines = source.split(QLatin1Char('\n'));
+        for (int i = front.firstLine; i <= front.lastLine && i < lines.size(); ++i) {
+            lines[i].clear();
+        }
+        source = lines.join(QLatin1Char('\n'));
+    }
+
+    const FootnoteData footnotes = extractFootnotes(source);
     const QByteArray input = footnotes.markdown.toUtf8();
 
     RenderContext ctx;
@@ -591,6 +604,18 @@ QString Md4cRenderer::toHtml(const QString& markdown) const
     }
 
     QString html = QString::fromUtf8(ctx.out);
+
+    if (front.present && !front.fields.isEmpty()) {
+        QString card =
+            QStringLiteral("<div class=\"front-matter-card\" data-src-line=\"0\">\n<dl>\n");
+        for (const QPair<QString, QString>& field : front.fields) {
+            card += QStringLiteral("<dt>") + field.first.toHtmlEscaped() + QStringLiteral("</dt>");
+            card += QStringLiteral("<dd>") + stripParagraphWrapper(toHtml(field.second)) +
+                    QStringLiteral("</dd>\n");
+        }
+        card += QStringLiteral("</dl>\n</div>\n");
+        html.prepend(card);
+    }
 
     if (!footnotes.orderedIds.isEmpty()) {
         const int srcLine = static_cast<int>(ctx.lineStarts.size()) - 1;

@@ -23,6 +23,8 @@ private slots:
     void rendersBareUrlAutolinks();
     void rendersStrikethrough();
     void rendersFootnotes();
+    void rendersFrontMatterAsACard();
+    void plainThematicBreakStaysAnHr();
     void emptyInputProducesEmptyFragment();
 };
 
@@ -168,6 +170,32 @@ void TestMd4cRenderer::rendersFootnotes()
     QVERIFY(html.contains(QStringLiteral("The <em>note</em> body.")));
     QVERIFY(html.contains(QStringLiteral("<a href=\"#fnref-note\" class=\"fn-backref\">")));
     QVERIFY(!html.contains(QStringLiteral("[^note]:")));
+}
+
+void TestMd4cRenderer::rendersFrontMatterAsACard()
+{
+    Md4cRenderer renderer;
+    const QString html = renderer.toHtml(QStringLiteral("---\n"
+                                                        "title: *Draft* Notes\n"
+                                                        "tags: [a, b]\n"
+                                                        "---\n"
+                                                        "\n"
+                                                        "# Body\n"));
+
+    QVERIFY(html.contains(QStringLiteral("<div class=\"front-matter-card\" data-src-line=\"0\">")));
+    QVERIFY(html.contains(QStringLiteral("<dt>title</dt><dd><em>Draft</em> Notes</dd>")));
+    QVERIFY(html.contains(QStringLiteral("<dt>tags</dt><dd>a, b</dd>")));
+    QVERIFY(html.contains(QStringLiteral(">Body</h1>")));
+    QVERIFY(!html.contains(QStringLiteral("title: *Draft*")));
+}
+
+void TestMd4cRenderer::plainThematicBreakStaysAnHr()
+{
+    Md4cRenderer renderer;
+    const QString html = renderer.toHtml(QStringLiteral("A paragraph.\n\n---\n\nAnother.\n"));
+
+    QVERIFY(html.contains(QStringLiteral("<hr")));
+    QVERIFY(!html.contains(QStringLiteral("front-matter-card")));
 }
 
 void TestMd4cRenderer::emptyInputProducesEmptyFragment()

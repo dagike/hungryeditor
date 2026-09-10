@@ -71,6 +71,8 @@ add_library(hungryeditor_core STATIC
     io/SessionStore.h
     io/TextFile.cpp
     io/TextFile.h
+    markdown/FrontMatter.cpp
+    markdown/FrontMatter.h
     markdown/Md4cRenderer.cpp
     markdown/Md4cRenderer.h
     preview/PreviewBackend.h

@@ -147,6 +147,14 @@ public:
     /// Realign the pipe table under the caret in place. No-op otherwise.
     void formatTable();
 
+    /// True when the document opens with a YAML front-matter block (`---` … `---`).
+    bool hasFrontMatter() const;
+    /// True when that block exists and is currently folded.
+    bool isFrontMatterFolded() const;
+    /// Fold or unfold the front-matter block. No-op when there is none, or when
+    /// the caret sits inside it. Bound to Ctrl+Shift+Y via the View menu.
+    void setFrontMatterFolded(bool folded);
+
     /// Position of the bracket that pairs with the one at `position`, or -1 if
     /// there is no bracket there or it is unbalanced.
     int matchingBrace(int position) const;
@@ -254,6 +262,9 @@ private:
     void applyLexillaMarkdownStyles();
     /// Resize the line-number margin to fit the current line count.
     void updateLineNumberMargin();
+    /// Re-derive the front-matter fold region from the buffer and show or hide
+    /// the fold margin to match.
+    void updateFrontMatterFold();
     /// Pick the highlighting tier for the current buffer size and, if it
     /// changed (or `force` is set), switch the lexer and the background
     /// highlighter to match and repaint.
@@ -266,6 +277,7 @@ private:
     QFont font_;
     bool modified_ = false;
     int lineDigits_ = 0;
+    int frontMatterLastLine_ = -1; ///< closing `---` line, or -1 when absent
     HighlightTier tier_ = HighlightTier::TreeSitter;
     int lexillaByteLimit_ = 2 * 1024 * 1024;
     int plainTextByteLimit_ = 20 * 1024 * 1024;

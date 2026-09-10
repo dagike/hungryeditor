@@ -42,6 +42,8 @@ private slots:
     void tabNavigatesTableCellsAndAppendsRows();
     void formatTableAlignsColumns();
     void tabOutsideATableIsNotConsumed();
+    void foldsFrontMatterOnRequest();
+    void noFrontMatterLeavesTheFoldMarginHidden();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -499,6 +501,40 @@ void TestEditor::tabOutsideATableIsNotConsumed()
 
     editor.formatTable(); // a no-op that must not disturb the buffer
     QCOMPARE(editor.text(), QStringLiteral("just prose here\n"));
+}
+
+void TestEditor::foldsFrontMatterOnRequest()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("---\n"
+                                  "title: Hi\n"
+                                  "tags: [a, b]\n"
+                                  "---\n"
+                                  "\n"
+                                  "# Body\n"));
+    QVERIFY(editor.hasFrontMatter());
+    QVERIFY(!editor.isFrontMatterFolded());
+
+    editor.setCursorPosition(5, 0); // outside the block
+    editor.setFrontMatterFolded(true);
+    QVERIFY(editor.isFrontMatterFolded());
+    QVERIFY(editor.call().LineVisible(0));  // the header line stays
+    QVERIFY(!editor.call().LineVisible(2)); // an interior line is hidden
+
+    editor.setFrontMatterFolded(false);
+    QVERIFY(!editor.isFrontMatterFolded());
+    QVERIFY(editor.call().LineVisible(2));
+}
+
+void TestEditor::noFrontMatterLeavesTheFoldMarginHidden()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("# Just a heading\n\nText.\n"));
+    QVERIFY(!editor.hasFrontMatter());
+
+    editor.setFrontMatterFolded(true); // no-op, must not crash
+    QVERIFY(!editor.isFrontMatterFolded());
+    QCOMPARE(editor.call().MarginWidthN(2), 0);
 }
 
 void TestEditor::visualDefaultsAreApplied()

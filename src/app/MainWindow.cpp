@@ -17,6 +17,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTimer>
@@ -156,6 +157,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
 
     connect(editor_, &Editor::textChanged, this, &MainWindow::refreshPreview);
+    connect(editor_, &Editor::textChanged, this, &MainWindow::updateFrontMatterAction);
     connect(editor_, &Editor::viewportScrolled, this, &MainWindow::syncPreviewToEditor);
     connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
             &MainWindow::syncEditorToPreview);
@@ -404,6 +406,15 @@ void MainWindow::buildMenus()
     addViewMode(tr("&Preview Only"), QStringLiteral("action.viewPreview"), ViewMode::Preview,
                 QKeySequence(Qt::CTRL | Qt::Key_3));
 
+    viewMenu->addSeparator();
+    foldFrontMatterAction_ = viewMenu->addAction(tr("Fold &Front Matter"));
+    foldFrontMatterAction_->setCheckable(true);
+    foldFrontMatterAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Y));
+    foldFrontMatterAction_->setObjectName(QStringLiteral("action.foldFrontMatter"));
+    connect(foldFrontMatterAction_, &QAction::toggled, this,
+            [this](bool on) { editor_->setFrontMatterFolded(on); });
+    updateFrontMatterAction();
+
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction* aboutAction =
         helpMenu->addAction(tr("&About hungryeditor"), this, &MainWindow::showAbout);
@@ -466,6 +477,19 @@ void MainWindow::onCurrentChanged(int index)
         previewController_->setMarkdown(editor_->text());
         previewController_->flush();
     }
+
+    updateFrontMatterAction();
+}
+
+void MainWindow::updateFrontMatterAction()
+{
+    if (foldFrontMatterAction_ == nullptr) {
+        return;
+    }
+    const bool has = editor_->hasFrontMatter();
+    foldFrontMatterAction_->setEnabled(has);
+    const QSignalBlocker block(foldFrontMatterAction_);
+    foldFrontMatterAction_->setChecked(has && editor_->isFrontMatterFolded());
 }
 
 QWidget* MainWindow::previewWidget() const

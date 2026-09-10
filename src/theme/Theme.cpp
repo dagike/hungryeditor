@@ -71,6 +71,17 @@ QString Theme::previewCss() const
                "  font-size: .875em; color: var(--he-muted);"
                "}"
                "sup.fn-ref a, .footnotes a.fn-backref { text-decoration: none; }"
+               ".front-matter-card {"
+               "  margin: 0 0 1.5em; padding: .6em 1em;"
+               "  border: 1px solid var(--he-border); border-radius: 6px;"
+               "  background: var(--he-code-bg); font-size: .9em;"
+               "}"
+               ".front-matter-card dl {"
+               "  margin: 0; display: grid;"
+               "  grid-template-columns: auto 1fr; gap: .15em .8em;"
+               "}"
+               ".front-matter-card dt { color: var(--he-muted); font-weight: 600; }"
+               ".front-matter-card dd { margin: 0; }"
                "img { max-width: 100%; }")
                .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord) +
            codeTokenCss();

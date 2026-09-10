@@ -540,6 +540,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("bulletList") << QStringLiteral("action.bulletList");
     QTest::newRow("numberedList") << QStringLiteral("action.numberedList");
     QTest::newRow("formatTable") << QStringLiteral("action.formatTable");
+    QTest::newRow("foldFrontMatter") << QStringLiteral("action.foldFrontMatter");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
