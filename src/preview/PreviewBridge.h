@@ -45,6 +45,10 @@ signals:
     /// The viewer clicked a heading; `line` is its source line.
     void headingClicked(int line);
 
+    /// The viewer toggled a task-list checkbox; `line` is the source line of its
+    /// list item and `checked` is the checkbox's new state.
+    void taskToggled(int line, bool checked);
+
 public slots:
     /// Called from the page once its QWebChannel handshake completes.
     void notifyReady() { emit pageReady(); }
@@ -54,6 +58,9 @@ public slots:
 
     /// Called from the page's heading click handler.
     void reportClick(int line) { emit headingClicked(line); }
+
+    /// Called from the page's task-checkbox change handler.
+    void reportTaskToggle(int line, bool checked) { emit taskToggled(line, checked); }
 
 private:
     QString content_;

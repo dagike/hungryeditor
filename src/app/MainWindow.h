@@ -14,6 +14,7 @@ class QDragEnterEvent;
 class QDropEvent;
 class QMenu;
 class QSplitter;
+class QTimer;
 
 namespace hungryeditor {
 
@@ -23,6 +24,7 @@ class DocumentManager;
 class Editor;
 class FileIndex;
 class FindReplaceBar;
+class OutlinePanel;
 class PreviewBackend;
 class PreviewController;
 class RecentFiles;
@@ -184,6 +186,11 @@ private:
     void onDocumentAdded(int index);
     void onDocumentClosed(int index);
     void onCurrentChanged(int index);
+    /// Enable / check the "Fold Front Matter" action for the current buffer.
+    void updateFrontMatterAction();
+    /// Re-extract the heading outline for the current buffer and re-select the
+    /// entry the caret sits under.
+    void rebuildOutline();
 
     // External file-change handling.
     void onFileChangedExternally(int index);
@@ -201,6 +208,9 @@ private:
     bool paletteShowsFiles_ = false;
     SearchResultsPanel* searchResults_ = nullptr;
     QDockWidget* searchDock_ = nullptr;
+    OutlinePanel* outline_ = nullptr;
+    QDockWidget* outlineDock_ = nullptr;
+    QTimer* outlineTimer_ = nullptr;
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;
@@ -210,10 +220,12 @@ private:
     std::unique_ptr<PreviewBackend> preview_;
     std::unique_ptr<PreviewController> previewController_;
     QAction* saveAction_ = nullptr;
+    QAction* foldFrontMatterAction_ = nullptr;
     QMenu* recentMenu_ = nullptr;
     QActionGroup* viewModeGroup_ = nullptr;
     ViewMode viewMode_ = ViewMode::Split;
     QString lastError_;
+    QString stateDir_;
     bool syncingTabs_ = false;
     bool reorderingTabs_ = false;
     bool syncingScroll_ = false;

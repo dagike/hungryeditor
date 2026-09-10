@@ -1,5 +1,7 @@
 #include "app/MainWindow.h"
 
+#include <utility>
+
 #include <QActionGroup>
 #include <QApplication>
 #include <QDir>
@@ -8,12 +10,14 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QImage>
 #include <QInputDialog>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTimer>
@@ -25,15 +29,18 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "io/AssetWriter.h"
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "markdown/Outline.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
 #include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
+#include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileIndex.h"
 #include "workspace/FileSearch.h"
@@ -135,6 +142,25 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
                 }
             });
 
+    outline_ = new OutlinePanel(this);
+    outlineDock_ = new QDockWidget(tr("Outline"), this);
+    outlineDock_->setObjectName(QStringLiteral("dock.outline"));
+    outlineDock_->setWidget(outline_);
+    addDockWidget(Qt::LeftDockWidgetArea, outlineDock_);
+    outlineDock_->hide();
+    connect(outline_, &OutlinePanel::headingActivated, this, [this](int line) {
+        editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
+        editor_->setFocus();
+    });
+
+    outlineTimer_ = new QTimer(this);
+    outlineTimer_->setSingleShot(true);
+    outlineTimer_->setInterval(150);
+    connect(outlineTimer_, &QTimer::timeout, this, &MainWindow::rebuildOutline);
+    connect(editor_, &Editor::textChanged, this, [this] { outlineTimer_->start(); });
+    connect(editor_, &Editor::cursorPositionChanged, this,
+            [this](int line, int /*column*/) { outline_->highlightLine(line); });
+
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
@@ -146,12 +172,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     splitter_->addWidget(previewWidget);
     splitter_->setStretchFactor(0, 1);
     splitter_->setStretchFactor(1, 1);
+    editor_->setImagePasteHandler([this](const QImage& image) -> QString {
+        const QString ref = assets::writePastedImage(image, currentPath(), stateDir_);
+        return ref.isEmpty() ? QString() : QStringLiteral("![](%1)").arg(ref);
+    });
+
     connect(editor_, &Editor::textChanged, this, &MainWindow::refreshPreview);
+    connect(editor_, &Editor::textChanged, this, &MainWindow::updateFrontMatterAction);
     connect(editor_, &Editor::viewportScrolled, this, &MainWindow::syncPreviewToEditor);
     connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
             &MainWindow::syncEditorToPreview);
     connect(preview_.get(), &PreviewBackend::clickedSourceLine, this,
             &MainWindow::jumpEditorToLine);
+    connect(preview_.get(), &PreviewBackend::taskToggled, this,
+            [this](int line, bool checked) { editor_->setTaskChecked(line, checked); });
 
     buildMenus();
     setStateDirectory(defaultStateDirectory());
@@ -323,6 +357,58 @@ void MainWindow::buildMenus()
     addLineAction(tr("Toggle &Comment"), QStringLiteral("action.toggleComment"),
                   QKeySequence(Qt::CTRL | Qt::Key_Slash), &Editor::toggleLineComment);
 
+    QMenu* formatMenu = menuBar()->addMenu(tr("F&ormat"));
+
+    const auto addFormatAction = [&](const QString& text, const QString& objectName,
+                                     const QKeySequence& shortcut, auto&& slot) {
+        QAction* action = formatMenu->addAction(text, this, std::forward<decltype(slot)>(slot));
+        action->setShortcut(shortcut);
+        action->setObjectName(objectName);
+        return action;
+    };
+    addFormatAction(tr("&Bold"), QStringLiteral("action.bold"), QKeySequence::Bold,
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("**")); });
+    addFormatAction(tr("&Italic"), QStringLiteral("action.italic"), QKeySequence::Italic,
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("*")); });
+    addFormatAction(tr("&Strikethrough"), QStringLiteral("action.strikethrough"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_X),
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("~~")); });
+    addFormatAction(tr("Inline &Code"), QStringLiteral("action.inlineCode"),
+                    QKeySequence(Qt::CTRL | Qt::Key_E),
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("`")); });
+    addFormatAction(tr("&Link…"), QStringLiteral("action.link"), QKeySequence(Qt::CTRL | Qt::Key_K),
+                    [this] { editor_->insertLink(); });
+
+    formatMenu->addSeparator();
+    QMenu* headingMenu = formatMenu->addMenu(tr("&Heading"));
+    for (int level = 1; level <= 6; ++level) {
+        const auto key = static_cast<Qt::Key>(Qt::Key_0 + level);
+        QAction* action = headingMenu->addAction(
+            tr("Heading &%1").arg(level), this, [this, level] { editor_->setHeadingLevel(level); });
+        action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | key));
+        action->setObjectName(QStringLiteral("action.heading%1").arg(level));
+    }
+    QAction* paragraphAction =
+        headingMenu->addAction(tr("&Paragraph"), this, [this] { editor_->setHeadingLevel(0); });
+    paragraphAction->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_0));
+    paragraphAction->setObjectName(QStringLiteral("action.headingParagraph"));
+
+    formatMenu->addSeparator();
+    addFormatAction(tr("Block&quote"), QStringLiteral("action.blockquote"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Period),
+                    [this] { editor_->toggleBlockquote(); });
+    addFormatAction(tr("&Bulleted List"), QStringLiteral("action.bulletList"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_8),
+                    [this] { editor_->toggleBulletList(); });
+    addFormatAction(tr("&Numbered List"), QStringLiteral("action.numberedList"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_7),
+                    [this] { editor_->toggleNumberedList(); });
+
+    formatMenu->addSeparator();
+    addFormatAction(tr("Format &Table"), QStringLiteral("action.formatTable"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T),
+                    [this] { editor_->formatTable(); });
+
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewModeGroup_ = new QActionGroup(this);
 
@@ -342,6 +428,21 @@ void MainWindow::buildMenus()
                 QKeySequence(Qt::CTRL | Qt::Key_2));
     addViewMode(tr("&Preview Only"), QStringLiteral("action.viewPreview"), ViewMode::Preview,
                 QKeySequence(Qt::CTRL | Qt::Key_3));
+
+    viewMenu->addSeparator();
+    foldFrontMatterAction_ = viewMenu->addAction(tr("Fold &Front Matter"));
+    foldFrontMatterAction_->setCheckable(true);
+    foldFrontMatterAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Y));
+    foldFrontMatterAction_->setObjectName(QStringLiteral("action.foldFrontMatter"));
+    connect(foldFrontMatterAction_, &QAction::toggled, this,
+            [this](bool on) { editor_->setFrontMatterFolded(on); });
+    updateFrontMatterAction();
+
+    QAction* outlineAction = outlineDock_->toggleViewAction();
+    outlineAction->setText(tr("&Outline"));
+    outlineAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    outlineAction->setObjectName(QStringLiteral("action.toggleOutline"));
+    viewMenu->addAction(outlineAction);
 
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction* aboutAction =
@@ -405,6 +506,26 @@ void MainWindow::onCurrentChanged(int index)
         previewController_->setMarkdown(editor_->text());
         previewController_->flush();
     }
+
+    updateFrontMatterAction();
+    rebuildOutline();
+}
+
+void MainWindow::rebuildOutline()
+{
+    outline_->setHeadings(outline::parse(editor_->text()));
+    outline_->highlightLine(editor_->cursorLine());
+}
+
+void MainWindow::updateFrontMatterAction()
+{
+    if (foldFrontMatterAction_ == nullptr) {
+        return;
+    }
+    const bool has = editor_->hasFrontMatter();
+    foldFrontMatterAction_->setEnabled(has);
+    const QSignalBlocker block(foldFrontMatterAction_);
+    foldFrontMatterAction_->setChecked(has && editor_->isFrontMatterFolded());
 }
 
 QWidget* MainWindow::previewWidget() const
@@ -644,6 +765,7 @@ void MainWindow::restoreUnsavedFromLastSession(bool askFirst)
 
 void MainWindow::setStateDirectory(const QString& directory)
 {
+    stateDir_ = directory;
     documents_->setDraftDirectory(directory + QLatin1String("/drafts"));
     sessionStore_ = std::make_unique<SessionStore>(directory + QLatin1String("/session.json"));
     recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));
@@ -741,6 +863,8 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
         documents_->setCurrentIndex(session.currentIndex);
     }
+    outlineDock_->setVisible(session.outlineVisible);
+    rebuildOutline();
     sessionStore_->clear(); // consumed; only a crash should leave one behind
     updateWindowTitle();
 }
@@ -753,6 +877,7 @@ void MainWindow::saveSession()
     documents_->autosaveDirtyDocuments(); // flush the latest text into drafts
     Session session = documents_->buildSession();
     session.windowGeometry = saveGeometry();
+    session.outlineVisible = outlineDock_->isVisible();
     sessionStore_->save(session);
 }
 

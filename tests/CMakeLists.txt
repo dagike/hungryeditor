@@ -66,6 +66,14 @@ hungryeditor_add_test(test_recent_files
     SOURCES test_recent_files.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_asset_writer
+    SOURCES test_asset_writer.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_markdown_table
+    SOURCES test_markdown_table.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_document_manager
     SOURCES test_document_manager.cpp
     LIBS hungryeditor::core)
@@ -101,6 +109,18 @@ hungryeditor_add_test(test_command_palette
 
 hungryeditor_add_test(test_code_highlighter
     SOURCES test_code_highlighter.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_front_matter
+    SOURCES test_front_matter.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_outline
+    SOURCES test_outline.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_outline_panel
+    SOURCES test_outline_panel.cpp
     LIBS hungryeditor::core)
 
 hungryeditor_add_test(test_md4c_renderer

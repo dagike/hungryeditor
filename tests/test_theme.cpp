@@ -40,6 +40,11 @@ void TestTheme::previewCssDefinesTokensAndBaseRules()
     QVERIFY(css.contains(QStringLiteral("blockquote {")));
     QVERIFY(css.contains(QStringLiteral("pre {")));
     QVERIFY(css.contains(QStringLiteral("th, td { border: 1px solid var(--he-border)")));
+    QVERIFY(css.contains(QStringLiteral("li.task-list-item { list-style: none;")));
+    QVERIFY(css.contains(QStringLiteral("li.task-list-item > input { margin: 0 .45em 0 -1.35em; "
+                                        "cursor: pointer; }")));
+    QVERIFY(css.contains(QStringLiteral(".footnotes {")));
+    QVERIFY(css.contains(QStringLiteral(".front-matter-card {")));
 
     // Fenced-code token classes, coloured from the editor's palette.
     QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: #cf222e")));

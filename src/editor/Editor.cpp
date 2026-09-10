@@ -4,10 +4,16 @@
 #include <cctype>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
+#include <QClipboard>
 #include <QColor>
 #include <QFontDatabase>
+#include <QGuiApplication>
+#include <QImage>
 #include <QKeyEvent>
+#include <QMimeData>
 
 #include <ILexer.h>
 #include <Lexilla.h>
@@ -19,9 +25,11 @@
 #include <tree_sitter/api.h>
 
 #include "editor/Document.h"
+#include "editor/MarkdownTable.h"
 #include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
+#include "markdown/FrontMatter.h"
 
 extern "C" const TSLanguage* tree_sitter_markdown(void);
 
@@ -63,6 +71,18 @@ constexpr int kFoldMargin = 2;
 constexpr int kMinLineDigits = 3;
 constexpr int kTabWidth = 4;
 constexpr int kFindIndicator = 20; // in the user range (8..31)
+constexpr int kFoldMarginWidth = 14;
+
+/// Build a Scintilla fold level: `SC_FOLDLEVELBASE + number`, with the header
+/// flag when `header` is set. The enum has no `operator|`.
+Scintilla::FoldLevel foldLevel(int number, bool header)
+{
+    int bits = static_cast<int>(Scintilla::FoldLevel::Base) + number;
+    if (header) {
+        bits |= static_cast<int>(Scintilla::FoldLevel::HeaderFlag);
+    }
+    return static_cast<Scintilla::FoldLevel>(bits);
+}
 
 Scintilla::FindOption searchFlags(const Editor::SearchOptions& options)
 {
@@ -363,6 +383,25 @@ bool isHtmlComment(const std::string& body)
     return t.size() >= 7 && t.rfind("<!--", 0) == 0 && t.compare(t.size() - 3, 3, "-->") == 0;
 }
 
+/// Whether `text` reads as a bare URL we can drop into a link target.
+bool looksLikeUrl(std::string_view text)
+{
+    return text.rfind("http://", 0) == 0 || text.rfind("https://", 0) == 0 ||
+           text.rfind("www.", 0) == 0 || text.rfind("mailto:", 0) == 0;
+}
+
+/// The inclusive range of lines the current selection touches. A selection
+/// ending exactly at a line's start does not pull that line in.
+std::pair<Scintilla::Line, Scintilla::Line> selectedLineSpan(Scintilla::ScintillaCall& call)
+{
+    const Scintilla::Line first = call.LineFromPosition(call.SelectionStart());
+    Scintilla::Line last = call.LineFromPosition(call.SelectionEnd());
+    if (last > first && call.SelectionEnd() == call.PositionFromLine(last)) {
+        --last;
+    }
+    return {first, last};
+}
+
 } // namespace
 
 void Editor::toggleLineComment()
@@ -420,6 +459,627 @@ void Editor::toggleLineComment()
         call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
     }
     call_.EndUndoAction();
+}
+
+void Editor::toggleInlineFormat(const QString& marker)
+{
+    using Position = Scintilla::Position;
+
+    const std::string mk = marker.toStdString();
+    if (mk.empty()) {
+        return;
+    }
+    const auto mkLen = static_cast<Position>(mk.size());
+
+    // Resolve every selection to a span up front (a bare caret takes the word
+    // under it), then edit bottom-up so earlier positions stay valid.
+    struct Span
+    {
+        Position start;
+        Position end;
+    };
+    std::vector<Span> spans;
+    const int count = static_cast<int>(call_.Selections());
+    spans.reserve(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        Position s = call_.SelectionNStart(i);
+        Position e = call_.SelectionNEnd(i);
+        if (s == e) {
+            s = call_.WordStartPosition(s, true);
+            e = call_.WordEndPosition(e, true);
+        }
+        spans.push_back({s, e});
+    }
+    std::sort(spans.begin(), spans.end(),
+              [](const Span& a, const Span& b) { return a.start > b.start; });
+
+    call_.BeginUndoAction();
+    bool firstSpan = true;
+    for (const Span& span : spans) {
+        const Position s = span.start;
+        const Position e = span.end;
+        const std::string before = call_.StringOfSpan({std::max<Position>(0, s - mkLen), s});
+        const std::string after = call_.StringOfSpan({e, std::min(call_.TextLength(), e + mkLen)});
+        const std::string inner = call_.StringOfSpan({s, e});
+
+        Position selStart = 0;
+        Position selEnd = 0;
+        if (before == mk && after == mk) {
+            call_.SetTargetRange(e, e + mkLen);
+            call_.ReplaceTarget(0, "");
+            call_.SetTargetRange(s - mkLen, s);
+            call_.ReplaceTarget(0, "");
+            selStart = s - mkLen;
+            selEnd = e - mkLen;
+        } else if (static_cast<Position>(inner.size()) >= 2 * mkLen &&
+                   inner.compare(0, mk.size(), mk) == 0 &&
+                   inner.compare(inner.size() - mk.size(), mk.size(), mk) == 0) {
+            call_.SetTargetRange(e - mkLen, e);
+            call_.ReplaceTarget(0, "");
+            call_.SetTargetRange(s, s + mkLen);
+            call_.ReplaceTarget(0, "");
+            selStart = s;
+            selEnd = e - 2 * mkLen;
+        } else {
+            call_.SetTargetRange(e, e);
+            call_.ReplaceTarget(mkLen, mk.c_str());
+            call_.SetTargetRange(s, s);
+            call_.ReplaceTarget(mkLen, mk.c_str());
+            selStart = s + mkLen;
+            selEnd = e + mkLen;
+        }
+
+        if (firstSpan) {
+            call_.SetSelection(selEnd, selStart); // caret, anchor
+            firstSpan = false;
+        } else {
+            call_.AddSelection(selEnd, selStart);
+        }
+    }
+    call_.EndUndoAction();
+}
+
+namespace {
+
+/// Length of a leading ATX heading marker (`#`…`###### ` then whitespace), or 0
+/// when the line does not open with one.
+std::size_t headingMarkerLength(const std::string& body)
+{
+    std::size_t hashes = 0;
+    while (hashes < body.size() && body[hashes] == '#') {
+        ++hashes;
+    }
+    if (hashes < 1 || hashes > 6 || hashes >= body.size()) {
+        return 0;
+    }
+    if (body[hashes] != ' ' && body[hashes] != '\t') {
+        return 0;
+    }
+    std::size_t end = hashes;
+    while (end < body.size() && (body[end] == ' ' || body[end] == '\t')) {
+        ++end;
+    }
+    return end;
+}
+
+} // namespace
+
+void Editor::setHeadingLevel(int level)
+{
+    level = std::clamp(level, 0, 6);
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = lastLine; line >= firstLine; --line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::string content = body.substr(headingMarkerLength(body));
+
+        std::string replacement;
+        if (level > 0) {
+            replacement.assign(static_cast<std::size_t>(level), '#');
+            replacement += ' ';
+        }
+        replacement += content;
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::cycleHeading()
+{
+    const Scintilla::Line line = call_.LineFromPosition(call_.SelectionStart());
+    const std::string body =
+        call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+    std::size_t hashes = 0;
+    while (hashes < body.size() && body[hashes] == '#') {
+        ++hashes;
+    }
+    const int current = headingMarkerLength(body) > 0 ? static_cast<int>(hashes) : 0;
+    setHeadingLevel(current >= 6 ? 0 : current + 1);
+}
+
+namespace {
+
+/// Offset of the first non-blank character, or npos for a blank line.
+std::size_t indentEnd(const std::string& body)
+{
+    return body.find_first_not_of(" \t");
+}
+
+bool isBulletMarker(const std::string& body, std::size_t at)
+{
+    return at + 1 < body.size() && (body[at] == '-' || body[at] == '*' || body[at] == '+') &&
+           body[at + 1] == ' ';
+}
+
+/// Length of a leading ordered-list marker (`12. ` / `3) `) at `at`, or 0.
+std::size_t orderedMarkerLength(const std::string& body, std::size_t at)
+{
+    std::size_t digits = at;
+    while (digits < body.size() && std::isdigit(static_cast<unsigned char>(body[digits])) != 0) {
+        ++digits;
+    }
+    if (digits == at || digits + 1 >= body.size()) {
+        return 0;
+    }
+    if ((body[digits] != '.' && body[digits] != ')') || body[digits + 1] != ' ') {
+        return 0;
+    }
+    return digits + 2 - at;
+}
+
+} // namespace
+
+void Editor::toggleBlockquote()
+{
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    bool add = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body =
+            call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c != std::string::npos && body[c] != '>') {
+            add = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = lastLine; line >= firstLine; --line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+
+        std::string replacement;
+        if (add) {
+            const std::size_t at = (c == std::string::npos) ? body.size() : c;
+            replacement = body.substr(0, at);
+            replacement += "> ";
+            replacement += body.substr(at);
+        } else {
+            if (c == std::string::npos || body[c] != '>') {
+                continue;
+            }
+            std::size_t rest = c + 1;
+            if (rest < body.size() && body[rest] == ' ') {
+                ++rest;
+            }
+            replacement = body.substr(0, c);
+            replacement += body.substr(rest);
+        }
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::toggleBulletList()
+{
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    bool add = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body =
+            call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c != std::string::npos && !isBulletMarker(body, c)) {
+            add = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = lastLine; line >= firstLine; --line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c == std::string::npos) {
+            continue;
+        }
+
+        std::string replacement = body.substr(0, c);
+        if (add) {
+            replacement += "- ";
+            replacement += body.substr(c);
+        } else {
+            if (!isBulletMarker(body, c)) {
+                continue;
+            }
+            replacement += body.substr(c + 2);
+        }
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::toggleNumberedList()
+{
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    bool add = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body =
+            call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c != std::string::npos && orderedMarkerLength(body, c) == 0) {
+            add = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    long ordinal = 1;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c == std::string::npos) {
+            continue;
+        }
+
+        std::string replacement = body.substr(0, c);
+        if (add) {
+            replacement += std::to_string(ordinal);
+            replacement += ". ";
+            replacement += body.substr(c);
+            ++ordinal;
+        } else {
+            const std::size_t markerLen = orderedMarkerLength(body, c);
+            if (markerLen == 0) {
+                continue;
+            }
+            replacement += body.substr(c + markerLen);
+        }
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::insertLink()
+{
+    using Position = Scintilla::Position;
+
+    const Position s = call_.SelectionStart();
+    const Position e = call_.SelectionEnd();
+    const std::string sel = call_.StringOfSpan({s, e});
+
+    call_.BeginUndoAction();
+    if (s != e && looksLikeUrl(sel)) {
+        std::string repl = "[](";
+        repl += sel;
+        repl += ")";
+        call_.SetTargetRange(s, e);
+        call_.ReplaceTarget(Position(repl.size()), repl.c_str());
+        call_.SetSelection(s + 1, s + 1); // caret between the brackets
+    } else if (s != e) {
+        std::string repl = "[";
+        repl += sel;
+        repl += "](url)";
+        call_.SetTargetRange(s, e);
+        call_.ReplaceTarget(Position(repl.size()), repl.c_str());
+        const Position urlStart = s + 1 + static_cast<Position>(sel.size()) + 2;
+        call_.SetSelection(urlStart + 3, urlStart); // select "url"
+    } else {
+        call_.ReplaceSel("[](url)");
+        call_.SetSelection(s + 1, s + 1); // caret between the brackets
+    }
+    call_.EndUndoAction();
+}
+
+namespace {
+
+int unescapedPipesBefore(const std::string& text)
+{
+    int pipes = 0;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\\') {
+            ++i;
+            continue;
+        }
+        if (text[i] == '|') {
+            ++pipes;
+        }
+    }
+    return pipes;
+}
+
+/// Byte offsets [start, end) of column `col`'s trimmed content within a
+/// rendered table line (which always begins and ends with a pipe).
+std::pair<int, int> cellContentSpan(const std::string& line, int col)
+{
+    int seen = 0;
+    int startPipe = -1;
+    int endPipe = -1;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '\\') {
+            ++i;
+            continue;
+        }
+        if (line[i] != '|') {
+            continue;
+        }
+        if (seen == col) {
+            startPipe = static_cast<int>(i);
+        } else if (seen == col + 1) {
+            endPipe = static_cast<int>(i);
+            break;
+        }
+        ++seen;
+    }
+    if (startPipe < 0) {
+        return {static_cast<int>(line.size()), static_cast<int>(line.size())};
+    }
+    auto start = static_cast<std::size_t>(startPipe) + 1;
+    auto end = endPipe < 0 ? line.size() : static_cast<std::size_t>(endPipe);
+    while (start < end && line[start] == ' ') {
+        ++start;
+    }
+    while (end > start && line[end - 1] == ' ') {
+        --end;
+    }
+    return {static_cast<int>(start), static_cast<int>(end)};
+}
+
+} // namespace
+
+bool Editor::reflowTable(bool moveCaret, bool forward)
+{
+    if (call_.Selections() != 1) {
+        return false;
+    }
+
+    const Scintilla::Position caret = call_.CurrentPos();
+    const int caretLine = static_cast<int>(call_.LineFromPosition(caret));
+
+    const QStringList qlines = text().split(QLatin1Char('\n'));
+    std::vector<std::string> lines;
+    lines.reserve(static_cast<std::size_t>(qlines.size()));
+    for (const QString& line : qlines) {
+        lines.push_back(line.toStdString());
+    }
+    const auto lineAt = [&](int i) -> const std::string& {
+        return lines[static_cast<std::size_t>(i)];
+    };
+
+    const mdtable::TableRegion region = mdtable::findTableRegion(lines, caretLine);
+    if (!region.valid) {
+        return false;
+    }
+
+    const std::vector<mdtable::ColumnAlign> aligns =
+        mdtable::parseAlignments(lineAt(region.firstLine + 1));
+
+    // Content rows: the header plus every row below the delimiter.
+    std::vector<std::vector<std::string>> grid;
+    grid.push_back(mdtable::splitCells(lineAt(region.firstLine)));
+    for (int l = region.firstLine + 2; l <= region.lastLine; ++l) {
+        grid.push_back(mdtable::splitCells(lineAt(l)));
+    }
+
+    int columns = static_cast<int>(aligns.size());
+    for (const std::vector<std::string>& row : grid) {
+        columns = std::max(columns, static_cast<int>(row.size()));
+    }
+
+    // Which logical cell the caret sits in.
+    const std::string before = call_.StringOfSpan({call_.PositionFromLine(caretLine), caret});
+    const std::string& caretText = lineAt(caretLine);
+    const std::size_t firstNonSpace = caretText.find_first_not_of(" \t");
+    const bool leadingPipe = firstNonSpace != std::string::npos && caretText[firstNonSpace] == '|';
+    int col = std::clamp(unescapedPipesBefore(before) - (leadingPipe ? 1 : 0), 0, columns - 1);
+    int row = (caretLine <= region.firstLine + 1) ? 0 : caretLine - region.firstLine - 1;
+
+    if (moveCaret && forward) {
+        if (++col >= columns) {
+            col = 0;
+            ++row;
+        }
+        if (row >= static_cast<int>(grid.size())) {
+            grid.emplace_back();
+        }
+    } else if (moveCaret) {
+        if (--col < 0) {
+            if (--row < 0) {
+                row = 0;
+                col = 0;
+            } else {
+                col = columns - 1;
+            }
+        }
+    }
+
+    const std::string rendered = mdtable::renderAligned(grid, aligns);
+    const Scintilla::Position regionStart = call_.PositionFromLine(region.firstLine);
+    const Scintilla::Position regionEnd = call_.LineEndPosition(region.lastLine);
+
+    call_.BeginUndoAction();
+    call_.SetTargetRange(regionStart, regionEnd);
+    call_.ReplaceTarget(static_cast<Scintilla::Position>(rendered.size()), rendered.c_str());
+
+    // Locate the target cell in the freshly rendered text (row 0 is the header,
+    // row 1 the delimiter, so data rows shift down by one).
+    std::vector<std::string> renderedLines;
+    std::string current;
+    for (const char ch : rendered) {
+        if (ch == '\n') {
+            renderedLines.push_back(current);
+            current.clear();
+        } else {
+            current += ch;
+        }
+    }
+    renderedLines.push_back(current);
+
+    int renderedRow = (row == 0) ? 0 : row + 1;
+    renderedRow = std::min(renderedRow, static_cast<int>(renderedLines.size()) - 1);
+    Scintilla::Position lineOffset = 0;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(renderedRow); ++i) {
+        lineOffset += static_cast<Scintilla::Position>(renderedLines[i].size()) + 1;
+    }
+    const auto [cellStart, cellEnd] =
+        cellContentSpan(renderedLines[static_cast<std::size_t>(renderedRow)], col);
+
+    const Scintilla::Position selStart = regionStart + lineOffset + cellStart;
+    if (moveCaret) {
+        call_.SetSelection(regionStart + lineOffset + cellEnd, selStart);
+    } else {
+        call_.GotoPos(selStart);
+    }
+    call_.EndUndoAction();
+    call_.ScrollCaret();
+    return true;
+}
+
+bool Editor::navigateTableCell(bool forward)
+{
+    return reflowTable(/*moveCaret=*/true, forward);
+}
+
+void Editor::formatTable()
+{
+    reflowTable(/*moveCaret=*/false, /*forward=*/true);
+}
+
+namespace {
+
+/// Byte offset of the task-mark character (the one between `[` and `]`) on a
+/// list line, or npos when the line is not `<indent><marker> [ ] …`.
+std::size_t taskMarkOffset(const std::string& body)
+{
+    std::size_t i = 0;
+    while (i < body.size() && (body[i] == ' ' || body[i] == '\t')) {
+        ++i;
+    }
+    if (i >= body.size()) {
+        return std::string::npos;
+    }
+    if (body[i] == '-' || body[i] == '*' || body[i] == '+') {
+        ++i;
+    } else {
+        std::size_t digits = i;
+        while (digits < body.size() &&
+               std::isdigit(static_cast<unsigned char>(body[digits])) != 0) {
+            ++digits;
+        }
+        if (digits == i || digits >= body.size() || (body[digits] != '.' && body[digits] != ')')) {
+            return std::string::npos;
+        }
+        i = digits + 1;
+    }
+    if (i >= body.size() || (body[i] != ' ' && body[i] != '\t')) {
+        return std::string::npos;
+    }
+    while (i < body.size() && (body[i] == ' ' || body[i] == '\t')) {
+        ++i;
+    }
+    if (i + 2 >= body.size() || body[i] != '[' || body[i + 2] != ']') {
+        return std::string::npos;
+    }
+    const char mark = body[i + 1];
+    if (mark != ' ' && mark != 'x' && mark != 'X') {
+        return std::string::npos;
+    }
+    return i + 1;
+}
+
+} // namespace
+
+void Editor::setTaskChecked(int line, bool checked)
+{
+    if (line < 0 || line >= lineCount()) {
+        return;
+    }
+    const Scintilla::Position lineStart = call_.PositionFromLine(line);
+    const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+    const std::size_t mark = taskMarkOffset(body);
+    if (mark == std::string::npos) {
+        return;
+    }
+    const bool isChecked = body[mark] != ' ';
+    if (isChecked == checked) {
+        return;
+    }
+    const Scintilla::Position at = lineStart + static_cast<Scintilla::Position>(mark);
+    call_.BeginUndoAction();
+    call_.SetTargetRange(at, at + 1);
+    call_.ReplaceTarget(1, checked ? "x" : " ");
+    call_.EndUndoAction();
+}
+
+void Editor::setImagePasteHandler(ImagePasteHandler handler)
+{
+    imagePasteHandler_ = std::move(handler);
+}
+
+bool Editor::handleSmartPaste()
+{
+    const QClipboard* clipboard = QGuiApplication::clipboard();
+    const QMimeData* mime = clipboard != nullptr ? clipboard->mimeData() : nullptr;
+    if (mime == nullptr) {
+        return false;
+    }
+
+    if (imagePasteHandler_ && mime->hasImage()) {
+        const auto image = qvariant_cast<QImage>(mime->imageData());
+        if (!image.isNull()) {
+            const QString markdown = imagePasteHandler_(image);
+            if (!markdown.isEmpty()) {
+                const QByteArray utf8 = markdown.toUtf8();
+                call_.BeginUndoAction();
+                call_.ReplaceSel(utf8.constData());
+                call_.EndUndoAction();
+                return true;
+            }
+        }
+    }
+
+    if (mime->hasText() && call_.SelectionStart() != call_.SelectionEnd()) {
+        const std::string url = mime->text().trimmed().toStdString();
+        if (url.find_first_of("\r\n") == std::string::npos && looksLikeUrl(url)) {
+            const Scintilla::Position s = call_.SelectionStart();
+            const std::string label = call_.StringOfSpan({s, call_.SelectionEnd()});
+
+            std::string repl = "[";
+            repl += label;
+            repl += "](";
+            repl += url;
+            repl += ")";
+            const auto end = s + static_cast<Scintilla::Position>(repl.size());
+            call_.BeginUndoAction();
+            call_.SetTargetRange(s, call_.SelectionEnd());
+            call_.ReplaceTarget(Scintilla::Position(repl.size()), repl.c_str());
+            call_.SetSelection(end, end);
+            call_.EndUndoAction();
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool Editor::findNext(const QString& query, const SearchOptions& options, bool forward, bool wrap)
@@ -554,6 +1214,7 @@ void Editor::attachDocument(Document* document)
     updateHighlightTier(/*force=*/true);
     lineDigits_ = 0;
     updateLineNumberMargin();
+    updateFrontMatterFold();
 }
 
 void Editor::applyVisualDefaults()
@@ -615,7 +1276,33 @@ void Editor::applyVisualDefaults()
 
     call_.SetMarginTypeN(kLineNumberMargin, Scintilla::MarginType::Number);
     call_.SetMarginWidthN(kSymbolMargin, 0);
-    call_.SetMarginWidthN(kFoldMargin, 0);
+
+    // Fold margin: used only for the YAML front-matter block, so it stays
+    // hidden (width 0) until updateFrontMatterFold() finds one.
+    call_.SetMarginTypeN(kFoldMargin, Scintilla::MarginType::Symbol);
+    call_.SetMarginMaskN(kFoldMargin, Scintilla::MaskFolders);
+    call_.SetMarginSensitiveN(kFoldMargin, true);
+    call_.SetMarginWidthN(kFoldMargin, frontMatterLastLine_ >= 0 ? kFoldMarginWidth : 0);
+    const auto defineFold = [&](Scintilla::MarkerOutline marker, Scintilla::MarkerSymbol symbol) {
+        const int n = static_cast<int>(marker);
+        call_.MarkerDefine(n, symbol);
+        call_.MarkerSetFore(n, sciColour(palette.lineNumberText));
+        call_.MarkerSetBack(n, sciColour(palette.background));
+    };
+    defineFold(Scintilla::MarkerOutline::Folder, Scintilla::MarkerSymbol::BoxPlus);
+    defineFold(Scintilla::MarkerOutline::FolderOpen, Scintilla::MarkerSymbol::BoxMinus);
+    defineFold(Scintilla::MarkerOutline::FolderEnd, Scintilla::MarkerSymbol::BoxPlusConnected);
+    defineFold(Scintilla::MarkerOutline::FolderOpenMid, Scintilla::MarkerSymbol::BoxMinusConnected);
+    defineFold(Scintilla::MarkerOutline::FolderMidTail, Scintilla::MarkerSymbol::TCorner);
+    defineFold(Scintilla::MarkerOutline::FolderSub, Scintilla::MarkerSymbol::VLine);
+    defineFold(Scintilla::MarkerOutline::FolderTail, Scintilla::MarkerSymbol::LCorner);
+    call_.SetAutomaticFold(
+        static_cast<Scintilla::AutomaticFold>(static_cast<int>(Scintilla::AutomaticFold::Show) |
+                                              static_cast<int>(Scintilla::AutomaticFold::Click) |
+                                              static_cast<int>(Scintilla::AutomaticFold::Change)));
+    call_.SetFoldFlags(Scintilla::FoldFlag::LineAfterContracted);
+    call_.SetDefaultFoldDisplayText(" \342\200\246"); // " ..."
+    call_.FoldDisplayTextSetStyle(Scintilla::FoldDisplayTextStyle::Standard);
 
     applySyntaxStyles();
 
@@ -759,6 +1446,47 @@ void Editor::updateLineNumberMargin()
     call_.SetMarginWidthN(kLineNumberMargin, width);
 }
 
+void Editor::updateFrontMatterFold()
+{
+    const frontmatter::FrontMatter front = frontmatter::parse(text());
+    frontMatterLastLine_ = front.present ? front.lastLine : -1;
+
+    if (!front.present) {
+        call_.SetMarginWidthN(kFoldMargin, 0);
+        call_.SetFoldLevel(0, foldLevel(0, /*header=*/false));
+        return;
+    }
+
+    const int through = std::min(front.lastLine + 1, lineCount() - 1);
+    for (int line = 0; line <= through; ++line) {
+        const bool inside = line >= 1 && line <= front.lastLine;
+        call_.SetFoldLevel(line, foldLevel(inside ? 1 : 0, /*header=*/line == 0));
+    }
+    call_.SetMarginWidthN(kFoldMargin, kFoldMarginWidth);
+}
+
+bool Editor::hasFrontMatter() const
+{
+    return frontMatterLastLine_ >= 0;
+}
+
+bool Editor::isFrontMatterFolded() const
+{
+    return frontMatterLastLine_ >= 0 && !call_.FoldExpanded(0);
+}
+
+void Editor::setFrontMatterFolded(bool folded)
+{
+    if (frontMatterLastLine_ < 0) {
+        return;
+    }
+    const int caret = cursorLine();
+    if (caret >= 0 && caret <= frontMatterLastLine_) {
+        return; // don't collapse the block out from under the caret
+    }
+    call_.FoldLine(0, folded ? Scintilla::FoldAction::Contract : Scintilla::FoldAction::Expand);
+}
+
 void Editor::onNotify(Scintilla::NotificationData* notification)
 {
     using Scintilla::FlagSet;
@@ -774,6 +1502,7 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
                 updateLineNumberMargin();
             }
             updateHighlightTier();
+            updateFrontMatterFold();
             emit textChanged();
         }
         break;
@@ -959,6 +1688,27 @@ void Editor::keyPressEvent(QKeyEvent* event)
         event->accept();
         return;
     }
+
+    const bool paste =
+        (event->matches(QKeySequence::Paste) ||
+         (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ShiftModifier));
+    if (paste && handleSmartPaste()) {
+        event->accept();
+        return;
+    }
+
+    if (event->key() == Qt::Key_Tab && event->modifiers() == Qt::NoModifier &&
+        navigateTableCell(/*forward=*/true)) {
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Backtab &&
+        (event->modifiers() & ~Qt::ShiftModifier) == Qt::NoModifier &&
+        navigateTableCell(/*forward=*/false)) {
+        event->accept();
+        return;
+    }
+
     ScintillaEditBase::keyPressEvent(event);
 }
 

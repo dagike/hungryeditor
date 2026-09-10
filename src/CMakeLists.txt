@@ -47,6 +47,8 @@ add_library(hungryeditor_core STATIC
     editor/DocumentManager.h
     editor/Editor.cpp
     editor/Editor.h
+    editor/MarkdownTable.cpp
+    editor/MarkdownTable.h
     highlight/CaptureStyles.cpp
     highlight/CaptureStyles.h
     highlight/CodeHighlighter.cpp
@@ -59,6 +61,8 @@ add_library(hungryeditor_core STATIC
     highlight/HighlightWorker.h
     highlight/HighlightController.cpp
     highlight/HighlightController.h
+    io/AssetWriter.cpp
+    io/AssetWriter.h
     io/DraftStore.cpp
     io/DraftStore.h
     io/RecentFiles.cpp
@@ -67,6 +71,10 @@ add_library(hungryeditor_core STATIC
     io/SessionStore.h
     io/TextFile.cpp
     io/TextFile.h
+    markdown/FrontMatter.cpp
+    markdown/FrontMatter.h
+    markdown/Outline.cpp
+    markdown/Outline.h
     markdown/Md4cRenderer.cpp
     markdown/Md4cRenderer.h
     preview/PreviewBackend.h
@@ -84,6 +92,8 @@ add_library(hungryeditor_core STATIC
     ui/FindReplaceBar.h
     ui/FuzzyMatch.cpp
     ui/FuzzyMatch.h
+    ui/OutlinePanel.cpp
+    ui/OutlinePanel.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
     workspace/FileIndex.cpp

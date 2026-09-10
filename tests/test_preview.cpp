@@ -23,6 +23,7 @@ private slots:
     void scrollingThePageReportsASourceLine();
     void themeCssStylesTheRenderedContent();
     void clickingAHeadingReportsItsSourceLine();
+    void togglingATaskCheckboxReportsItsLineAndState();
 };
 
 namespace {
@@ -207,6 +208,29 @@ void TestPreview::clickingAHeadingReportsItsSourceLine()
     }
     QVERIFY(!clicked.isEmpty());
     QCOMPARE(clicked.last().at(0).toInt(), 7);
+}
+
+void TestPreview::togglingATaskCheckboxReportsItsLineAndState()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(
+        QStringLiteral("<ul><li class=\"task-list-item\" data-src-line=\"5\">"
+                       "<input type=\"checkbox\" class=\"task-checkbox\"> pick up milk</li></ul>"));
+    QVERIFY(ready.wait(20000));
+
+    QSignalSpy toggled(&preview, &PreviewBackend::taskToggled);
+    evalJs(preview,
+           QStringLiteral("document.querySelector('input.task-checkbox').click(); void 0"));
+
+    QElapsedTimer clock;
+    clock.start();
+    while (toggled.isEmpty() && clock.elapsed() < 5000) {
+        QTest::qWait(50);
+    }
+    QVERIFY(!toggled.isEmpty());
+    QCOMPARE(toggled.last().at(0).toInt(), 5);
+    QCOMPARE(toggled.last().at(1).toBool(), true);
 }
 
 QTEST_MAIN(TestPreview)

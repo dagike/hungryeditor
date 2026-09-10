@@ -64,6 +64,10 @@ signals:
 
     /// The viewer clicked a heading in the preview; `line` is its source line.
     void clickedSourceLine(int line);
+
+    /// The viewer toggled a task-list checkbox; `line` is the source line of its
+    /// list item and `checked` is the checkbox's new state.
+    void taskToggled(int line, bool checked);
 };
 
 } // namespace hungryeditor

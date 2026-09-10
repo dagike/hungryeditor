@@ -1,5 +1,7 @@
 // Coverage for the typed editor wrapper.
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QSignalSpy>
 #include <QtTest>
@@ -30,6 +32,19 @@ private slots:
     void togglesHtmlCommentIdempotently();
     void matchesBrackets();
     void newlineCarriesIndentAndContinuesLists();
+    void togglesInlineFormattingIdempotently();
+    void inlineFormattingWrapsEverySelection();
+    void setsAndCyclesHeadingLevels();
+    void togglesBlockquoteAndListPrefixes();
+    void insertsMarkdownLinks();
+    void smartPasteWrapsAUrlSelectionInALink();
+    void smartPasteLeavesPlainTextAlone();
+    void tabNavigatesTableCellsAndAppendsRows();
+    void formatTableAlignsColumns();
+    void tabOutsideATableIsNotConsumed();
+    void togglesTaskCheckboxAndWritesBack();
+    void foldsFrontMatterOnRequest();
+    void noFrontMatterLeavesTheFoldMarginHidden();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -301,6 +316,248 @@ void TestEditor::newlineCarriesIndentAndContinuesLists()
 
     pressEnterAtEnd(QStringLiteral("- ")); // empty bullet
     QCOMPARE(editor.text(), QString());    // the marker and its newline are removed
+}
+
+void TestEditor::togglesInlineFormattingIdempotently()
+{
+    hungryeditor::Editor editor;
+
+    // Wrap a selection, then strip it again.
+    editor.setText(QStringLiteral("make me bold please\n"));
+    editor.call().SetSelection(12, 8); // "bold"
+    editor.toggleInlineFormat(QStringLiteral("**"));
+    QCOMPARE(editor.text(), QStringLiteral("make me **bold** please\n"));
+    QCOMPARE(editor.selectedText(), QStringLiteral("bold"));
+    editor.toggleInlineFormat(QStringLiteral("**"));
+    QCOMPARE(editor.text(), QStringLiteral("make me bold please\n"));
+
+    // A bare caret takes the word under it.
+    editor.setText(QStringLiteral("emphasise word here\n"));
+    editor.setCursorPosition(0, 12); // inside "word"
+    editor.toggleInlineFormat(QStringLiteral("*"));
+    QCOMPARE(editor.text(), QStringLiteral("emphasise *word* here\n"));
+
+    // Markers already inside the selection are removed.
+    editor.setText(QStringLiteral("a `code` b\n"));
+    editor.call().SetSelection(8, 2); // "`code`"
+    editor.toggleInlineFormat(QStringLiteral("`"));
+    QCOMPARE(editor.text(), QStringLiteral("a code b\n"));
+}
+
+void TestEditor::inlineFormattingWrapsEverySelection()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("one two three\n"));
+
+    editor.call().SetSelection(3, 0);  // "one"
+    editor.call().AddSelection(13, 8); // "three"
+    editor.toggleInlineFormat(QStringLiteral("**"));
+
+    QCOMPARE(editor.text(), QStringLiteral("**one** two **three**\n"));
+}
+
+void TestEditor::setsAndCyclesHeadingLevels()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("Title\n"));
+
+    editor.setCursorPosition(0, 0);
+    editor.setHeadingLevel(1);
+    QCOMPARE(editor.text(), QStringLiteral("# Title\n"));
+
+    editor.setHeadingLevel(3);
+    QCOMPARE(editor.text(), QStringLiteral("### Title\n"));
+
+    editor.setHeadingLevel(0);
+    QCOMPARE(editor.text(), QStringLiteral("Title\n"));
+
+    editor.cycleHeading();
+    QCOMPARE(editor.text(), QStringLiteral("# Title\n"));
+    for (int i = 0; i < 5; ++i) {
+        editor.cycleHeading();
+    }
+    QCOMPARE(editor.text(), QStringLiteral("###### Title\n"));
+    editor.cycleHeading();
+    QCOMPARE(editor.text(), QStringLiteral("Title\n"));
+}
+
+void TestEditor::togglesBlockquoteAndListPrefixes()
+{
+    hungryeditor::Editor editor;
+
+    editor.setText(QStringLiteral("alpha\nbeta\ngamma\n"));
+    editor.call().SetSelection(editor.call().PositionFromLine(2) + 2, 0);
+    editor.toggleBlockquote();
+    QCOMPARE(editor.text(), QStringLiteral("> alpha\n> beta\n> gamma\n"));
+    editor.call().SetSelection(editor.call().PositionFromLine(2) + 2, 0);
+    editor.toggleBlockquote();
+    QCOMPARE(editor.text(), QStringLiteral("alpha\nbeta\ngamma\n"));
+
+    const auto selectAll = [&] {
+        editor.call().SetSelection(editor.call().PositionFromLine(2) + 2, 0);
+    };
+
+    selectAll();
+    editor.toggleBulletList();
+    QCOMPARE(editor.text(), QStringLiteral("- alpha\n- beta\n- gamma\n"));
+    selectAll();
+    editor.toggleBulletList();
+    QCOMPARE(editor.text(), QStringLiteral("alpha\nbeta\ngamma\n"));
+
+    selectAll();
+    editor.toggleNumberedList();
+    QCOMPARE(editor.text(), QStringLiteral("1. alpha\n2. beta\n3. gamma\n"));
+    selectAll();
+    editor.toggleNumberedList();
+    QCOMPARE(editor.text(), QStringLiteral("alpha\nbeta\ngamma\n"));
+}
+
+void TestEditor::insertsMarkdownLinks()
+{
+    hungryeditor::Editor editor;
+
+    editor.setText(QStringLiteral("see the docs\n"));
+    editor.call().SetSelection(12, 8); // "docs"
+    editor.insertLink();
+    QCOMPARE(editor.text(), QStringLiteral("see the [docs](url)\n"));
+    QCOMPARE(editor.selectedText(), QStringLiteral("url"));
+
+    editor.setText(QStringLiteral("https://example.com\n"));
+    editor.call().SetSelection(19, 0);
+    editor.insertLink();
+    QCOMPARE(editor.text(), QStringLiteral("[](https://example.com)\n"));
+}
+
+void TestEditor::smartPasteWrapsAUrlSelectionInALink()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("see the docs here\n"));
+    editor.call().SetSelection(12, 8); // "docs"
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("  https://example.com/x  "));
+    QVERIFY(editor.handleSmartPaste());
+    QCOMPARE(editor.text(), QStringLiteral("see the [docs](https://example.com/x) here\n"));
+}
+
+void TestEditor::smartPasteLeavesPlainTextAlone()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("word\n"));
+
+    editor.call().SetSelection(4, 0); // "word" selected, but the clipboard is prose
+    QGuiApplication::clipboard()->setText(QStringLiteral("just some text"));
+    QVERIFY(!editor.handleSmartPaste());
+
+    editor.call().SetSelection(4, 4); // a URL but no selection to wrap
+    QGuiApplication::clipboard()->setText(QStringLiteral("https://example.com"));
+    QVERIFY(!editor.handleSmartPaste());
+
+    QCOMPARE(editor.text(), QStringLiteral("word\n"));
+}
+
+void TestEditor::tabNavigatesTableCellsAndAppendsRows()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("| A | B |\n|---|---|\n| 1 | 2 |\n"));
+    editor.setCursorPosition(0, 2); // inside "A"
+
+    QVERIFY(editor.navigateTableCell(true));
+    QCOMPARE(editor.selectedText(), QStringLiteral("B"));
+
+    QVERIFY(editor.navigateTableCell(true));
+    QCOMPARE(editor.selectedText(), QStringLiteral("1"));
+    QVERIFY(editor.navigateTableCell(true));
+    QCOMPARE(editor.selectedText(), QStringLiteral("2"));
+
+    QVERIFY(editor.navigateTableCell(true)); // past the last cell: new row
+    QCOMPARE(editor.selectedText(), QString());
+    QCOMPARE(editor.text(),
+             QStringLiteral("| A   | B   |\n| --- | --- |\n| 1   | 2   |\n|     |     |\n"));
+
+    QVERIFY(editor.navigateTableCell(false));
+    QCOMPARE(editor.selectedText(), QStringLiteral("2")); // Shift+Tab walks back
+}
+
+void TestEditor::formatTableAlignsColumns()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("| Name | Age |\n|:--|--:|\n| Bob | 3 |\n| Alexander | 42 |\n"));
+    editor.setCursorPosition(2, 4);
+
+    editor.formatTable();
+
+    QCOMPARE(editor.text(), QStringLiteral("| Name      | Age |\n"
+                                           "| :-------- | --: |\n"
+                                           "| Bob       |   3 |\n"
+                                           "| Alexander |  42 |\n"));
+    QVERIFY(editor.cursorLine() >= 0 && editor.cursorLine() <= 3);
+}
+
+void TestEditor::tabOutsideATableIsNotConsumed()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("just prose here\n"));
+    editor.call().GotoPos(editor.call().LineEndPosition(0));
+    QVERIFY(!editor.navigateTableCell(true));
+
+    editor.formatTable(); // a no-op that must not disturb the buffer
+    QCOMPARE(editor.text(), QStringLiteral("just prose here\n"));
+}
+
+void TestEditor::togglesTaskCheckboxAndWritesBack()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("- [ ] one\n- [x] two\n1) [ ] three\nplain line\n"));
+
+    editor.setTaskChecked(0, true);
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [x] two\n1) [ ] three\nplain line\n"));
+
+    editor.setTaskChecked(1, false);
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [ ] three\nplain line\n"));
+
+    editor.setTaskChecked(2, true); // ordered-list task marker
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [x] three\nplain line\n"));
+
+    editor.setTaskChecked(1, false); // already unchecked -> no-op
+    editor.setTaskChecked(3, true);  // not a task line -> no-op
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [x] three\nplain line\n"));
+
+    editor.undo(); // the ordered-list toggle was one undo step
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [ ] three\nplain line\n"));
+}
+
+void TestEditor::foldsFrontMatterOnRequest()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("---\n"
+                                  "title: Hi\n"
+                                  "tags: [a, b]\n"
+                                  "---\n"
+                                  "\n"
+                                  "# Body\n"));
+    QVERIFY(editor.hasFrontMatter());
+    QVERIFY(!editor.isFrontMatterFolded());
+
+    editor.setCursorPosition(5, 0); // outside the block
+    editor.setFrontMatterFolded(true);
+    QVERIFY(editor.isFrontMatterFolded());
+    QVERIFY(editor.call().LineVisible(0));  // the header line stays
+    QVERIFY(!editor.call().LineVisible(2)); // an interior line is hidden
+
+    editor.setFrontMatterFolded(false);
+    QVERIFY(!editor.isFrontMatterFolded());
+    QVERIFY(editor.call().LineVisible(2));
+}
+
+void TestEditor::noFrontMatterLeavesTheFoldMarginHidden()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("# Just a heading\n\nText.\n"));
+    QVERIFY(!editor.hasFrontMatter());
+
+    editor.setFrontMatterFolded(true); // no-op, must not crash
+    QVERIFY(!editor.isFrontMatterFolded());
+    QCOMPARE(editor.call().MarginWidthN(2), 0);
 }
 
 void TestEditor::visualDefaultsAreApplied()

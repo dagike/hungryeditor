@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QFont>
 #include <QString>
 #include <QStringList>
@@ -12,6 +14,7 @@
 #include <ScintillaEditBase.h>
 // clang-format on
 
+class QImage;
 class QKeyEvent;
 
 namespace Scintilla {
@@ -94,6 +97,68 @@ public:
     /// indentation. This is Markdown's comment form; per-language comment
     /// tokens arrive with the grammar registry.
     void toggleLineComment();
+
+    /// Markdown formatting shortcuts. Every operation is idempotent, acts on
+    /// every active selection, and is a single undo step.
+
+    /// Wrap each selection (or the word under a bare caret) in `marker`
+    /// (`**`, `*`, `` ` ``, `~~`), or strip it when it is already there.
+    void toggleInlineFormat(const QString& marker);
+    /// Set the ATX heading level (1–6, or 0 to demote to a paragraph) on every
+    /// line the selection touches, replacing any existing `#` prefix.
+    void setHeadingLevel(int level);
+    /// Advance the caret line's heading one level, wrapping `H6` back to a
+    /// paragraph.
+    void cycleHeading();
+    /// Toggle a `> ` blockquote prefix on every selected line — added unless
+    /// they all already have one, in which case it is removed.
+    void toggleBlockquote();
+    /// Toggle a `- ` bullet prefix on every selected line (same all-or-none
+    /// rule as toggleBlockquote()).
+    void toggleBulletList();
+    /// Toggle an ordered-list prefix on every selected line, renumbering
+    /// `1.`, `2.`, … down the block.
+    void toggleNumberedList();
+    /// Turn the selection into a Markdown link: a URL-looking selection becomes
+    /// `[](url)` with the caret in the text slot, other text becomes
+    /// `[text](url)` with `url` selected, and a bare caret inserts `[](url)`.
+    void insertLink();
+
+    /// Called with an image pulled from the clipboard on paste; returns the
+    /// Markdown to insert in its place (e.g. `![](assets/x.png)`), or an empty
+    /// string to fall back to Scintilla's normal paste. MainWindow installs one
+    /// that writes the image to disk beside the document.
+    using ImagePasteHandler = std::function<QString(const QImage&)>;
+    void setImagePasteHandler(ImagePasteHandler handler);
+
+    /// Smart paste: a single-line URL on the clipboard wraps the current
+    /// selection as `[selection](url)`, and a clipboard image goes through the
+    /// image handler. Returns true when it consumed the paste; false leaves it
+    /// to Scintilla. Bound to Ctrl+V and Shift+Insert.
+    bool handleSmartPaste();
+
+    /// When the caret is inside a GFM pipe table, move it to the next (or
+    /// previous) cell — realigning the whole table and appending a blank row
+    /// when Tab steps past the last one — and select that cell's text. Returns
+    /// false (for a plain tab / dedent) when the caret is not in a table.
+    /// Bound to Tab and Shift+Tab.
+    bool navigateTableCell(bool forward);
+
+    /// Realign the pipe table under the caret in place. No-op otherwise.
+    void formatTable();
+
+    /// Set the task-list checkbox on `line` (`- [ ]` / `- [x]`, ordered markers
+    /// included) to `checked`, as one undo step. No-op when the line carries no
+    /// task marker or is already in that state. Driven by a click in the preview.
+    void setTaskChecked(int line, bool checked);
+
+    /// True when the document opens with a YAML front-matter block (`---` … `---`).
+    bool hasFrontMatter() const;
+    /// True when that block exists and is currently folded.
+    bool isFrontMatterFolded() const;
+    /// Fold or unfold the front-matter block. No-op when there is none, or when
+    /// the caret sits inside it. Bound to Ctrl+Shift+Y via the View menu.
+    void setFrontMatterFolded(bool folded);
 
     /// Position of the bracket that pairs with the one at `position`, or -1 if
     /// there is no bracket there or it is unbalanced.
@@ -181,6 +246,12 @@ private:
 
     /// Highlight the bracket pair around the caret (or flag an unmatched one).
     void updateBraceHighlight();
+    /// Shared engine for navigateTableCell()/formatTable(): realign the pipe
+    /// table around the caret, optionally moving the caret one cell (`forward`
+    /// direction) and selecting it. Returns false when the caret is not in a
+    /// table.
+    bool reflowTable(bool moveCaret, bool forward);
+
     /// Insert a newline that carries the current line's indentation and, if it
     /// is a Markdown list item, its (renumbered) marker — or, on an empty item,
     /// removes the marker instead. Returns false to fall back to a plain
@@ -196,6 +267,9 @@ private:
     void applyLexillaMarkdownStyles();
     /// Resize the line-number margin to fit the current line count.
     void updateLineNumberMargin();
+    /// Re-derive the front-matter fold region from the buffer and show or hide
+    /// the fold margin to match.
+    void updateFrontMatterFold();
     /// Pick the highlighting tier for the current buffer size and, if it
     /// changed (or `force` is set), switch the lexer and the background
     /// highlighter to match and repaint.
@@ -203,10 +277,12 @@ private:
 
     mutable Scintilla::ScintillaCall call_;
     HighlightController* highlight_ = nullptr;
+    ImagePasteHandler imagePasteHandler_;
     Document* document_ = nullptr;
     QFont font_;
     bool modified_ = false;
     int lineDigits_ = 0;
+    int frontMatterLastLine_ = -1; ///< closing `---` line, or -1 when absent
     HighlightTier tier_ = HighlightTier::TreeSitter;
     int lexillaByteLimit_ = 2 * 1024 * 1024;
     int plainTextByteLimit_ = 20 * 1024 * 1024;
