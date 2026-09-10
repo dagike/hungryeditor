@@ -2,15 +2,15 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Supersede in-progress runs on a branch/PR, but let every push to main run so
-  # a fast series of commits cannot skip CI.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Supersede in-progress runs on a branch/PR, but let every push to master run
+  # so a fast series of commits cannot skip CI.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
   build:
