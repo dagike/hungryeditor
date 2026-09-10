@@ -90,6 +90,8 @@ add_library(hungryeditor_core STATIC
     theme/Theme.h
     ui/CommandPalette.cpp
     ui/CommandPalette.h
+    ui/FileTreePanel.cpp
+    ui/FileTreePanel.h
     ui/FindReplaceBar.cpp
     ui/FindReplaceBar.h
     ui/FuzzyMatch.cpp

@@ -30,6 +30,7 @@
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "ui/CommandPalette.h"
+#include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
@@ -77,6 +78,7 @@ private slots:
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
     void outlinePanelListsHeadingsAndJumpsToThem();
+    void fileSidebarListsTheFolderAndOpensAFile();
     void commandPaletteRunsTheChosenAction();
     void quickOpenOpensAFuzzilyMatchedFile();
 };
@@ -546,6 +548,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("formatTable") << QStringLiteral("action.formatTable");
     QTest::newRow("foldFrontMatter") << QStringLiteral("action.foldFrontMatter");
     QTest::newRow("toggleOutline") << QStringLiteral("action.toggleOutline");
+    QTest::newRow("toggleFiles") << QStringLiteral("action.toggleFiles");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -844,6 +847,38 @@ void TestMainWindow::outlinePanelListsHeadingsAndJumpsToThem()
     QAction* toggle = window.findChild<QAction*>(QStringLiteral("action.toggleOutline"));
     QVERIFY(toggle != nullptr);
     QVERIFY(toggle->isCheckable());
+}
+
+void TestMainWindow::fileSidebarListsTheFolderAndOpensAFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    writeText(dir.filePath(QStringLiteral("one.md")), "one\n");
+    const QString two = writeText(dir.filePath(QStringLiteral("two.md")), "two\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(dir.filePath(QStringLiteral("one.md")))); // roots the workspace here
+
+    window.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->trigger();
+
+    auto* panel = window.findChild<hungryeditor::FileTreePanel*>();
+    QVERIFY(panel != nullptr);
+    auto* tree = panel->findChild<QTreeWidget*>();
+    QVERIFY(tree != nullptr);
+
+    QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 2, 5000); // background scan landed
+
+    QTreeWidgetItem* twoItem = nullptr;
+    for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+        if (tree->topLevelItem(i)->text(0) == QStringLiteral("two.md")) {
+            twoItem = tree->topLevelItem(i);
+        }
+    }
+    QVERIFY(twoItem != nullptr);
+
+    QMetaObject::invokeMethod(tree, "itemActivated", Q_ARG(QTreeWidgetItem*, twoItem),
+                              Q_ARG(int, 0));
+    QCOMPARE(window.currentPath(), two);
 }
 
 void TestMainWindow::commandPaletteRunsTheChosenAction()

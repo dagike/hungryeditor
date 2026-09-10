@@ -39,6 +39,7 @@
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
 #include "ui/CommandPalette.h"
+#include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
@@ -127,6 +128,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
         if (paletteShowsFiles_ && !commandPalette_->isHidden()) {
             populateQuickOpen();
         }
+        fileTree_->setFiles(fileIndex_->files());
     });
 
     searchResults_ = new SearchResultsPanel(this);
@@ -151,6 +153,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(outline_, &OutlinePanel::headingActivated, this, [this](int line) {
         editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
         editor_->setFocus();
+    });
+
+    fileTree_ = new FileTreePanel(this);
+    fileTree_->setMinimumWidth(160);
+    fileTreeDock_ = new QDockWidget(tr("Files"), this);
+    fileTreeDock_->setObjectName(QStringLiteral("dock.fileTree"));
+    fileTreeDock_->setWidget(fileTree_);
+    addDockWidget(Qt::LeftDockWidgetArea, fileTreeDock_);
+    tabifyDockWidget(fileTreeDock_, outlineDock_);
+    fileTreeDock_->hide();
+    connect(fileTree_, &FileTreePanel::fileActivated, this, [this](const QString& path) {
+        if (openPath(path)) {
+            editor_->setFocus();
+        }
     });
 
     outlineTimer_ = new QTimer(this);
@@ -438,6 +454,17 @@ void MainWindow::buildMenus()
             [this](bool on) { editor_->setFrontMatterFolded(on); });
     updateFrontMatterAction();
 
+    QAction* filesAction = fileTreeDock_->toggleViewAction();
+    filesAction->setText(tr("&Files"));
+    filesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    filesAction->setObjectName(QStringLiteral("action.toggleFiles"));
+    connect(filesAction, &QAction::toggled, this, [this](bool on) {
+        if (on) {
+            updateWorkspaceRoot();
+        }
+    });
+    viewMenu->addAction(filesAction);
+
     QAction* outlineAction = outlineDock_->toggleViewAction();
     outlineAction->setText(tr("&Outline"));
     outlineAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
@@ -510,6 +537,19 @@ void MainWindow::onCurrentChanged(int index)
 
     updateFrontMatterAction();
     rebuildOutline();
+    updateWorkspaceRoot();
+}
+
+void MainWindow::updateWorkspaceRoot()
+{
+    if (fileTreeDock_ == nullptr || !fileTreeDock_->toggleViewAction()->isChecked()) {
+        return; // nothing scans until the sidebar is switched on
+    }
+    const QString current = currentPath();
+    const QString dir = current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath();
+    fileTree_->setRoot(dir);
+    fileIndex_->setRoot(dir);
+    fileTree_->setFiles(fileIndex_->files()); // last scan now; refreshed() supplies the next
 }
 
 void MainWindow::rebuildOutline()

@@ -23,6 +23,7 @@ class Document;
 class DocumentManager;
 class Editor;
 class FileIndex;
+class FileTreePanel;
 class FindReplaceBar;
 class OutlinePanel;
 class PreviewBackend;
@@ -175,6 +176,10 @@ private:
     void populateQuickOpen();
     void runPaletteChoice(const QString& id);
 
+    // Folder sidebar: point it (and the shared file index) at the current
+    // document's directory, but only while the sidebar is switched on.
+    void updateWorkspaceRoot();
+
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
     void openRecent(const QString& path);
@@ -206,6 +211,8 @@ private:
     CommandPalette* commandPalette_ = nullptr;
     FileIndex* fileIndex_ = nullptr;
     bool paletteShowsFiles_ = false;
+    FileTreePanel* fileTree_ = nullptr;
+    QDockWidget* fileTreeDock_ = nullptr;
     SearchResultsPanel* searchResults_ = nullptr;
     QDockWidget* searchDock_ = nullptr;
     OutlinePanel* outline_ = nullptr;
