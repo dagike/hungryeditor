@@ -19,6 +19,14 @@ const char* const kShellHtml = R"HTML(<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
+<!-- The preview never needs the network: scripts, styles and fonts are all
+     bundled under qrc:, images arrive inlined as data: URIs. This policy makes
+     the browser enforce that, so a stray remote src in the rendered markdown
+     (a tracking pixel, a pasted <img>) is refused before a request goes out.
+     'unsafe-inline' covers the shell's own inline <style>/<script> and the
+     inline style attributes KaTeX writes; it is not a sandbox for our bundled
+     JS, only a wall against exfiltration. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src qrc: 'unsafe-inline'; style-src qrc: 'unsafe-inline'; img-src qrc: data:; font-src qrc:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Preview</title>
 <style>
   html { box-sizing: border-box; }

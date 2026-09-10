@@ -29,6 +29,7 @@ private slots:
     void showsAnInlineErrorForABrokenDiagram();
     void showsAnInlineErrorForBrokenMath();
     void defersOffscreenDiagramsUntilTheyScrollIntoView();
+    void blocksExternalPreviewResources();
 };
 
 namespace {
@@ -397,6 +398,37 @@ void TestPreview::defersOffscreenDiagramsUntilTheyScrollIntoView()
         QTest::qWait(100);
     }
     QCOMPARE(state, QStringLiteral("2/2"));
+}
+
+void TestPreview::blocksExternalPreviewResources()
+{
+    QtWebEnginePreview preview;
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<p data-src-line=\"0\">seed</p>"));
+    QVERIFY(ready.wait(20000));
+
+    // Record any CSP violation the page reports.
+    evalJs(preview, QStringLiteral("window.__cspHits = [];"
+                                   "document.addEventListener('securitypolicyviolation',"
+                                   "  function (e) { window.__cspHits.push(e.effectiveDirective"
+                                   "    + ' ' + e.blockedURI); });"
+                                   "void 0"));
+
+    // A remote image slips through the renderer untouched; the browser must
+    // refuse to fetch it.
+    preview.setContent(QStringLiteral(
+        "<p data-src-line=\"0\"><img src=\"https://example.invalid/tracker.png\"></p>"));
+
+    QString hits;
+    QElapsedTimer clock;
+    clock.start();
+    while (hits.isEmpty() && clock.elapsed() < 10000) {
+        hits = evalJs(preview, QStringLiteral("window.__cspHits.join('|')")).toString();
+        QTest::qWait(100);
+    }
+    QVERIFY(hits.contains(QStringLiteral("img-src")));
+    QVERIFY(hits.contains(QStringLiteral("example.invalid")));
 }
 
 QTEST_MAIN(TestPreview)
