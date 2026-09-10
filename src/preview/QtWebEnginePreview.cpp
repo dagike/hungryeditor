@@ -57,6 +57,33 @@ const char* const kShellHtml = R"HTML(<!doctype html>
       // body has moved on is dropped instead of painted over fresh content.
       var renderToken = 0;
 
+      // Swap a failed diagram/math node for a labelled error surface, keeping
+      // its source line so scroll-sync still lands on it. Inline math gets an
+      // inline span so we never nest a <div> inside a <p>.
+      function renderError(el, kind, err, block) {
+        var message = String((err && err.message) || err || "unknown error");
+        if (!block) {
+          var span = document.createElement("span");
+          span.className = "he-render-error-inline";
+          span.title = kind + " error: " + message;
+          span.textContent = el.textContent;
+          el.replaceWith(span);
+          return;
+        }
+        var box = document.createElement("div");
+        box.className = "he-render-error";
+        if (el.hasAttribute("data-src-line")) {
+          box.setAttribute("data-src-line", el.getAttribute("data-src-line"));
+        }
+        var label = document.createElement("strong");
+        label.textContent = kind + " error";
+        var body = document.createElement("pre");
+        body.textContent = message;
+        box.appendChild(label);
+        box.appendChild(body);
+        el.replaceWith(box);
+      }
+
       function renderMermaid() {
         if (!mermaidReady) return;
         var token = ++renderToken;
@@ -71,11 +98,20 @@ const char* const kShellHtml = R"HTML(<!doctype html>
               holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
             }
             pre.replaceWith(holder);
-            mermaid.render("he-mermaid-" + token + "-" + index, code.textContent).then(
-              function (out) { if (token === renderToken) holder.innerHTML = out.svg; },
-              function (err) {
-                if (token === renderToken) holder.textContent = String((err && err.message) || err);
-              });
+            var fullId = "he-mermaid-" + token + "-" + index;
+            function fail(err) {
+              if (token !== renderToken) return;
+              renderError(holder, "Diagram", err, true);
+              var orphan = document.getElementById("d" + fullId);
+              if (orphan) orphan.remove();
+            }
+            try {
+              mermaid.render(fullId, code.textContent).then(
+                function (out) { if (token === renderToken) holder.innerHTML = out.svg; },
+                fail);
+            } catch (err) {
+              fail(err);
+            }
           })(codes[i], i);
         }
       }
@@ -87,10 +123,12 @@ const char* const kShellHtml = R"HTML(<!doctype html>
           var span = spans[i];
           if (span.dataset.rendered) continue;
           span.dataset.rendered = "1";
-          katex.render(span.textContent, span, {
-            displayMode: span.classList.contains("math-display"),
-            throwOnError: false
-          });
+          var display = span.classList.contains("math-display");
+          try {
+            katex.render(span.textContent, span, { displayMode: display, throwOnError: true });
+          } catch (err) {
+            renderError(span, "Math", err, display);
+          }
         }
       }
 

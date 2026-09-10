@@ -26,6 +26,8 @@ private slots:
     void togglingATaskCheckboxReportsItsLineAndState();
     void rendersABundledMermaidDiagram();
     void rendersBundledKatexMath();
+    void showsAnInlineErrorForABrokenDiagram();
+    void showsAnInlineErrorForBrokenMath();
 };
 
 namespace {
@@ -290,6 +292,58 @@ void TestPreview::rendersBundledKatexMath()
                                            "  return s && s.querySelector('.katex') ? 'ok' : '';"
                                            "})()"))
                 .toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("ok"));
+}
+
+void TestPreview::showsAnInlineErrorForABrokenDiagram()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<pre data-src-line=\"4\"><code class=\"language-mermaid\">"
+                                      "not a valid diagram {{{</code></pre>"));
+    QVERIFY(ready.wait(20000));
+
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (probe.isEmpty() && clock.elapsed() < 20000) {
+        probe = evalJs(preview, QStringLiteral(
+                                    "(function () {"
+                                    "  var e = document.querySelector('.he-render-error');"
+                                    "  return e ? (e.getAttribute('data-src-line') || 'none') : '';"
+                                    "})()"))
+                    .toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("4")); // the surface kept the source line
+    QVERIFY(
+        !evalJs(preview, QStringLiteral("document.querySelector('.mermaid-diagram svg') != null"))
+             .toBool());
+}
+
+void TestPreview::showsAnInlineErrorForBrokenMath()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<p data-src-line=\"1\">"
+                                      "<span class=\"math-display\">\\frac{1}{</span></p>"));
+    QVERIFY(ready.wait(20000));
+
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (probe.isEmpty() && clock.elapsed() < 20000) {
+        probe = evalJs(preview,
+                       QStringLiteral("(function () {"
+                                      "  var e = document.querySelector('.he-render-error');"
+                                      "  return e && /Math error/.test(e.textContent) ? 'ok' : '';"
+                                      "})()"))
+                    .toString();
         QTest::qWait(100);
     }
     QCOMPARE(probe, QStringLiteral("ok"));

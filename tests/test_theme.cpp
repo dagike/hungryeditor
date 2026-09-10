@@ -33,6 +33,7 @@ void TestTheme::previewCssDefinesTokensAndBaseRules()
     QVERIFY(css.contains(QStringLiteral("--he-bg: #ffffff")));
     QVERIFY(css.contains(QStringLiteral("--he-heading: #0550ae")));
     QVERIFY(css.contains(QStringLiteral("--he-link: #0969da")));
+    QVERIFY(css.contains(QStringLiteral("--he-error: #cf222e")));
 
     QVERIFY(
         css.contains(QStringLiteral("body { background: var(--he-bg); color: var(--he-fg); }")));
@@ -52,6 +53,8 @@ void TestTheme::previewCssDefinesTokensAndBaseRules()
     QVERIFY(css.contains(
         QStringLiteral(".math-display { display: block; overflow-x: auto; margin: 1em 0; }")));
     QVERIFY(css.contains(QStringLiteral("img[data-img-missing], img[data-img-toobig] {")));
+    QVERIFY(css.contains(QStringLiteral(".he-render-error {")));
+    QVERIFY(css.contains(QStringLiteral(".he-render-error-inline {")));
 
     // Fenced-code token classes, coloured from the editor's palette.
     QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: #cf222e")));

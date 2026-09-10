@@ -15,6 +15,7 @@ Theme Theme::builtin()
     t.codeText = QColor(QStringLiteral("#6e40c9"));
     t.codeBackground = QColor(QStringLiteral("#f6f8fa"));
     t.border = QColor(QStringLiteral("#d0d7de"));
+    t.error = QColor(QStringLiteral("#cf222e"));
     return t;
 }
 
@@ -28,6 +29,7 @@ QString Theme::previewCss() const
     const QString codeFg = codeText.name();
     const QString codeBg = codeBackground.name();
     const QString bord = border.name();
+    const QString err = error.name();
 
     return QStringLiteral(
                ":root {"
@@ -39,6 +41,7 @@ QString Theme::previewCss() const
                "  --he-code-fg: %6;"
                "  --he-code-bg: %7;"
                "  --he-border: %8;"
+               "  --he-error: %9;"
                "}"
                "body { background: var(--he-bg); color: var(--he-fg); }"
                "a { color: var(--he-link); }"
@@ -90,8 +93,22 @@ QString Theme::previewCss() const
                "  display: inline-block; min-width: 8em; min-height: 3em; padding: .4em .6em;"
                "  border: 1px dashed var(--he-border); border-radius: 6px;"
                "  color: var(--he-muted); font-size: .85em; font-style: italic;"
+               "}"
+               ".he-render-error {"
+               "  margin: 1em 0; padding: .6em .8em; border-radius: 6px;"
+               "  border: 1px solid var(--he-error); background: var(--he-code-bg);"
+               "  color: var(--he-error); font-size: .9em;"
+               "}"
+               ".he-render-error strong { display: block; margin-bottom: .3em; }"
+               ".he-render-error pre {"
+               "  margin: 0; padding: 0; border: 0; background: none;"
+               "  color: inherit; font-size: .95em; white-space: pre-wrap;"
+               "}"
+               ".he-render-error-inline {"
+               "  color: var(--he-error); border-bottom: 1px dotted var(--he-error);"
+               "  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;"
                "}")
-               .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord) +
+               .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord, err) +
            codeTokenCss();
 }
 
