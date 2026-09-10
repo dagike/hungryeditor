@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QFont>
 #include <QString>
 #include <QStringList>
@@ -12,6 +14,7 @@
 #include <ScintillaEditBase.h>
 // clang-format on
 
+class QImage;
 class QKeyEvent;
 
 namespace Scintilla {
@@ -121,6 +124,19 @@ public:
     /// `[text](url)` with `url` selected, and a bare caret inserts `[](url)`.
     void insertLink();
 
+    /// Called with an image pulled from the clipboard on paste; returns the
+    /// Markdown to insert in its place (e.g. `![](assets/x.png)`), or an empty
+    /// string to fall back to Scintilla's normal paste. MainWindow installs one
+    /// that writes the image to disk beside the document.
+    using ImagePasteHandler = std::function<QString(const QImage&)>;
+    void setImagePasteHandler(ImagePasteHandler handler);
+
+    /// Smart paste: a single-line URL on the clipboard wraps the current
+    /// selection as `[selection](url)`, and a clipboard image goes through the
+    /// image handler. Returns true when it consumed the paste; false leaves it
+    /// to Scintilla. Bound to Ctrl+V and Shift+Insert.
+    bool handleSmartPaste();
+
     /// Position of the bracket that pairs with the one at `position`, or -1 if
     /// there is no bracket there or it is unbalanced.
     int matchingBrace(int position) const;
@@ -229,6 +245,7 @@ private:
 
     mutable Scintilla::ScintillaCall call_;
     HighlightController* highlight_ = nullptr;
+    ImagePasteHandler imagePasteHandler_;
     Document* document_ = nullptr;
     QFont font_;
     bool modified_ = false;

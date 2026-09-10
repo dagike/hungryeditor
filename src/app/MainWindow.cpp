@@ -10,6 +10,7 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QImage>
 #include <QInputDialog>
 #include <QMenu>
 #include <QMenuBar>
@@ -27,6 +28,7 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "io/AssetWriter.h"
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
@@ -148,6 +150,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     splitter_->addWidget(previewWidget);
     splitter_->setStretchFactor(0, 1);
     splitter_->setStretchFactor(1, 1);
+    editor_->setImagePasteHandler([this](const QImage& image) -> QString {
+        const QString ref = assets::writePastedImage(image, currentPath(), stateDir_);
+        return ref.isEmpty() ? QString() : QStringLiteral("![](%1)").arg(ref);
+    });
+
     connect(editor_, &Editor::textChanged, this, &MainWindow::refreshPreview);
     connect(editor_, &Editor::viewportScrolled, this, &MainWindow::syncPreviewToEditor);
     connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
@@ -693,6 +700,7 @@ void MainWindow::restoreUnsavedFromLastSession(bool askFirst)
 
 void MainWindow::setStateDirectory(const QString& directory)
 {
+    stateDir_ = directory;
     documents_->setDraftDirectory(directory + QLatin1String("/drafts"));
     sessionStore_ = std::make_unique<SessionStore>(directory + QLatin1String("/session.json"));
     recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));

@@ -7,9 +7,13 @@
 #include <utility>
 #include <vector>
 
+#include <QClipboard>
 #include <QColor>
 #include <QFontDatabase>
+#include <QGuiApplication>
+#include <QImage>
 #include <QKeyEvent>
+#include <QMimeData>
 
 #include <ILexer.h>
 #include <Lexilla.h>
@@ -363,6 +367,13 @@ bool isHtmlComment(const std::string& body)
 {
     const std::string t = trimmed(body);
     return t.size() >= 7 && t.rfind("<!--", 0) == 0 && t.compare(t.size() - 3, 3, "-->") == 0;
+}
+
+/// Whether `text` reads as a bare URL we can drop into a link target.
+bool looksLikeUrl(std::string_view text)
+{
+    return text.rfind("http://", 0) == 0 || text.rfind("https://", 0) == 0 ||
+           text.rfind("www.", 0) == 0 || text.rfind("mailto:", 0) == 0;
 }
 
 /// The inclusive range of lines the current selection touches. A selection
@@ -742,11 +753,9 @@ void Editor::insertLink()
     const Position s = call_.SelectionStart();
     const Position e = call_.SelectionEnd();
     const std::string sel = call_.StringOfSpan({s, e});
-    const bool looksLikeUrl = sel.rfind("http://", 0) == 0 || sel.rfind("https://", 0) == 0 ||
-                              sel.rfind("www.", 0) == 0 || sel.rfind("mailto:", 0) == 0;
 
     call_.BeginUndoAction();
-    if (s != e && looksLikeUrl) {
+    if (s != e && looksLikeUrl(sel)) {
         std::string repl = "[](";
         repl += sel;
         repl += ")";
@@ -766,6 +775,57 @@ void Editor::insertLink()
         call_.SetSelection(s + 1, s + 1); // caret between the brackets
     }
     call_.EndUndoAction();
+}
+
+void Editor::setImagePasteHandler(ImagePasteHandler handler)
+{
+    imagePasteHandler_ = std::move(handler);
+}
+
+bool Editor::handleSmartPaste()
+{
+    const QClipboard* clipboard = QGuiApplication::clipboard();
+    const QMimeData* mime = clipboard != nullptr ? clipboard->mimeData() : nullptr;
+    if (mime == nullptr) {
+        return false;
+    }
+
+    if (imagePasteHandler_ && mime->hasImage()) {
+        const auto image = qvariant_cast<QImage>(mime->imageData());
+        if (!image.isNull()) {
+            const QString markdown = imagePasteHandler_(image);
+            if (!markdown.isEmpty()) {
+                const QByteArray utf8 = markdown.toUtf8();
+                call_.BeginUndoAction();
+                call_.ReplaceSel(utf8.constData());
+                call_.EndUndoAction();
+                return true;
+            }
+        }
+    }
+
+    if (mime->hasText() && call_.SelectionStart() != call_.SelectionEnd()) {
+        const std::string url = mime->text().trimmed().toStdString();
+        if (url.find_first_of("\r\n") == std::string::npos && looksLikeUrl(url)) {
+            const Scintilla::Position s = call_.SelectionStart();
+            const std::string label = call_.StringOfSpan({s, call_.SelectionEnd()});
+
+            std::string repl = "[";
+            repl += label;
+            repl += "](";
+            repl += url;
+            repl += ")";
+            const auto end = s + static_cast<Scintilla::Position>(repl.size());
+            call_.BeginUndoAction();
+            call_.SetTargetRange(s, call_.SelectionEnd());
+            call_.ReplaceTarget(Scintilla::Position(repl.size()), repl.c_str());
+            call_.SetSelection(end, end);
+            call_.EndUndoAction();
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool Editor::findNext(const QString& query, const SearchOptions& options, bool forward, bool wrap)
@@ -1305,6 +1365,15 @@ void Editor::keyPressEvent(QKeyEvent* event)
         event->accept();
         return;
     }
+
+    const bool paste =
+        (event->matches(QKeySequence::Paste) ||
+         (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ShiftModifier));
+    if (paste && handleSmartPaste()) {
+        event->accept();
+        return;
+    }
+
     ScintillaEditBase::keyPressEvent(event);
 }
 

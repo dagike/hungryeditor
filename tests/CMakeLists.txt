@@ -66,6 +66,10 @@ hungryeditor_add_test(test_recent_files
     SOURCES test_recent_files.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_asset_writer
+    SOURCES test_asset_writer.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_document_manager
     SOURCES test_document_manager.cpp
     LIBS hungryeditor::core)

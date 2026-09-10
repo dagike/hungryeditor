@@ -1,5 +1,7 @@
 // Coverage for the typed editor wrapper.
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QSignalSpy>
 #include <QtTest>
@@ -35,6 +37,8 @@ private slots:
     void setsAndCyclesHeadingLevels();
     void togglesBlockquoteAndListPrefixes();
     void insertsMarkdownLinks();
+    void smartPasteWrapsAUrlSelectionInALink();
+    void smartPasteLeavesPlainTextAlone();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -416,6 +420,33 @@ void TestEditor::insertsMarkdownLinks()
     editor.call().SetSelection(19, 0);
     editor.insertLink();
     QCOMPARE(editor.text(), QStringLiteral("[](https://example.com)\n"));
+}
+
+void TestEditor::smartPasteWrapsAUrlSelectionInALink()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("see the docs here\n"));
+    editor.call().SetSelection(12, 8); // "docs"
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("  https://example.com/x  "));
+    QVERIFY(editor.handleSmartPaste());
+    QCOMPARE(editor.text(), QStringLiteral("see the [docs](https://example.com/x) here\n"));
+}
+
+void TestEditor::smartPasteLeavesPlainTextAlone()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("word\n"));
+
+    editor.call().SetSelection(4, 0); // "word" selected, but the clipboard is prose
+    QGuiApplication::clipboard()->setText(QStringLiteral("just some text"));
+    QVERIFY(!editor.handleSmartPaste());
+
+    editor.call().SetSelection(4, 4); // a URL but no selection to wrap
+    QGuiApplication::clipboard()->setText(QStringLiteral("https://example.com"));
+    QVERIFY(!editor.handleSmartPaste());
+
+    QCOMPARE(editor.text(), QStringLiteral("word\n"));
 }
 
 void TestEditor::visualDefaultsAreApplied()

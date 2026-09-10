@@ -214,6 +214,7 @@ private:
     QActionGroup* viewModeGroup_ = nullptr;
     ViewMode viewMode_ = ViewMode::Split;
     QString lastError_;
+    QString stateDir_;
     bool syncingTabs_ = false;
     bool reorderingTabs_ = false;
     bool syncingScroll_ = false;
