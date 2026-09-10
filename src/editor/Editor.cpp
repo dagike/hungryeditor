@@ -834,7 +834,7 @@ std::pair<int, int> cellContentSpan(const std::string& line, int col)
     if (startPipe < 0) {
         return {static_cast<int>(line.size()), static_cast<int>(line.size())};
     }
-    auto start = static_cast<std::size_t>(startPipe + 1);
+    auto start = static_cast<std::size_t>(startPipe) + 1;
     auto end = endPipe < 0 ? line.size() : static_cast<std::size_t>(endPipe);
     while (start < end && line[start] == ' ') {
         ++start;
