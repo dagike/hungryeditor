@@ -4,7 +4,6 @@
 
 #include <QAction>
 #include <QDir>
-#include <QFileInfo>
 #include <QHash>
 #include <QLabel>
 #include <QLineEdit>
@@ -253,7 +252,11 @@ QMenu* FileTreePanel::contextMenuFor(QTreeWidgetItem* item)
         parentDir = targetPath;
     } else if (item != nullptr) {
         targetPath = item->data(0, kPathRole).toString();
-        parentDir = QFileInfo(targetPath).absolutePath();
+        // Derive the parent from the tree, not QFileInfo::absolutePath() — the
+        // latter drive-qualifies a bare POSIX path on Windows.
+        QTreeWidgetItem* parentItem = item->parent();
+        parentDir =
+            parentItem != nullptr ? QDir(root_).absoluteFilePath(itemPath(parentItem)) : root_;
     }
 
     auto* menu = new QMenu(this);
