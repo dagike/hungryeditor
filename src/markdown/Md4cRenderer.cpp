@@ -5,6 +5,10 @@
 #include <vector>
 
 #include <QByteArray>
+#include <QHash>
+#include <QRegularExpression>
+#include <QSet>
+#include <QStringList>
 
 #include <md4c.h>
 
@@ -43,6 +47,23 @@ struct RenderContext
     QByteArray codeText; ///< its verbatim content, held back for highlighting
     QByteArray codeLang; ///< its info string
 };
+
+/// The `style="text-align:…"` value for a GFM table column, or nullptr when the
+/// column has no explicit alignment.
+const char* alignStyle(MD_ALIGN align)
+{
+    switch (align) {
+    case MD_ALIGN_LEFT:
+        return "left";
+    case MD_ALIGN_CENTER:
+        return "center";
+    case MD_ALIGN_RIGHT:
+        return "right";
+    case MD_ALIGN_DEFAULT:
+    default:
+        return nullptr;
+    }
+}
 
 void appendEscaped(QByteArray& out, const char* text, MD_SIZE size)
 {
@@ -168,9 +189,20 @@ int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
         }
         break;
     }
-    case MD_BLOCK_LI:
-        openBlock(ctx, "<li", ">");
+    case MD_BLOCK_LI: {
+        const auto* d = static_cast<const MD_BLOCK_LI_DETAIL*>(detail);
+        if (d != nullptr && d->is_task != 0) {
+            openBlock(ctx, "<li class=\"task-list-item\"", ">");
+            ctx.out += "<input type=\"checkbox\" disabled";
+            if (d->task_mark == 'x' || d->task_mark == 'X') {
+                ctx.out += " checked";
+            }
+            ctx.out += "> ";
+        } else {
+            openBlock(ctx, "<li", ">");
+        }
         break;
+    }
     case MD_BLOCK_HR:
         openBlock(ctx, "<hr", ">");
         break;
@@ -201,8 +233,33 @@ int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
     case MD_BLOCK_P:
         openBlock(ctx, "<p", ">");
         break;
+    case MD_BLOCK_TABLE:
+        openBlock(ctx, "<table", ">");
+        break;
+    case MD_BLOCK_THEAD:
+        ctx.out += "<thead>\n";
+        break;
+    case MD_BLOCK_TBODY:
+        ctx.out += "<tbody>\n";
+        break;
+    case MD_BLOCK_TR:
+        openBlock(ctx, "<tr", ">");
+        break;
+    case MD_BLOCK_TH:
+    case MD_BLOCK_TD: {
+        const auto* d = static_cast<const MD_BLOCK_TD_DETAIL*>(detail);
+        ctx.out += (type == MD_BLOCK_TH) ? "<th" : "<td";
+        const char* style = alignStyle(d != nullptr ? d->align : MD_ALIGN_DEFAULT);
+        if (style != nullptr) {
+            ctx.out += " style=\"text-align:";
+            ctx.out += style;
+            ctx.out += '"';
+        }
+        ctx.out += '>';
+        break;
+    }
     default:
-        break; // table blocks arrive with GFM, added later
+        break;
     }
     return 0;
 }
@@ -243,6 +300,24 @@ int leaveBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
         break;
     case MD_BLOCK_P:
         closeBlock(ctx, "</p>\n");
+        break;
+    case MD_BLOCK_TABLE:
+        closeBlock(ctx, "</table>\n");
+        break;
+    case MD_BLOCK_THEAD:
+        ctx.out += "</thead>\n";
+        break;
+    case MD_BLOCK_TBODY:
+        ctx.out += "</tbody>\n";
+        break;
+    case MD_BLOCK_TR:
+        closeBlock(ctx, "</tr>\n");
+        break;
+    case MD_BLOCK_TH:
+        ctx.out += "</th>";
+        break;
+    case MD_BLOCK_TD:
+        ctx.out += "</td>";
         break;
     default:
         break;
@@ -381,11 +456,112 @@ int onText(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata)
     return 0;
 }
 
+/// The result of lifting footnotes out of the source: definitions removed (the
+/// lines blanked so every other block keeps its `data-src-line`), inline
+/// `[^id]` references rewritten into the HTML md4c passes straight through.
+struct FootnoteData
+{
+    QString markdown;                    ///< rewritten source
+    QStringList orderedIds;              ///< referenced ids, first-reference order
+    QHash<QString, QString> definitions; ///< id -> raw definition text
+};
+
+FootnoteData extractFootnotes(const QString& source)
+{
+    static const QRegularExpression defPattern(
+        QStringLiteral("^\\[\\^([^\\]\\s]+)\\]:[ \\t]*(.*)$"));
+    static const QRegularExpression refPattern(QStringLiteral("\\[\\^([^\\]\\s]+)\\]"));
+    static const QRegularExpression fencePattern(QStringLiteral("^ {0,3}(`{3,}|~{3,})"));
+
+    QStringList lines = source.split(QLatin1Char('\n'));
+    FootnoteData data;
+
+    // Pass 1 - pull single-line definitions out, blanking their lines.
+    bool inFence = false;
+    for (QString& line : lines) {
+        if (fencePattern.match(line).hasMatch()) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence) {
+            continue;
+        }
+        const QRegularExpressionMatch m = defPattern.match(line);
+        if (m.hasMatch()) {
+            data.definitions.insert(m.captured(1), m.captured(2).trimmed());
+            line.clear();
+        }
+    }
+
+    if (data.definitions.isEmpty()) {
+        data.markdown = source;
+        return data;
+    }
+
+    // Pass 2 - rewrite `[^id]` references that resolve to a definition. A
+    // reference with no matching definition is left as literal text.
+    QSet<QString> anchored;
+    inFence = false;
+    for (QString& line : lines) {
+        if (fencePattern.match(line).hasMatch()) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inFence || !line.contains(QStringLiteral("[^"))) {
+            continue;
+        }
+        QString rebuilt;
+        qsizetype cursor = 0;
+        bool changed = false;
+        QRegularExpressionMatchIterator it = refPattern.globalMatch(line);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            const QString id = m.captured(1);
+            if (!data.definitions.contains(id)) {
+                continue;
+            }
+            if (!data.orderedIds.contains(id)) {
+                data.orderedIds.append(id);
+            }
+            rebuilt += line.mid(cursor, m.capturedStart() - cursor);
+            cursor = m.capturedEnd();
+            changed = true;
+
+            const int number = static_cast<int>(data.orderedIds.indexOf(id)) + 1;
+            rebuilt += QStringLiteral("<sup class=\"fn-ref\"><a href=\"#fn-%1\"").arg(id);
+            if (!anchored.contains(id)) {
+                rebuilt += QStringLiteral(" id=\"fnref-%1\"").arg(id);
+                anchored.insert(id);
+            }
+            rebuilt += QStringLiteral(">%1</a></sup>").arg(number);
+        }
+        if (changed) {
+            rebuilt += line.mid(cursor);
+            line = rebuilt;
+        }
+    }
+
+    data.markdown = lines.join(QLatin1Char('\n'));
+    return data;
+}
+
+/// Drop a single enclosing `<p>` so a footnote body renders inline in its `<li>`.
+QString stripParagraphWrapper(QString html)
+{
+    static const QRegularExpression open(QStringLiteral("\\A<p\\b[^>]*>"));
+    static const QRegularExpression close(QStringLiteral("</p>\\s*\\z"));
+    html = html.trimmed();
+    html.remove(open);
+    html.remove(close);
+    return html.trimmed();
+}
+
 } // namespace
 
 QString Md4cRenderer::toHtml(const QString& markdown) const
 {
-    const QByteArray input = markdown.toUtf8();
+    const FootnoteData footnotes = extractFootnotes(markdown);
+    const QByteArray input = footnotes.markdown.toUtf8();
 
     RenderContext ctx;
     ctx.base = input.constData();
@@ -399,7 +575,7 @@ QString Md4cRenderer::toHtml(const QString& markdown) const
 
     MD_PARSER parser{};
     parser.abi_version = 0;
-    parser.flags = 0; // CommonMark
+    parser.flags = MD_DIALECT_GITHUB; // tables, task lists, strikethrough, autolinks
     parser.enter_block = enterBlock;
     parser.leave_block = leaveBlock;
     parser.enter_span = enterSpan;
@@ -414,7 +590,23 @@ QString Md4cRenderer::toHtml(const QString& markdown) const
         ctx.out.insert(it->pos, QByteArray::number(std::max(it->line, 0)));
     }
 
-    return QString::fromUtf8(ctx.out);
+    QString html = QString::fromUtf8(ctx.out);
+
+    if (!footnotes.orderedIds.isEmpty()) {
+        const int srcLine = static_cast<int>(ctx.lineStarts.size()) - 1;
+        html += QStringLiteral("<section class=\"footnotes\" data-src-line=\"%1\">\n<ol>\n")
+                    .arg(srcLine);
+        for (const QString& id : footnotes.orderedIds) {
+            const QString body = stripParagraphWrapper(toHtml(footnotes.definitions.value(id)));
+            html += QStringLiteral("<li id=\"fn-%1\">").arg(id);
+            html += body;
+            html += QStringLiteral(" <a href=\"#fnref-%1\" class=\"fn-backref\">&#8617;</a></li>\n")
+                        .arg(id);
+        }
+        html += QStringLiteral("</ol>\n</section>\n");
+    }
+
+    return html;
 }
 
 } // namespace hungryeditor

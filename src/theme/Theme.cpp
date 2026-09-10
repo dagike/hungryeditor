@@ -62,6 +62,15 @@ QString Theme::previewCss() const
                "hr { border: 0; border-top: 1px solid var(--he-border); margin: 1.5em 0; }"
                "table { border-collapse: collapse; }"
                "th, td { border: 1px solid var(--he-border); padding: .4em .75em; }"
+               "thead th { background: var(--he-code-bg); }"
+               "li.task-list-item { list-style: none; }"
+               "li.task-list-item > input { margin: 0 .45em 0 -1.35em; }"
+               ".footnotes {"
+               "  margin-top: 2em; padding-top: 1em;"
+               "  border-top: 1px solid var(--he-border);"
+               "  font-size: .875em; color: var(--he-muted);"
+               "}"
+               "sup.fn-ref a, .footnotes a.fn-backref { text-decoration: none; }"
                "img { max-width: 100%; }")
                .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord) +
            codeTokenCss();
