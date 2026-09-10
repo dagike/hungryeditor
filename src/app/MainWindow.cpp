@@ -28,6 +28,7 @@
 #include <QWidget>
 
 #include "app/TabBar.h"
+#include "editor/CaretHistory.h"
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
@@ -156,6 +157,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     searchDock_->hide();
     connect(searchResults_, &SearchResultsPanel::resultActivated, this,
             [this](const QString& path, int line) {
+                recordCaretForHistory();
                 if (openPath(path)) {
                     editor_->setCursorPosition(line, 0);
                 }
@@ -168,6 +170,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     addDockWidget(Qt::LeftDockWidgetArea, outlineDock_);
     outlineDock_->hide();
     connect(outline_, &OutlinePanel::headingActivated, this, [this](int line) {
+        recordCaretForHistory();
         editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
         editor_->setFocus();
     });
@@ -384,6 +387,23 @@ void MainWindow::buildMenus()
         editMenu->addAction(tr("Command &Palette…"), this, &MainWindow::openCommandPalette);
     paletteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     paletteAction->setObjectName(QStringLiteral("action.commandPalette"));
+
+    editMenu->addSeparator();
+
+    QAction* goToLineAction =
+        editMenu->addAction(tr("&Go to Line…"), this, &MainWindow::goToLineDialog);
+    goToLineAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    goToLineAction->setObjectName(QStringLiteral("action.goToLine"));
+
+    QAction* backAction =
+        editMenu->addAction(tr("Navigate &Back"), this, &MainWindow::navigateBack);
+    backAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Left));
+    backAction->setObjectName(QStringLiteral("action.navigateBack"));
+
+    QAction* forwardAction =
+        editMenu->addAction(tr("Navigate &Forward"), this, &MainWindow::navigateForward);
+    forwardAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Right));
+    forwardAction->setObjectName(QStringLiteral("action.navigateForward"));
 
     editMenu->addSeparator();
 
@@ -881,6 +901,7 @@ void MainWindow::syncEditorToPreview(int line)
 
 void MainWindow::jumpEditorToLine(int line)
 {
+    recordCaretForHistory();
     editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
     if (viewMode_ == ViewMode::Split) {
         editor_->setFocus();
@@ -975,11 +996,73 @@ void MainWindow::runPaletteChoice(const QString& id)
         bool ok = false;
         const int index = id.mid(7).toInt(&ok);
         if (ok) {
+            recordCaretForHistory();
             documents_->setCurrentIndex(index);
         }
     } else {
+        recordCaretForHistory();
         openPath(id);
     }
+}
+
+void MainWindow::recordCaretForHistory()
+{
+    if (!navigatingHistory_) {
+        caretHistory_.record(currentLocation());
+    }
+}
+
+CaretLocation MainWindow::currentLocation() const
+{
+    return {currentPath(), editor_->cursorLine(), editor_->cursorColumn()};
+}
+
+void MainWindow::applyLocation(const CaretLocation& location)
+{
+    if (!location.path.isEmpty() && location.path != currentPath() && !openPath(location.path)) {
+        return; // the file is gone — leave the caret where it is
+    }
+    editor_->setCursorPosition(location.line, location.column);
+    editor_->setFocus();
+}
+
+void MainWindow::goToLine(int oneBasedLine)
+{
+    const int lastLine = qMax(1, editor_->lineCount());
+    recordCaretForHistory();
+    editor_->setCursorPosition(qBound(1, oneBasedLine, lastLine) - 1, 0);
+    editor_->setFocus();
+}
+
+void MainWindow::goToLineDialog()
+{
+    bool ok = false;
+    const int line =
+        QInputDialog::getInt(this, tr("Go to Line"), tr("Line:"), editor_->cursorLine() + 1, 1,
+                             qMax(1, editor_->lineCount()), 1, &ok);
+    if (ok) {
+        goToLine(line);
+    }
+}
+
+void MainWindow::navigateBack()
+{
+    if (!caretHistory_.canGoBack()) {
+        return;
+    }
+    navigatingHistory_ = true;
+    applyLocation(caretHistory_.goBack(currentLocation()));
+    navigatingHistory_ = false;
+}
+
+void MainWindow::navigateForward()
+{
+    if (!caretHistory_.canGoForward()) {
+        return;
+    }
+    navigatingHistory_ = true;
+    applyLocation(caretHistory_.goForward(currentLocation()));
+    navigatingHistory_ = false;
 }
 
 void MainWindow::reconcileMru()

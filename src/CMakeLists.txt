@@ -41,6 +41,8 @@ add_library(hungryeditor_core STATIC
     app/MainWindow.h
     app/TabBar.cpp
     app/TabBar.h
+    editor/CaretHistory.cpp
+    editor/CaretHistory.h
     editor/Document.cpp
     editor/Document.h
     editor/DocumentManager.cpp

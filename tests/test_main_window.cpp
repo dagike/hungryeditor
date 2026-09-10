@@ -90,6 +90,8 @@ private slots:
     void mruOrderFollowsActivation();
     void quickSwitchWalksMruAndCommits();
     void goToAnythingListsOpenBuffersFirst();
+    void goToLineMovesTheCaretWithinTheBuffer();
+    void caretHistoryReturnsToPriorSpots();
 };
 
 namespace {
@@ -560,6 +562,9 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("toggleFiles") << QStringLiteral("action.toggleFiles");
     QTest::newRow("nextTab") << QStringLiteral("action.nextTab");
     QTest::newRow("previousTab") << QStringLiteral("action.previousTab");
+    QTest::newRow("goToLine") << QStringLiteral("action.goToLine");
+    QTest::newRow("navigateBack") << QStringLiteral("action.navigateBack");
+    QTest::newRow("navigateForward") << QStringLiteral("action.navigateForward");
     QTest::newRow("openFolder") << QStringLiteral("action.openFolder");
     QTest::newRow("closeFolder") << QStringLiteral("action.closeFolder");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
@@ -1129,6 +1134,60 @@ void TestMainWindow::goToAnythingListsOpenBuffersFirst()
         }
     }
     QCOMPARE(betaRows, 1); // listed once, not also from the file index
+}
+
+void TestMainWindow::goToLineMovesTheCaretWithinTheBuffer()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("l0\nl1\nl2\nl3\nl4\nl5\n"));
+
+    window.goToLine(4);
+    QCOMPARE(window.editor()->cursorLine(), 3);
+
+    window.goToLine(9999); // clamps to the last line
+    QCOMPARE(window.editor()->cursorLine(), window.editor()->lineCount() - 1);
+
+    window.goToLine(0); // clamps up to the first line
+    QCOMPARE(window.editor()->cursorLine(), 0);
+}
+
+void TestMainWindow::caretHistoryReturnsToPriorSpots()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString a = writeText(dir.filePath(QStringLiteral("a.md")),
+                                "# A0\n\np\n\n## A1\n\np\n\n### A2\n\np\n\np\n\np\n");
+    const QString b = writeText(dir.filePath(QStringLiteral("b.md")), "# B\n\nbbb\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b}));
+    window.documents()->setCurrentIndex(0);
+    window.editor()->setCursorPosition(0, 0);
+
+    QAction* back = window.findChild<QAction*>(QStringLiteral("action.navigateBack"));
+    QAction* forward = window.findChild<QAction*>(QStringLiteral("action.navigateForward"));
+    QVERIFY(back != nullptr);
+    QVERIFY(forward != nullptr);
+
+    // A same-file jump is retraceable.
+    window.goToLine(9);
+    QVERIFY(window.editor()->cursorLine() >= 6);
+    back->trigger();
+    QCOMPARE(window.editor()->cursorLine(), 0);
+    forward->trigger();
+    QVERIFY(window.editor()->cursorLine() >= 6);
+
+    // A cross-file jump (through the search panel) is too.
+    window.editor()->setCursorPosition(2, 0);
+    const auto hits = hungryeditor::searchDirectory(dir.path(), QStringLiteral("bbb"),
+                                                    hungryeditor::FileSearchOptions{});
+    window.searchResultsPanel()->showResults(QStringLiteral("bbb"), hits);
+    window.searchResultsPanel()->activateResult(0);
+    QCOMPARE(window.currentPath(), b);
+
+    back->trigger();
+    QCOMPARE(window.currentPath(), a);
+    QCOMPARE(window.editor()->cursorLine(), 2);
 }
 
 QTEST_MAIN(TestMainWindow)

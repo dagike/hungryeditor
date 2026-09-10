@@ -74,6 +74,10 @@ hungryeditor_add_test(test_markdown_table
     SOURCES test_markdown_table.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_caret_history
+    SOURCES test_caret_history.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_document_manager
     SOURCES test_document_manager.cpp
     LIBS hungryeditor::core)

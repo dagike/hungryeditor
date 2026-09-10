@@ -8,6 +8,8 @@
 #include <QString>
 #include <QStringList>
 
+#include "editor/CaretHistory.h"
+
 class QAction;
 class QActionGroup;
 class QDockWidget;
@@ -101,6 +103,10 @@ public:
     /// Load `path` into a document, replacing an already-open one for the
     /// same path. Returns false on an I/O error (see lastError()).
     bool openPath(const QString& path);
+
+    /// Move the caret to `oneBasedLine`, clamped to the buffer, recording the
+    /// spot left for Back/Forward navigation. Exposed for tests.
+    void goToLine(int oneBasedLine);
 
     /// Pin the folder sidebar to `dir` (revealing it) and remember that
     /// workspace's view state; an empty `dir` closes the folder and lets the
@@ -208,6 +214,14 @@ private:
     // (older), -1 backward.
     void quickSwitch(int direction);
 
+    // Go to line and Back/Forward caret navigation.
+    void goToLineDialog();
+    void navigateBack();
+    void navigateForward();
+    void recordCaretForHistory();
+    CaretLocation currentLocation() const;
+    void applyLocation(const CaretLocation& location);
+
     // Folder sidebar: point it (and the shared file index) at the open
     // workspace folder, or the current document's directory when none is
     // pinned — but only while the sidebar is switched on.
@@ -255,6 +269,8 @@ private:
     CommandPalette* commandPalette_ = nullptr;
     TabSwitcher* tabSwitcher_ = nullptr;
     QList<Document*> mruDocuments_; ///< open buffers, most-recently-used first
+    CaretHistory caretHistory_;
+    bool navigatingHistory_ = false; ///< suppresses recording while Back/Forward runs
     FileIndex* fileIndex_ = nullptr;
     bool paletteShowsFiles_ = false;
     FileTreePanel* fileTree_ = nullptr;
