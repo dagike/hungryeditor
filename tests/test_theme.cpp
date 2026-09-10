@@ -45,6 +45,10 @@ void TestTheme::previewCssDefinesTokensAndBaseRules()
                                         "cursor: pointer; }")));
     QVERIFY(css.contains(QStringLiteral(".footnotes {")));
     QVERIFY(css.contains(QStringLiteral(".front-matter-card {")));
+    QVERIFY(
+        css.contains(QStringLiteral(".mermaid-diagram { margin: 1em 0; text-align: center; }")));
+    QVERIFY(
+        css.contains(QStringLiteral(".mermaid-diagram svg { max-width: 100%; height: auto; }")));
 
     // Fenced-code token classes, coloured from the editor's palette.
     QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: #cf222e")));

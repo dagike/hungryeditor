@@ -25,6 +25,7 @@ private slots:
     void rendersFootnotes();
     void rendersFrontMatterAsACard();
     void plainThematicBreakStaysAnHr();
+    void mermaidFenceStaysATaggedCodeBlock();
     void emptyInputProducesEmptyFragment();
 };
 
@@ -199,6 +200,19 @@ void TestMd4cRenderer::plainThematicBreakStaysAnHr()
 
     QVERIFY(html.contains(QStringLiteral("<hr")));
     QVERIFY(!html.contains(QStringLiteral("front-matter-card")));
+}
+
+void TestMd4cRenderer::mermaidFenceStaysATaggedCodeBlock()
+{
+    Md4cRenderer renderer;
+    const QString html = renderer.toHtml(QStringLiteral("```mermaid\ngraph TD; A-->B;\n```\n"));
+
+    // The shell's mermaid pass keys off this exact shape; the source is left
+    // escaped and un-highlighted (mermaid is not a known code language).
+    QVERIFY(html.contains(
+        QStringLiteral("<pre data-src-line=\"0\"><code class=\"language-mermaid\">")));
+    QVERIFY(html.contains(QStringLiteral("graph TD; A--&gt;B;")));
+    QVERIFY(!html.contains(QStringLiteral("tok-")));
 }
 
 void TestMd4cRenderer::emptyInputProducesEmptyFragment()

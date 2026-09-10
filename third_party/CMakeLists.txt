@@ -10,6 +10,8 @@
 #   tree-sitter-md   0.4.1  (MIT, see tree-sitter-markdown/LICENSE)
 #   grammars/*       18 language grammars (all MIT, see THIRD_PARTY.md)
 #   md4c             0.5.2  (MIT, see md4c/LICENSE.md)
+#   mermaid          10.9.1 (MIT, see mermaid/LICENSE) — data file, embedded as a
+#                           Qt resource for the preview; no build target here
 
 # --- helper: quiet a vendored target --------------------------------------
 function(_vendor_quiet target)

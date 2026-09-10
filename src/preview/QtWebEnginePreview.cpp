@@ -35,14 +35,48 @@ const char* const kShellHtml = R"HTML(<!doctype html>
 <body>
 <div id="hungryeditor-content"></div>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="qrc:///hungryeditor/preview/mermaid.min.js"></script>
 <script>
   "use strict";
+
+  var mermaidReady = typeof mermaid !== "undefined";
+  if (mermaidReady) {
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+  }
+
   window.addEventListener("load", function () {
     new QWebChannel(qt.webChannelTransport, function (channel) {
       var bridge = channel.objects.bridge;
       var target = document.getElementById("hungryeditor-content");
 
-      function apply(html) { target.innerHTML = html; }
+      // Bumped on every apply() so a diagram that finishes rendering after the
+      // body has moved on is dropped instead of painted over fresh content.
+      var renderToken = 0;
+
+      function renderMermaid() {
+        if (!mermaidReady) return;
+        var token = ++renderToken;
+        var codes = target.querySelectorAll("code.language-mermaid");
+        for (var i = 0; i < codes.length; i++) {
+          (function (code, index) {
+            var pre = code.closest("pre");
+            if (!pre) return;
+            var holder = document.createElement("div");
+            holder.className = "mermaid-diagram";
+            if (pre.hasAttribute("data-src-line")) {
+              holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
+            }
+            pre.replaceWith(holder);
+            mermaid.render("he-mermaid-" + token + "-" + index, code.textContent).then(
+              function (out) { if (token === renderToken) holder.innerHTML = out.svg; },
+              function (err) {
+                if (token === renderToken) holder.textContent = String((err && err.message) || err);
+              });
+          })(codes[i], i);
+        }
+      }
+
+      function apply(html) { target.innerHTML = html; renderMermaid(); }
       function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
 
       function blocks() { return target.querySelectorAll("[data-src-line]"); }

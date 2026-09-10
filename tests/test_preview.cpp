@@ -24,6 +24,7 @@ private slots:
     void themeCssStylesTheRenderedContent();
     void clickingAHeadingReportsItsSourceLine();
     void togglingATaskCheckboxReportsItsLineAndState();
+    void rendersABundledMermaidDiagram();
 };
 
 namespace {
@@ -231,6 +232,41 @@ void TestPreview::togglingATaskCheckboxReportsItsLineAndState()
     QVERIFY(!toggled.isEmpty());
     QCOMPARE(toggled.last().at(0).toInt(), 5);
     QCOMPARE(toggled.last().at(1).toBool(), true);
+}
+
+void TestPreview::rendersABundledMermaidDiagram()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(
+        QStringLiteral("<pre data-src-line=\"2\"><code class=\"language-mermaid\">graph TD; "
+                       "A--&gt;B;</code></pre>"));
+    QVERIFY(ready.wait(20000));
+
+    // mermaid parses a 3 MB bundle then renders asynchronously.
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (clock.elapsed() < 20000) {
+        probe =
+            evalJs(preview, QStringLiteral("(function () {"
+                                           "  var d = document.querySelector('.mermaid-diagram');"
+                                           "  if (!d || !d.querySelector('svg')) return '';"
+                                           "  return d.getAttribute('data-src-line') || 'none';"
+                                           "})()"))
+                .toString();
+        if (!probe.isEmpty()) {
+            break;
+        }
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("2")); // rendered, and the source line carried over
+    QVERIFY(
+        !evalJs(preview, QStringLiteral("document.querySelector('code.language-mermaid') != null"))
+             .toBool()); // the <pre> was swapped out
 }
 
 QTEST_MAIN(TestPreview)

@@ -105,6 +105,13 @@ add_library(hungryeditor::core ALIAS hungryeditor_core)
 
 set_target_properties(hungryeditor_core PROPERTIES AUTOMOC ON)
 
+# Preview-page assets, served to the QtWebEngine shell over qrc: so diagrams and
+# math render with no network access. Vendored under third_party/.
+qt_add_resources(hungryeditor_core "preview_assets"
+    PREFIX "/hungryeditor/preview"
+    BASE "${CMAKE_SOURCE_DIR}/third_party/mermaid"
+    FILES "${CMAKE_SOURCE_DIR}/third_party/mermaid/mermaid.min.js")
+
 target_include_directories(hungryeditor_core
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

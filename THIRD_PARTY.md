@@ -10,6 +10,7 @@ upstream as practical — only build scripts and IDE project files were removed.
 | tree-sitter | 0.24.7 | https://github.com/tree-sitter/tree-sitter | MIT — `third_party/tree-sitter/LICENSE` |
 | tree-sitter-markdown | 0.4.1 | https://github.com/tree-sitter-grammars/tree-sitter-markdown | MIT — `third_party/tree-sitter-markdown/LICENSE` |
 | md4c | 0.5.2 (`release-0.5.2`) | https://github.com/mity/md4c | MIT — `third_party/md4c/LICENSE.md` |
+| mermaid | 10.9.1 | https://github.com/mermaid-js/mermaid | MIT — `third_party/mermaid/LICENSE` |
 
 ### Language grammars (`third_party/grammars/`)
 
@@ -62,6 +63,11 @@ Each grammar's `LICENSE` is kept alongside its sources.
   and `entity.c` table are not vendored — `src/markdown/Md4cRenderer` renders
   the parser callbacks directly so it can add `data-src-line` anchors for
   scroll sync). CommonMark only for now; GFM flags are enabled in a later phase.
+- **mermaid** is the pre-built UMD bundle (`dist/mermaid.min.js`), kept as a
+  data file — not compiled. It is embedded in the binary as a Qt resource
+  (`qrc:/hungryeditor/preview/mermaid.min.js`) and loaded by the preview shell
+  page, so ` ```mermaid ` diagrams render with no network access. Nothing links
+  against it.
 - All components are used under permissive terms that require preserving the
   copyright notice and permission text, reproduced in the license files above
   and in the application's about box (added in a later phase).
