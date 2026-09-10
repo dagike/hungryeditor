@@ -100,6 +100,8 @@ add_library(hungryeditor_core STATIC
     ui/OutlinePanel.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
+    ui/TabSwitcher.cpp
+    ui/TabSwitcher.h
     workspace/FileIndex.cpp
     workspace/FileIndex.h
     workspace/FileOperations.cpp

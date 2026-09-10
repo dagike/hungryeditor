@@ -45,6 +45,7 @@
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
+#include "ui/TabSwitcher.h"
 #include "workspace/FileIndex.h"
 #include "workspace/FileOperations.h"
 #include "workspace/FileSearch.h"
@@ -126,6 +127,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     commandPalette_ = new CommandPalette(this);
     connect(commandPalette_, &CommandPalette::commandChosen, this, &MainWindow::runPaletteChoice);
+
+    tabSwitcher_ = new TabSwitcher(this);
+    connect(tabSwitcher_, &TabSwitcher::accepted, this, [this](int row) {
+        if (row >= 0 && row < mruDocuments_.size()) {
+            const int index = documents_->indexOf(mruDocuments_.at(row));
+            if (index >= 0) {
+                documents_->setCurrentIndex(index);
+            }
+        }
+        editor_->setFocus();
+    });
+    connect(tabSwitcher_, &TabSwitcher::cancelled, this, [this] { editor_->setFocus(); });
 
     fileIndex_ = new FileIndex(this);
     connect(fileIndex_, &FileIndex::refreshed, this, [this] {
@@ -317,6 +330,16 @@ void MainWindow::buildMenus()
     prevAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp));
     prevAction->setObjectName(QStringLiteral("action.previousDocument"));
 
+    QAction* nextTabAction =
+        fileMenu->addAction(tr("Next &Recent Document"), this, [this] { quickSwitch(1); });
+    nextTabAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Tab));
+    nextTabAction->setObjectName(QStringLiteral("action.nextTab"));
+
+    QAction* prevTabAction =
+        fileMenu->addAction(tr("Previous Rece&nt Document"), this, [this] { quickSwitch(-1); });
+    prevTabAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab));
+    prevTabAction->setObjectName(QStringLiteral("action.previousTab"));
+
     fileMenu->addSeparator();
 
     QAction* quitAction = fileMenu->addAction(tr("&Quit"), qApp, &QApplication::quit);
@@ -353,7 +376,7 @@ void MainWindow::buildMenus()
     editMenu->addSeparator();
 
     QAction* quickOpenAction =
-        editMenu->addAction(tr("&Quick Open…"), this, &MainWindow::openQuickOpen);
+        editMenu->addAction(tr("Go to &Anything…"), this, &MainWindow::openQuickOpen);
     quickOpenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
     quickOpenAction->setObjectName(QStringLiteral("action.quickOpen"));
 
@@ -538,6 +561,12 @@ void MainWindow::onDocumentClosed(int index)
 
 void MainWindow::onCurrentChanged(int index)
 {
+    if (Document* current = documents_->current()) {
+        mruDocuments_.removeAll(current);
+        mruDocuments_.prepend(current);
+    }
+    reconcileMru();
+
     syncingTabs_ = true;
     if (index >= 0 && index < tabBar_->count()) {
         tabBar_->setCurrentIndex(index);
@@ -898,16 +927,39 @@ void MainWindow::openQuickOpen()
 {
     paletteShowsFiles_ = true;
     const QString current = currentPath();
-    fileIndex_->setRoot(current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath());
+    const QString root = !workspaceRoot_.isEmpty() ? workspaceRoot_
+                         : current.isEmpty()       ? QDir::homePath()
+                                                   : QFileInfo(current).absolutePath();
+    fileIndex_->setRoot(root);
     populateQuickOpen();
     commandPalette_->open();
 }
 
 void MainWindow::populateQuickOpen()
 {
+    reconcileMru();
+
     const QDir root(fileIndex_->root());
     QList<CommandPalette::Command> commands;
+    QSet<QString> listed; // absolute paths already shown as open buffers
+
+    // Open buffers first, in most-recently-used order.
+    for (Document* document : mruDocuments_) {
+        const QString path = document->path();
+        if (path.isEmpty()) {
+            commands.append(
+                {QStringLiteral("buffer:") + QString::number(documents_->indexOf(document)),
+                 document->displayName(), tr("open")});
+        } else {
+            listed.insert(QFileInfo(path).absoluteFilePath());
+            commands.append({path, document->displayName(), tr("open")});
+        }
+    }
+
     for (const QString& path : fileIndex_->files()) {
+        if (listed.contains(QFileInfo(path).absoluteFilePath())) {
+            continue;
+        }
         commands.append({path, root.relativeFilePath(path), QString()});
     }
     commandPalette_->setCommands(commands);
@@ -919,9 +971,70 @@ void MainWindow::runPaletteChoice(const QString& id)
         if (QAction* action = findChild<QAction*>(id)) {
             action->trigger();
         }
+    } else if (id.startsWith(QLatin1String("buffer:"))) {
+        bool ok = false;
+        const int index = id.mid(7).toInt(&ok);
+        if (ok) {
+            documents_->setCurrentIndex(index);
+        }
     } else {
         openPath(id);
     }
+}
+
+void MainWindow::reconcileMru()
+{
+    for (auto it = mruDocuments_.begin(); it != mruDocuments_.end();) {
+        if (documents_->indexOf(*it) < 0) {
+            it = mruDocuments_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (int i = 0; i < documents_->count(); ++i) {
+        Document* document = documents_->documentAt(i);
+        if (!mruDocuments_.contains(document)) {
+            mruDocuments_.append(document);
+        }
+    }
+}
+
+QStringList MainWindow::mruDocumentNames() const
+{
+    QStringList names;
+    for (Document* document : mruDocuments_) {
+        if (documents_->indexOf(document) >= 0) {
+            names.append(document->displayName());
+        }
+    }
+    return names;
+}
+
+void MainWindow::quickSwitch(int direction)
+{
+    if (tabSwitcher_->isActive()) {
+        if (direction < 0) {
+            tabSwitcher_->selectPrevious();
+        } else {
+            tabSwitcher_->selectNext();
+        }
+        return;
+    }
+
+    reconcileMru();
+    if (mruDocuments_.size() < 2) {
+        return;
+    }
+
+    QList<TabSwitcher::Entry> entries;
+    for (Document* document : mruDocuments_) {
+        entries.append({document->displayName(),
+                        document->isUntitled()
+                            ? QString()
+                            : QDir::toNativeSeparators(QFileInfo(document->path()).absolutePath()),
+                        document->isModified()});
+    }
+    tabSwitcher_->present(entries, direction < 0 ? static_cast<int>(entries.size()) - 1 : 1);
 }
 
 void MainWindow::findInFiles()

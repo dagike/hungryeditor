@@ -36,6 +36,7 @@
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
+#include "ui/TabSwitcher.h"
 #include "workspace/FileSearch.h"
 
 class TestMainWindow : public QObject
@@ -86,6 +87,9 @@ private slots:
     void sidebarCreatesRenamesAndDeletes();
     void commandPaletteRunsTheChosenAction();
     void quickOpenOpensAFuzzilyMatchedFile();
+    void mruOrderFollowsActivation();
+    void quickSwitchWalksMruAndCommits();
+    void goToAnythingListsOpenBuffersFirst();
 };
 
 namespace {
@@ -554,6 +558,8 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("foldFrontMatter") << QStringLiteral("action.foldFrontMatter");
     QTest::newRow("toggleOutline") << QStringLiteral("action.toggleOutline");
     QTest::newRow("toggleFiles") << QStringLiteral("action.toggleFiles");
+    QTest::newRow("nextTab") << QStringLiteral("action.nextTab");
+    QTest::newRow("previousTab") << QStringLiteral("action.previousTab");
     QTest::newRow("openFolder") << QStringLiteral("action.openFolder");
     QTest::newRow("closeFolder") << QStringLiteral("action.closeFolder");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
@@ -1037,6 +1043,92 @@ void TestMainWindow::quickOpenOpensAFuzzilyMatchedFile()
     QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QCoreApplication::sendEvent(query, &enter);
     QCOMPARE(window.currentPath(), beta);
+}
+
+void TestMainWindow::mruOrderFollowsActivation()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "a\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b\n");
+    const QString c = writeText(files.filePath(QStringLiteral("c.md")), "c\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b, c}));
+
+    window.documents()->setCurrentIndex(1); // b
+    window.documents()->setCurrentIndex(2); // c
+    window.documents()->setCurrentIndex(0); // a
+
+    QCOMPARE(window.mruDocumentNames(),
+             (QStringList{QStringLiteral("a.md"), QStringLiteral("c.md"), QStringLiteral("b.md")}));
+}
+
+void TestMainWindow::quickSwitchWalksMruAndCommits()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "a\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b\n");
+    const QString c = writeText(files.filePath(QStringLiteral("c.md")), "c\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b, c}));
+    window.documents()->setCurrentIndex(1); // b
+    window.documents()->setCurrentIndex(2); // c   -> mru [c, b, a]
+
+    QAction* nextTab = window.findChild<QAction*>(QStringLiteral("action.nextTab"));
+    QVERIFY(nextTab != nullptr);
+
+    nextTab->trigger();
+    auto* switcher = window.findChild<hungryeditor::TabSwitcher*>();
+    QVERIFY(switcher != nullptr);
+    QVERIFY(switcher->isActive());
+    QCOMPARE(switcher->currentRow(), 1); // previous document (b)
+
+    nextTab->trigger(); // steps to the third-most-recent (a)
+    QCOMPARE(switcher->currentRow(), 2);
+
+    switcher->commit();
+    QVERIFY(!switcher->isActive());
+    QCOMPARE(window.currentPath(), a);
+}
+
+void TestMainWindow::goToAnythingListsOpenBuffersFirst()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("alpha.md")), "a\n");
+    const QString beta = writeText(folder.filePath(QStringLiteral("beta.md")), "b\n");
+    writeText(folder.filePath(QStringLiteral("gamma.md")), "g\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.openFolder(folder.path());
+    QVERIFY(window.openPath(beta)); // one open buffer
+
+    window.findChild<QAction*>(QStringLiteral("action.quickOpen"))->trigger();
+    auto* palette = window.findChild<hungryeditor::CommandPalette*>();
+    QVERIFY(palette != nullptr);
+    auto* list = palette->findChild<QListWidget*>();
+    QVERIFY(list != nullptr);
+
+    QTRY_VERIFY_WITH_TIMEOUT(list->count() >= 3, 5000); // background index landed
+
+    const auto nameAt = [list](int row) {
+        return list->item(row)->text().split(QLatin1Char('\t')).first();
+    };
+    QCOMPARE(nameAt(0), QStringLiteral("beta.md")); // the open buffer leads
+
+    int betaRows = 0;
+    for (int i = 0; i < list->count(); ++i) {
+        if (nameAt(i) == QStringLiteral("beta.md")) {
+            ++betaRows;
+        }
+    }
+    QCOMPARE(betaRows, 1); // listed once, not also from the file index
 }
 
 QTEST_MAIN(TestMainWindow)

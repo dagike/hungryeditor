@@ -107,6 +107,10 @@ hungryeditor_add_test(test_command_palette
     SOURCES test_command_palette.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_tab_switcher
+    SOURCES test_tab_switcher.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_code_highlighter
     SOURCES test_code_highlighter.cpp
     LIBS hungryeditor::core)

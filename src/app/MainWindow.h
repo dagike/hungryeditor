@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include <QList>
 #include <QMainWindow>
 #include <QSet>
 #include <QString>
@@ -32,6 +33,7 @@ class RecentFiles;
 class SearchResultsPanel;
 class SessionStore;
 class TabBar;
+class TabSwitcher;
 class WorkspaceStore;
 
 /// The application's single top-level window. It hosts one editor widget
@@ -84,6 +86,10 @@ public:
 
     /// The open-document model. Exposed for tests.
     DocumentManager* documents() const { return documents_.get(); }
+
+    /// Open buffers in most-recently-used order (front is current), by display
+    /// name. Exposed for tests.
+    QStringList mruDocumentNames() const;
 
     /// Path backing the current buffer, or empty for an unsaved document.
     QString currentPath() const;
@@ -195,6 +201,13 @@ private:
     void populateQuickOpen();
     void runPaletteChoice(const QString& id);
 
+    // Most-recently-used buffer order, for Ctrl+Tab switching and for listing
+    // open buffers ahead of the file index in "Go to Anything".
+    void reconcileMru();
+    // Step through / raise the Ctrl+Tab overlay. `direction` is +1 forward
+    // (older), -1 backward.
+    void quickSwitch(int direction);
+
     // Folder sidebar: point it (and the shared file index) at the open
     // workspace folder, or the current document's directory when none is
     // pinned — but only while the sidebar is switched on.
@@ -240,6 +253,8 @@ private:
     TabBar* tabBar_ = nullptr;
     FindReplaceBar* findBar_ = nullptr;
     CommandPalette* commandPalette_ = nullptr;
+    TabSwitcher* tabSwitcher_ = nullptr;
+    QList<Document*> mruDocuments_; ///< open buffers, most-recently-used first
     FileIndex* fileIndex_ = nullptr;
     bool paletteShowsFiles_ = false;
     FileTreePanel* fileTree_ = nullptr;
