@@ -73,6 +73,8 @@ add_library(hungryeditor_core STATIC
     io/TextFile.h
     markdown/FrontMatter.cpp
     markdown/FrontMatter.h
+    markdown/ImageResolver.cpp
+    markdown/ImageResolver.h
     markdown/Outline.cpp
     markdown/Outline.h
     markdown/Md4cRenderer.cpp
@@ -104,6 +106,25 @@ add_library(hungryeditor_core STATIC
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 
 set_target_properties(hungryeditor_core PROPERTIES AUTOMOC ON)
+
+# Preview-page assets, served to the QtWebEngine shell over qrc: so diagrams and
+# math render with no network access. Vendored under third_party/.
+qt_add_resources(hungryeditor_core "preview_assets"
+    PREFIX "/hungryeditor/preview"
+    BASE "${CMAKE_SOURCE_DIR}/third_party/mermaid"
+    FILES "${CMAKE_SOURCE_DIR}/third_party/mermaid/mermaid.min.js")
+
+# KaTeX: the script, its stylesheet, and the woff2 faces the stylesheet asks
+# for. Kept at the same prefix so katex.min.css resolves url(fonts/…) here.
+file(GLOB _katex_fonts CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/third_party/katex/fonts/*.woff2")
+qt_add_resources(hungryeditor_core "katex_assets"
+    PREFIX "/hungryeditor/preview"
+    BASE "${CMAKE_SOURCE_DIR}/third_party/katex"
+    FILES
+        "${CMAKE_SOURCE_DIR}/third_party/katex/katex.min.js"
+        "${CMAKE_SOURCE_DIR}/third_party/katex/katex.min.css"
+        ${_katex_fonts})
 
 target_include_directories(hungryeditor_core
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"

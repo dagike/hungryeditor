@@ -25,6 +25,8 @@ private slots:
     void rendersFootnotes();
     void rendersFrontMatterAsACard();
     void plainThematicBreakStaysAnHr();
+    void mermaidFenceStaysATaggedCodeBlock();
+    void rendersLatexMathSpans();
     void emptyInputProducesEmptyFragment();
 };
 
@@ -199,6 +201,32 @@ void TestMd4cRenderer::plainThematicBreakStaysAnHr()
 
     QVERIFY(html.contains(QStringLiteral("<hr")));
     QVERIFY(!html.contains(QStringLiteral("front-matter-card")));
+}
+
+void TestMd4cRenderer::mermaidFenceStaysATaggedCodeBlock()
+{
+    Md4cRenderer renderer;
+    const QString html = renderer.toHtml(QStringLiteral("```mermaid\ngraph TD; A-->B;\n```\n"));
+
+    // The shell's mermaid pass keys off this exact shape; the source is left
+    // escaped and un-highlighted (mermaid is not a known code language).
+    QVERIFY(html.contains(
+        QStringLiteral("<pre data-src-line=\"0\"><code class=\"language-mermaid\">")));
+    QVERIFY(html.contains(QStringLiteral("graph TD; A--&gt;B;")));
+    QVERIFY(!html.contains(QStringLiteral("tok-")));
+}
+
+void TestMd4cRenderer::rendersLatexMathSpans()
+{
+    Md4cRenderer renderer;
+    const QString html = renderer.toHtml(QStringLiteral("Euler: $e^{i\\pi} + 1 = 0$.\n"
+                                                        "\n"
+                                                        "$$\\int_0^1 x^2 < 1\\,dx$$\n"));
+
+    // The TeX body is left as escaped text for the shell's KaTeX pass.
+    QVERIFY(html.contains(QStringLiteral("<span class=\"math-inline\">e^{i\\pi} + 1 = 0</span>")));
+    QVERIFY(html.contains(
+        QStringLiteral("<span class=\"math-display\">\\int_0^1 x^2 &lt; 1\\,dx</span>")));
 }
 
 void TestMd4cRenderer::emptyInputProducesEmptyFragment()

@@ -123,6 +123,10 @@ hungryeditor_add_test(test_outline_panel
     SOURCES test_outline_panel.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_image_resolver
+    SOURCES test_image_resolver.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_md4c_renderer
     SOURCES test_md4c_renderer.cpp
     LIBS hungryeditor::core)

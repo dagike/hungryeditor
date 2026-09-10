@@ -29,6 +29,10 @@ public slots:
     /// The editor's current text. Restarts the debounce; the render follows.
     void setMarkdown(const QString& markdown);
 
+    /// Path of the document being previewed. Its directory anchors relative
+    /// image references; pass an empty string for an unsaved buffer.
+    void setDocumentPath(const QString& path);
+
     /// Render whatever is pending right now, skipping the debounce — used on a
     /// document switch so the preview never lags a tab change.
     void flush();
@@ -44,6 +48,7 @@ private:
     Md4cRenderer renderer_;
     QTimer timer_;
     QString pending_;
+    QString documentDir_;
     bool dirty_ = false;
 };
 

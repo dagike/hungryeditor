@@ -18,6 +18,7 @@ struct Theme
     QColor codeText;       ///< inline and block code text
     QColor codeBackground; ///< inline and block code background
     QColor border;         ///< blockquote bar, table cell borders
+    QColor error;          ///< failed mermaid / katex render surfaces
 
     /// The default light theme. Its hex values line up with the editor palette.
     static Theme builtin();

@@ -1,7 +1,9 @@
 // Coverage for the debounce-and-render controller between editor and preview.
 
+#include <QFile>
 #include <QSignalSpy>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include "preview/PreviewBackend.h"
@@ -37,6 +39,7 @@ private slots:
     void flushRendersImmediately();
     void flushWithoutAPendingEditDoesNothing();
     void rendersMarkdownToHtmlFragment();
+    void inlinesLocalImagesRelativeToTheDocument();
 };
 
 void TestPreviewController::coalescesRapidEdits()
@@ -90,6 +93,26 @@ void TestPreviewController::rendersMarkdownToHtmlFragment()
 
     QCOMPARE(rendered.count(), 1);
     QVERIFY(rendered.first().at(0).toString().contains(QStringLiteral("<h1 data-src-line=\"0\">")));
+}
+
+void TestPreviewController::inlinesLocalImagesRelativeToTheDocument()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QFile png(dir.filePath(QStringLiteral("shot.png")));
+    QVERIFY(png.open(QIODevice::WriteOnly));
+    png.write(QByteArray::fromBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+                                     "2mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="));
+    png.close();
+
+    FakeBackend backend;
+    PreviewController controller(&backend);
+    controller.setDocumentPath(dir.filePath(QStringLiteral("note.md")));
+    controller.setMarkdown(QStringLiteral("![shot](shot.png)\n"));
+    controller.flush();
+
+    QCOMPARE(backend.pushes.size(), 1);
+    QVERIFY(backend.pushes.first().contains(QStringLiteral("src=\"data:image/png;base64,")));
 }
 
 QTEST_GUILESS_MAIN(TestPreviewController)

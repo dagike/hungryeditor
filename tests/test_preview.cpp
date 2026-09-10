@@ -24,6 +24,12 @@ private slots:
     void themeCssStylesTheRenderedContent();
     void clickingAHeadingReportsItsSourceLine();
     void togglingATaskCheckboxReportsItsLineAndState();
+    void rendersABundledMermaidDiagram();
+    void rendersBundledKatexMath();
+    void showsAnInlineErrorForABrokenDiagram();
+    void showsAnInlineErrorForBrokenMath();
+    void defersOffscreenDiagramsUntilTheyScrollIntoView();
+    void blocksExternalPreviewResources();
 };
 
 namespace {
@@ -231,6 +237,198 @@ void TestPreview::togglingATaskCheckboxReportsItsLineAndState()
     QVERIFY(!toggled.isEmpty());
     QCOMPARE(toggled.last().at(0).toInt(), 5);
     QCOMPARE(toggled.last().at(1).toBool(), true);
+}
+
+void TestPreview::rendersABundledMermaidDiagram()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(
+        QStringLiteral("<pre data-src-line=\"2\"><code class=\"language-mermaid\">graph TD; "
+                       "A--&gt;B;</code></pre>"));
+    QVERIFY(ready.wait(20000));
+
+    // mermaid parses a 3 MB bundle then renders asynchronously.
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (clock.elapsed() < 20000) {
+        probe =
+            evalJs(preview, QStringLiteral("(function () {"
+                                           "  var d = document.querySelector('.mermaid-diagram');"
+                                           "  if (!d || !d.querySelector('svg')) return '';"
+                                           "  return d.getAttribute('data-src-line') || 'none';"
+                                           "})()"))
+                .toString();
+        if (!probe.isEmpty()) {
+            break;
+        }
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("2")); // rendered, and the source line carried over
+    QVERIFY(
+        !evalJs(preview, QStringLiteral("document.querySelector('code.language-mermaid') != null"))
+             .toBool()); // the <pre> was swapped out
+}
+
+void TestPreview::rendersBundledKatexMath()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral(
+        "<p data-src-line=\"0\">Mass energy: <span class=\"math-inline\">E = mc^2</span></p>"));
+    QVERIFY(ready.wait(20000));
+
+    // KaTeX renders synchronously once its bundle has parsed; poll for the
+    // markup it injects into the span.
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (probe.isEmpty() && clock.elapsed() < 20000) {
+        probe =
+            evalJs(preview, QStringLiteral("(function () {"
+                                           "  var s = document.querySelector('.math-inline');"
+                                           "  return s && s.querySelector('.katex') ? 'ok' : '';"
+                                           "})()"))
+                .toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("ok"));
+}
+
+void TestPreview::showsAnInlineErrorForABrokenDiagram()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<pre data-src-line=\"4\"><code class=\"language-mermaid\">"
+                                      "not a valid diagram {{{</code></pre>"));
+    QVERIFY(ready.wait(20000));
+
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (probe.isEmpty() && clock.elapsed() < 20000) {
+        probe = evalJs(preview, QStringLiteral(
+                                    "(function () {"
+                                    "  var e = document.querySelector('.he-render-error');"
+                                    "  return e ? (e.getAttribute('data-src-line') || 'none') : '';"
+                                    "})()"))
+                    .toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("4")); // the surface kept the source line
+    QVERIFY(
+        !evalJs(preview, QStringLiteral("document.querySelector('.mermaid-diagram svg') != null"))
+             .toBool());
+}
+
+void TestPreview::showsAnInlineErrorForBrokenMath()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<p data-src-line=\"1\">"
+                                      "<span class=\"math-display\">\\frac{1}{</span></p>"));
+    QVERIFY(ready.wait(20000));
+
+    QString probe;
+    QElapsedTimer clock;
+    clock.start();
+    while (probe.isEmpty() && clock.elapsed() < 20000) {
+        probe = evalJs(preview,
+                       QStringLiteral("(function () {"
+                                      "  var e = document.querySelector('.he-render-error');"
+                                      "  return e && /Math error/.test(e.textContent) ? 'ok' : '';"
+                                      "})()"))
+                    .toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(probe, QStringLiteral("ok"));
+}
+
+void TestPreview::defersOffscreenDiagramsUntilTheyScrollIntoView()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(360, 200);
+    preview.widget()->show();
+
+    // A diagram at the top, a tall run of prose, then a second far below.
+    QString body = QStringLiteral("<pre data-src-line=\"0\"><code class=\"language-mermaid\">graph "
+                                  "TD; A--&gt;B;</code></pre>");
+    body += tallBody();
+    body += QStringLiteral("<pre data-src-line=\"200\"><code class=\"language-mermaid\">"
+                           "graph TD; C--&gt;D;</code></pre>");
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(body);
+    QVERIFY(ready.wait(20000));
+
+    const QString countRendered =
+        QStringLiteral("(function () {"
+                       "  var all = document.querySelectorAll('.mermaid-diagram');"
+                       "  var done = document.querySelectorAll('.mermaid-diagram svg');"
+                       "  return all.length + '/' + done.length;"
+                       "})()");
+
+    // The top diagram renders; the one 2000px down stays pending.
+    QString state;
+    QElapsedTimer clock;
+    clock.start();
+    while (state != QStringLiteral("2/1") && clock.elapsed() < 20000) {
+        state = evalJs(preview, countRendered).toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(state, QStringLiteral("2/1"));
+
+    // Scroll it into view and it renders too.
+    evalJs(preview, QStringLiteral("window.scrollTo(0, document.body.scrollHeight); void 0"));
+    while (state != QStringLiteral("2/2") && clock.elapsed() < 40000) {
+        state = evalJs(preview, countRendered).toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(state, QStringLiteral("2/2"));
+}
+
+void TestPreview::blocksExternalPreviewResources()
+{
+    QtWebEnginePreview preview;
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<p data-src-line=\"0\">seed</p>"));
+    QVERIFY(ready.wait(20000));
+
+    // Record any CSP violation the page reports.
+    evalJs(preview, QStringLiteral("window.__cspHits = [];"
+                                   "document.addEventListener('securitypolicyviolation',"
+                                   "  function (e) { window.__cspHits.push(e.effectiveDirective"
+                                   "    + ' ' + e.blockedURI); });"
+                                   "void 0"));
+
+    // A remote image slips through the renderer untouched; the browser must
+    // refuse to fetch it.
+    preview.setContent(QStringLiteral(
+        "<p data-src-line=\"0\"><img src=\"https://example.invalid/tracker.png\"></p>"));
+
+    QString hits;
+    QElapsedTimer clock;
+    clock.start();
+    while (hits.isEmpty() && clock.elapsed() < 10000) {
+        hits = evalJs(preview, QStringLiteral("window.__cspHits.join('|')")).toString();
+        QTest::qWait(100);
+    }
+    QVERIFY(hits.contains(QStringLiteral("img-src")));
+    QVERIFY(hits.contains(QStringLiteral("example.invalid")));
 }
 
 QTEST_MAIN(TestPreview)

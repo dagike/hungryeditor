@@ -19,6 +19,14 @@ const char* const kShellHtml = R"HTML(<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
+<!-- The preview never needs the network: scripts, styles and fonts are all
+     bundled under qrc:, images arrive inlined as data: URIs. This policy makes
+     the browser enforce that, so a stray remote src in the rendered markdown
+     (a tracking pixel, a pasted <img>) is refused before a request goes out.
+     'unsafe-inline' covers the shell's own inline <style>/<script> and the
+     inline style attributes KaTeX writes; it is not a sandbox for our bundled
+     JS, only a wall against exfiltration. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src qrc: 'unsafe-inline'; style-src qrc: 'unsafe-inline'; img-src qrc: data:; font-src qrc:; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Preview</title>
 <style>
   html { box-sizing: border-box; }
@@ -30,19 +38,140 @@ const char* const kShellHtml = R"HTML(<!doctype html>
   }
   #hungryeditor-content > :first-child { margin-top: 0; }
 </style>
+<link rel="stylesheet" href="qrc:///hungryeditor/preview/katex.min.css">
 <style id="he-theme"></style>
 </head>
 <body>
 <div id="hungryeditor-content"></div>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="qrc:///hungryeditor/preview/mermaid.min.js"></script>
+<script src="qrc:///hungryeditor/preview/katex.min.js"></script>
 <script>
   "use strict";
+
+  var mermaidReady = typeof mermaid !== "undefined";
+  if (mermaidReady) {
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+  }
+
+  var katexReady = typeof katex !== "undefined";
+
   window.addEventListener("load", function () {
     new QWebChannel(qt.webChannelTransport, function (channel) {
       var bridge = channel.objects.bridge;
       var target = document.getElementById("hungryeditor-content");
 
-      function apply(html) { target.innerHTML = html; }
+      // Bumped on every apply() so a diagram that finishes rendering after the
+      // body has moved on is dropped instead of painted over fresh content.
+      var renderToken = 0;
+      var lazyObserver = null;
+
+      // Swap a failed diagram/math node for a labelled error surface, keeping
+      // its source line so scroll-sync still lands on it. Inline math gets an
+      // inline span so we never nest a <div> inside a <p>.
+      function renderError(el, kind, err, block) {
+        var message = String((err && err.message) || err || "unknown error");
+        if (!block) {
+          var span = document.createElement("span");
+          span.className = "he-render-error-inline";
+          span.title = kind + " error: " + message;
+          span.textContent = el.textContent;
+          el.replaceWith(span);
+          return;
+        }
+        var box = document.createElement("div");
+        box.className = "he-render-error";
+        if (el.hasAttribute("data-src-line")) {
+          box.setAttribute("data-src-line", el.getAttribute("data-src-line"));
+        }
+        var label = document.createElement("strong");
+        label.textContent = kind + " error";
+        var body = document.createElement("pre");
+        body.textContent = message;
+        box.appendChild(label);
+        box.appendChild(body);
+        el.replaceWith(box);
+      }
+
+      function renderMermaidHolder(holder) {
+        if (!mermaidReady) { holder.classList.remove("mermaid-pending"); return; }
+        var id = holder.dataset.mermaidId;
+        var src = holder.dataset.src || "";
+        function fail(err) {
+          renderError(holder, "Diagram", err, true);
+          var orphan = document.getElementById("d" + id);
+          if (orphan) orphan.remove();
+        }
+        try {
+          mermaid.render(id, src).then(function (out) {
+            if (!holder.isConnected) return;
+            holder.classList.remove("mermaid-pending");
+            holder.innerHTML = out.svg;
+          }, fail);
+        } catch (err) {
+          fail(err);
+        }
+      }
+
+      function renderMathSpan(span) {
+        if (!katexReady) return;
+        var display = span.classList.contains("math-display");
+        try {
+          katex.render(span.textContent, span, { displayMode: display, throwOnError: true });
+        } catch (err) {
+          renderError(span, "Math", err, display);
+        }
+      }
+
+      function renderLazily(el) {
+        if (el.dataset.heRendered) return;
+        el.dataset.heRendered = "1";
+        if (el.classList.contains("mermaid-diagram")) {
+          renderMermaidHolder(el);
+        } else {
+          renderMathSpan(el);
+        }
+      }
+
+      // Diagrams and math are the slow part of a render — a page with dozens
+      // would stall on apply(). Swap each mermaid fence for a stable holder up
+      // front (so scroll-sync keeps its source line) but defer the actual
+      // mermaid/katex work until the block nears the viewport.
+      function scheduleRenders() {
+        var token = ++renderToken;
+        if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+
+        var codes = target.querySelectorAll("code.language-mermaid");
+        for (var i = 0; i < codes.length; i++) {
+          var pre = codes[i].closest("pre");
+          if (!pre) continue;
+          var holder = document.createElement("div");
+          holder.className = "mermaid-diagram mermaid-pending";
+          if (pre.hasAttribute("data-src-line")) {
+            holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
+          }
+          holder.dataset.src = codes[i].textContent;
+          holder.dataset.mermaidId = "he-mermaid-" + token + "-" + i;
+          pre.replaceWith(holder);
+        }
+
+        var items = target.querySelectorAll(".mermaid-diagram, .math-inline, .math-display");
+        if (!("IntersectionObserver" in window)) {
+          for (var j = 0; j < items.length; j++) renderLazily(items[j]);
+          return;
+        }
+        lazyObserver = new IntersectionObserver(function (entries) {
+          for (var k = 0; k < entries.length; k++) {
+            if (entries[k].isIntersecting) {
+              lazyObserver.unobserve(entries[k].target);
+              renderLazily(entries[k].target);
+            }
+          }
+        }, { rootMargin: "800px 0px" });
+        for (var m = 0; m < items.length; m++) lazyObserver.observe(items[m]);
+      }
+
+      function apply(html) { target.innerHTML = html; scheduleRenders(); }
       function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
 
       function blocks() { return target.querySelectorAll("[data-src-line]"); }
