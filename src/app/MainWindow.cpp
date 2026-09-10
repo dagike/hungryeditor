@@ -32,8 +32,10 @@
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
+#include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/SearchResultsPanel.h"
+#include "workspace/FileIndex.h"
 #include "workspace/FileSearch.h"
 
 #ifndef HUNGRYEDITOR_VERSION
@@ -109,6 +111,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     });
     connect(findBar_, &FindReplaceBar::queryChanged, this, &MainWindow::refreshFindHighlight);
     connect(findBar_, &FindReplaceBar::dismissed, this, &MainWindow::closeFindBar);
+
+    commandPalette_ = new CommandPalette(this);
+    connect(commandPalette_, &CommandPalette::commandChosen, this, &MainWindow::runPaletteChoice);
+
+    fileIndex_ = new FileIndex(this);
+    connect(fileIndex_, &FileIndex::refreshed, this, [this] {
+        if (paletteShowsFiles_ && !commandPalette_->isHidden()) {
+            populateQuickOpen();
+        }
+    });
 
     searchResults_ = new SearchResultsPanel(this);
     searchDock_ = new QDockWidget(tr("Find in Files"), this);
@@ -272,10 +284,44 @@ void MainWindow::buildMenus()
 
     editMenu->addSeparator();
 
+    QAction* quickOpenAction =
+        editMenu->addAction(tr("&Quick Open…"), this, &MainWindow::openQuickOpen);
+    quickOpenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    quickOpenAction->setObjectName(QStringLiteral("action.quickOpen"));
+
+    QAction* paletteAction =
+        editMenu->addAction(tr("Command &Palette…"), this, &MainWindow::openCommandPalette);
+    paletteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
+    paletteAction->setObjectName(QStringLiteral("action.commandPalette"));
+
+    editMenu->addSeparator();
+
     QAction* selectNextAction = editMenu->addAction(tr("Select &Next Occurrence"), this,
                                                     [this] { editor_->selectNextOccurrence(); });
     selectNextAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     selectNextAction->setObjectName(QStringLiteral("action.selectNext"));
+
+    editMenu->addSeparator();
+
+    const auto addLineAction = [&](const QString& text, const QString& objectName,
+                                   const QKeySequence& shortcut, void (Editor::*op)()) {
+        QAction* action = editMenu->addAction(text, this, [this, op] { (editor_->*op)(); });
+        action->setShortcut(shortcut);
+        action->setObjectName(objectName);
+        return action;
+    };
+    addLineAction(tr("Move Line &Up"), QStringLiteral("action.moveLineUp"),
+                  QKeySequence(Qt::ALT | Qt::Key_Up), &Editor::moveLinesUp);
+    addLineAction(tr("Move Line &Down"), QStringLiteral("action.moveLineDown"),
+                  QKeySequence(Qt::ALT | Qt::Key_Down), &Editor::moveLinesDown);
+    addLineAction(tr("D&uplicate Line"), QStringLiteral("action.duplicateLine"),
+                  QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D), &Editor::duplicateSelection);
+    addLineAction(tr("De&lete Line"), QStringLiteral("action.deleteLine"),
+                  QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K), &Editor::deleteLines);
+    addLineAction(tr("&Join Lines"), QStringLiteral("action.joinLines"),
+                  QKeySequence(Qt::CTRL | Qt::Key_J), &Editor::joinLines);
+    addLineAction(tr("Toggle &Comment"), QStringLiteral("action.toggleComment"),
+                  QKeySequence(Qt::CTRL | Qt::Key_Slash), &Editor::toggleLineComment);
 
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewModeGroup_ = new QActionGroup(this);
@@ -443,6 +489,57 @@ void MainWindow::closeFindBar()
     findBar_->hide();
     editor_->markAllMatches(QString(), {});
     editor_->setFocus();
+}
+
+void MainWindow::openCommandPalette()
+{
+    paletteShowsFiles_ = false;
+    QList<CommandPalette::Command> commands;
+    for (QAction* action : findChildren<QAction*>()) {
+        const QString id = action->objectName();
+        if (!id.startsWith(QLatin1String("action.")) || action->text().isEmpty() ||
+            !action->isEnabled()) {
+            continue;
+        }
+        QString title = action->text();
+        title.remove(QLatin1Char('&'));
+        if (title.endsWith(QChar(0x2026))) { // trailing ellipsis
+            title.chop(1);
+        }
+        commands.append({id, title, action->shortcut().toString(QKeySequence::NativeText)});
+    }
+    commandPalette_->setCommands(commands);
+    commandPalette_->open();
+}
+
+void MainWindow::openQuickOpen()
+{
+    paletteShowsFiles_ = true;
+    const QString current = currentPath();
+    fileIndex_->setRoot(current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath());
+    populateQuickOpen();
+    commandPalette_->open();
+}
+
+void MainWindow::populateQuickOpen()
+{
+    const QDir root(fileIndex_->root());
+    QList<CommandPalette::Command> commands;
+    for (const QString& path : fileIndex_->files()) {
+        commands.append({path, root.relativeFilePath(path), QString()});
+    }
+    commandPalette_->setCommands(commands);
+}
+
+void MainWindow::runPaletteChoice(const QString& id)
+{
+    if (id.startsWith(QLatin1String("action."))) {
+        if (QAction* action = findChild<QAction*>(id)) {
+            action->trigger();
+        }
+    } else {
+        openPath(id);
+    }
 }
 
 void MainWindow::findInFiles()

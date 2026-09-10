@@ -3,7 +3,7 @@
 # Application logic lives in the `hungryeditor_core` static library so that it
 # can be exercised by the test tree; `hungryeditor` is a thin entry point.
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent)
 
 qt_standard_project_setup()
 
@@ -78,10 +78,16 @@ add_library(hungryeditor_core STATIC
     preview/QtWebEnginePreview.h
     theme/Theme.cpp
     theme/Theme.h
+    ui/CommandPalette.cpp
+    ui/CommandPalette.h
     ui/FindReplaceBar.cpp
     ui/FindReplaceBar.h
+    ui/FuzzyMatch.cpp
+    ui/FuzzyMatch.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
+    workspace/FileIndex.cpp
+    workspace/FileIndex.h
     workspace/FileSearch.cpp
     workspace/FileSearch.h
 )
@@ -109,6 +115,7 @@ target_link_libraries(hungryeditor_core PUBLIC
 target_link_libraries(hungryeditor_core PRIVATE
     Qt6::WebEngineWidgets
     Qt6::WebChannel
+    Qt6::Concurrent
     hungryeditor::md4c
 )
 
