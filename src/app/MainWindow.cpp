@@ -33,12 +33,14 @@
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "markdown/Outline.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
 #include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
+#include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileIndex.h"
 #include "workspace/FileSearch.h"
@@ -139,6 +141,25 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
                     editor_->setCursorPosition(line, 0);
                 }
             });
+
+    outline_ = new OutlinePanel(this);
+    outlineDock_ = new QDockWidget(tr("Outline"), this);
+    outlineDock_->setObjectName(QStringLiteral("dock.outline"));
+    outlineDock_->setWidget(outline_);
+    addDockWidget(Qt::LeftDockWidgetArea, outlineDock_);
+    outlineDock_->hide();
+    connect(outline_, &OutlinePanel::headingActivated, this, [this](int line) {
+        editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
+        editor_->setFocus();
+    });
+
+    outlineTimer_ = new QTimer(this);
+    outlineTimer_->setSingleShot(true);
+    outlineTimer_->setInterval(150);
+    connect(outlineTimer_, &QTimer::timeout, this, &MainWindow::rebuildOutline);
+    connect(editor_, &Editor::textChanged, this, [this] { outlineTimer_->start(); });
+    connect(editor_, &Editor::cursorPositionChanged, this,
+            [this](int line, int /*column*/) { outline_->highlightLine(line); });
 
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
@@ -415,6 +436,12 @@ void MainWindow::buildMenus()
             [this](bool on) { editor_->setFrontMatterFolded(on); });
     updateFrontMatterAction();
 
+    QAction* outlineAction = outlineDock_->toggleViewAction();
+    outlineAction->setText(tr("&Outline"));
+    outlineAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    outlineAction->setObjectName(QStringLiteral("action.toggleOutline"));
+    viewMenu->addAction(outlineAction);
+
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction* aboutAction =
         helpMenu->addAction(tr("&About hungryeditor"), this, &MainWindow::showAbout);
@@ -479,6 +506,13 @@ void MainWindow::onCurrentChanged(int index)
     }
 
     updateFrontMatterAction();
+    rebuildOutline();
+}
+
+void MainWindow::rebuildOutline()
+{
+    outline_->setHeadings(outline::parse(editor_->text()));
+    outline_->highlightLine(editor_->cursorLine());
 }
 
 void MainWindow::updateFrontMatterAction()
@@ -827,6 +861,8 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
         documents_->setCurrentIndex(session.currentIndex);
     }
+    outlineDock_->setVisible(session.outlineVisible);
+    rebuildOutline();
     sessionStore_->clear(); // consumed; only a crash should leave one behind
     updateWindowTitle();
 }
@@ -839,6 +875,7 @@ void MainWindow::saveSession()
     documents_->autosaveDirtyDocuments(); // flush the latest text into drafts
     Session session = documents_->buildSession();
     session.windowGeometry = saveGeometry();
+    session.outlineVisible = outlineDock_->isVisible();
     sessionStore_->save(session);
 }
 

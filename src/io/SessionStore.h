@@ -25,6 +25,7 @@ struct Session
     bool valid = false; ///< false when no session file was found
     QByteArray windowGeometry;
     int currentIndex = 0;
+    bool outlineVisible = false; ///< whether the heading outline dock was open
     QList<SessionDocument> documents;
 };
 

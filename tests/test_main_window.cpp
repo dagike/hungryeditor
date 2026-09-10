@@ -15,6 +15,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QToolButton>
+#include <QTreeWidget>
 #include <QtTest>
 #include <QUrl>
 
@@ -30,6 +31,7 @@
 #include "preview/PreviewController.h"
 #include "ui/CommandPalette.h"
 #include "ui/FindReplaceBar.h"
+#include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileSearch.h"
 
@@ -73,6 +75,7 @@ private slots:
     void formatActionsEditTheBuffer();
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
+    void outlinePanelListsHeadingsAndJumpsToThem();
     void commandPaletteRunsTheChosenAction();
     void quickOpenOpensAFuzzilyMatchedFile();
 };
@@ -541,6 +544,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("numberedList") << QStringLiteral("action.numberedList");
     QTest::newRow("formatTable") << QStringLiteral("action.formatTable");
     QTest::newRow("foldFrontMatter") << QStringLiteral("action.foldFrontMatter");
+    QTest::newRow("toggleOutline") << QStringLiteral("action.toggleOutline");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -794,6 +798,33 @@ void TestMainWindow::activatingASearchResultOpensTheFile()
     panel->activateResult(0);
     QCOMPARE(window.currentPath(), file);
     QCOMPARE(window.editor()->cursorLine(), 1);
+}
+
+void TestMainWindow::outlinePanelListsHeadingsAndJumpsToThem()
+{
+    hungryeditor::MainWindow window;
+    //                                   line 0     1  2       3  4         5  6
+    window.editor()->setText(QStringLiteral("# Alpha\n\nsome text\n\n## Beta\n\nmore\n"));
+
+    auto* panel = window.findChild<hungryeditor::OutlinePanel*>();
+    QVERIFY(panel != nullptr);
+    auto* tree = panel->findChild<QTreeWidget*>();
+    QVERIFY(tree != nullptr);
+
+    // The rebuild is debounced off textChanged.
+    QTRY_COMPARE(tree->topLevelItemCount(), 1);
+    QTreeWidgetItem* alpha = tree->topLevelItem(0);
+    QCOMPARE(alpha->text(0), QStringLiteral("Alpha"));
+    QCOMPARE(alpha->childCount(), 1);
+    QCOMPARE(alpha->child(0)->text(0), QStringLiteral("Beta"));
+
+    QMetaObject::invokeMethod(tree, "itemClicked", Q_ARG(QTreeWidgetItem*, alpha->child(0)),
+                              Q_ARG(int, 0));
+    QCOMPARE(window.editor()->cursorLine(), 4);
+
+    QAction* toggle = window.findChild<QAction*>(QStringLiteral("action.toggleOutline"));
+    QVERIFY(toggle != nullptr);
+    QVERIFY(toggle->isCheckable());
 }
 
 void TestMainWindow::commandPaletteRunsTheChosenAction()

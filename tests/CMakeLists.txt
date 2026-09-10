@@ -115,6 +115,14 @@ hungryeditor_add_test(test_front_matter
     SOURCES test_front_matter.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_outline
+    SOURCES test_outline.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_outline_panel
+    SOURCES test_outline_panel.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_md4c_renderer
     SOURCES test_md4c_renderer.cpp
     LIBS hungryeditor::core)

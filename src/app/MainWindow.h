@@ -14,6 +14,7 @@ class QDragEnterEvent;
 class QDropEvent;
 class QMenu;
 class QSplitter;
+class QTimer;
 
 namespace hungryeditor {
 
@@ -23,6 +24,7 @@ class DocumentManager;
 class Editor;
 class FileIndex;
 class FindReplaceBar;
+class OutlinePanel;
 class PreviewBackend;
 class PreviewController;
 class RecentFiles;
@@ -186,6 +188,9 @@ private:
     void onCurrentChanged(int index);
     /// Enable / check the "Fold Front Matter" action for the current buffer.
     void updateFrontMatterAction();
+    /// Re-extract the heading outline for the current buffer and re-select the
+    /// entry the caret sits under.
+    void rebuildOutline();
 
     // External file-change handling.
     void onFileChangedExternally(int index);
@@ -203,6 +208,9 @@ private:
     bool paletteShowsFiles_ = false;
     SearchResultsPanel* searchResults_ = nullptr;
     QDockWidget* searchDock_ = nullptr;
+    OutlinePanel* outline_ = nullptr;
+    QDockWidget* outlineDock_ = nullptr;
+    QTimer* outlineTimer_ = nullptr;
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;

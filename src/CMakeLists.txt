@@ -73,6 +73,8 @@ add_library(hungryeditor_core STATIC
     io/TextFile.h
     markdown/FrontMatter.cpp
     markdown/FrontMatter.h
+    markdown/Outline.cpp
+    markdown/Outline.h
     markdown/Md4cRenderer.cpp
     markdown/Md4cRenderer.h
     preview/PreviewBackend.h
@@ -90,6 +92,8 @@ add_library(hungryeditor_core STATIC
     ui/FindReplaceBar.h
     ui/FuzzyMatch.cpp
     ui/FuzzyMatch.h
+    ui/OutlinePanel.cpp
+    ui/OutlinePanel.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
     workspace/FileIndex.cpp
