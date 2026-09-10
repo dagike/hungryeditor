@@ -13,6 +13,7 @@
 #include <QMenuBar>
 #include <QMimeData>
 #include <QSignalSpy>
+#include <QSplitter>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QToolButton>
@@ -92,6 +93,7 @@ private slots:
     void goToAnythingListsOpenBuffersFirst();
     void goToLineMovesTheCaretWithinTheBuffer();
     void caretHistoryReturnsToPriorSpots();
+    void panelLayoutSurvivesAReload();
 };
 
 namespace {
@@ -1188,6 +1190,41 @@ void TestMainWindow::caretHistoryReturnsToPriorSpots()
     back->trigger();
     QCOMPARE(window.currentPath(), a);
     QCOMPARE(window.editor()->cursorLine(), 2);
+}
+
+void TestMainWindow::panelLayoutSurvivesAReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        first.resize(800, 600);
+        first.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&first));
+
+        first.findChild<QAction*>(QStringLiteral("action.toggleOutline"))->trigger(); // reveal it
+        auto* splitter = first.findChild<QSplitter*>();
+        QVERIFY(splitter != nullptr);
+        splitter->setSizes({250, 550}); // a deliberately uneven split
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+    second.resize(800, 600);
+    second.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&second));
+
+    QVERIFY(second.findChild<QAction*>(QStringLiteral("action.toggleOutline"))->isChecked());
+
+    const QList<int> sizes = second.findChild<QSplitter*>()->sizes();
+    QCOMPARE(sizes.size(), 2);
+    QVERIFY(sizes.at(0) > 0);
+    QVERIFY(sizes.at(1) > 0);
+    QVERIFY(sizes.at(0) < sizes.at(1)); // the uneven split was restored, not the default
 }
 
 QTEST_MAIN(TestMainWindow)

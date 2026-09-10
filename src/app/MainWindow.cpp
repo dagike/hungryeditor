@@ -1317,17 +1317,22 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (!session.windowGeometry.isEmpty()) {
         restoreGeometry(session.windowGeometry);
     }
+    if (!session.windowState.isEmpty()) {
+        restoreState(session.windowState);
+    }
+    if (!session.splitterState.isEmpty()) {
+        splitter_->restoreState(session.splitterState);
+    }
     documents_->restoreSession(session, documents_->pendingDrafts());
     dropInitialBlankBuffer();
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
         documents_->setCurrentIndex(session.currentIndex);
     }
-    outlineDock_->setVisible(session.outlineVisible);
     rebuildOutline();
     if (!session.workspaceFolder.isEmpty()) {
-        openFolder(session.workspaceFolder);
-    } else if (session.filesVisible) {
-        fileTreeDock_->toggleViewAction()->setChecked(true);
+        openFolder(session.workspaceFolder); // re-roots, scans, re-checks the dock
+    } else if (fileTreeDock_->toggleViewAction()->isChecked()) {
+        updateWorkspaceRoot(); // restoreState revealed the sidebar — kick the scan
     }
     sessionStore_->clear(); // consumed; only a crash should leave one behind
     updateWindowTitle();
@@ -1341,8 +1346,8 @@ void MainWindow::saveSession()
     documents_->autosaveDirtyDocuments(); // flush the latest text into drafts
     Session session = documents_->buildSession();
     session.windowGeometry = saveGeometry();
-    session.outlineVisible = outlineDock_->isVisible();
-    session.filesVisible = fileTreeDock_->toggleViewAction()->isChecked();
+    session.windowState = saveState();
+    session.splitterState = splitter_->saveState();
     session.workspaceFolder = workspaceRoot_;
     saveWorkspaceViewState();
     sessionStore_->save(session);
