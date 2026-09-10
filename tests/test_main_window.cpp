@@ -17,6 +17,7 @@
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <QtTest>
 #include <QUrl>
 
@@ -82,6 +83,7 @@ private slots:
     void fileSidebarListsTheFolderAndOpensAFile();
     void openFolderRootsTheSidebarAndRevealsIt();
     void workspaceAndFilterSurviveASessionReload();
+    void sidebarCreatesRenamesAndDeletes();
     void commandPaletteRunsTheChosenAction();
     void quickOpenOpensAFuzzilyMatchedFile();
 };
@@ -942,6 +944,51 @@ void TestMainWindow::workspaceAndFilterSurviveASessionReload()
     QVERIFY(second.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->isChecked());
     auto* panel = second.findChild<hungryeditor::FileTreePanel*>();
     QCOMPARE(panel->findChild<QLineEdit*>()->text(), QStringLiteral("beta"));
+}
+
+namespace {
+
+bool treeShows(QTreeWidget* tree, const QString& name)
+{
+    for (QTreeWidgetItemIterator it(tree); *it != nullptr; ++it) {
+        if ((*it)->text(0) == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+void TestMainWindow::sidebarCreatesRenamesAndDeletes()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("seed.md")), "s\n");
+    const QDir root(folder.path());
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.openFolder(folder.path());
+
+    auto* tree = window.findChild<hungryeditor::FileTreePanel*>()->findChild<QTreeWidget*>();
+    QTRY_VERIFY_WITH_TIMEOUT(treeShows(tree, QStringLiteral("seed.md")), 5000);
+
+    QVERIFY(window.createFileInWorkspace(folder.path(), QStringLiteral("fresh.md")));
+    QCOMPARE(window.currentPath(), root.absoluteFilePath(QStringLiteral("fresh.md")));
+    QTRY_VERIFY_WITH_TIMEOUT(treeShows(tree, QStringLiteral("fresh.md")), 5000);
+
+    QVERIFY(window.renameInWorkspace(root.absoluteFilePath(QStringLiteral("fresh.md")),
+                                     QStringLiteral("renamed.md")));
+    QCOMPARE(window.currentPath(), root.absoluteFilePath(QStringLiteral("renamed.md")));
+    QTRY_VERIFY_WITH_TIMEOUT(treeShows(tree, QStringLiteral("renamed.md")), 5000);
+    QVERIFY(!treeShows(tree, QStringLiteral("fresh.md")));
+
+    QVERIFY(window.deleteFromWorkspace(root.absoluteFilePath(QStringLiteral("renamed.md"))));
+    QVERIFY(window.currentPath() != root.absoluteFilePath(QStringLiteral("renamed.md")));
+    QTRY_VERIFY_WITH_TIMEOUT(!treeShows(tree, QStringLiteral("renamed.md")), 5000);
 }
 
 void TestMainWindow::commandPaletteRunsTheChosenAction()

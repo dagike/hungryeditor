@@ -6,6 +6,8 @@
 
 class QLabel;
 class QLineEdit;
+class QMenu;
+class QPoint;
 class QTreeWidget;
 class QTreeWidgetItem;
 
@@ -44,11 +46,22 @@ public:
     /// Directory paths (relative to the root) that are currently expanded.
     QStringList expandedDirectories() const;
 
+    /// The right-click menu for `item` (nullptr ⇒ a click on empty space,
+    /// targeting the workspace root), parented to this panel, or nullptr when
+    /// no folder is open. Triggering an entry emits the matching request
+    /// signal. Exposed so tests can drive it without a modal exec().
+    QMenu* contextMenuFor(QTreeWidgetItem* item);
+
 signals:
     void fileActivated(const QString& path);
+    void createFileRequested(const QString& parentDir);
+    void createFolderRequested(const QString& parentDir);
+    void renameRequested(const QString& path, bool isDirectory);
+    void deleteRequested(const QString& path, bool isDirectory);
 
 private:
     void onItemActivated(QTreeWidgetItem* item, int column);
+    void showContextMenu(const QPoint& pos);
     void applyFilter(const QString& text);
     /// Hide `item` and its descendants that do not match `needle` (already
     /// lower-cased); returns whether `item` stays visible.

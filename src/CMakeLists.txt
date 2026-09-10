@@ -102,6 +102,8 @@ add_library(hungryeditor_core STATIC
     ui/SearchResultsPanel.h
     workspace/FileIndex.cpp
     workspace/FileIndex.h
+    workspace/FileOperations.cpp
+    workspace/FileOperations.h
     workspace/FileSearch.cpp
     workspace/FileSearch.h
     workspace/WorkspaceStore.cpp

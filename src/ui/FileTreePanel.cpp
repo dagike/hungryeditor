@@ -2,10 +2,13 @@
 
 #include <algorithm>
 
+#include <QAction>
 #include <QDir>
+#include <QFileInfo>
 #include <QHash>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QTreeWidget>
@@ -71,8 +74,10 @@ FileTreePanel::FileTreePanel(QWidget* parent) : QWidget(parent)
     tree_ = new QTreeWidget(this);
     tree_->setHeaderHidden(true);
     tree_->setUniformRowHeights(true);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
     layout->addWidget(tree_, 1);
     connect(tree_, &QTreeWidget::itemActivated, this, &FileTreePanel::onItemActivated);
+    connect(tree_, &QWidget::customContextMenuRequested, this, &FileTreePanel::showContextMenu);
 
     updatePlaceholder();
 }
@@ -230,6 +235,47 @@ void FileTreePanel::onItemActivated(QTreeWidgetItem* item, int /*column*/)
     const QVariant path = item->data(0, kPathRole);
     if (path.isValid()) {
         emit fileActivated(path.toString());
+    }
+}
+
+QMenu* FileTreePanel::contextMenuFor(QTreeWidgetItem* item)
+{
+    if (root_.isEmpty()) {
+        return nullptr;
+    }
+
+    QString parentDir = root_;
+    QString targetPath;
+    bool targetIsDir = false;
+    if (item != nullptr && isDirectory(item)) {
+        targetPath = QDir(root_).absoluteFilePath(itemPath(item));
+        targetIsDir = true;
+        parentDir = targetPath;
+    } else if (item != nullptr) {
+        targetPath = item->data(0, kPathRole).toString();
+        parentDir = QFileInfo(targetPath).absolutePath();
+    }
+
+    auto* menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    connect(menu->addAction(tr("New File…")), &QAction::triggered, this,
+            [this, parentDir] { emit createFileRequested(parentDir); });
+    connect(menu->addAction(tr("New Folder…")), &QAction::triggered, this,
+            [this, parentDir] { emit createFolderRequested(parentDir); });
+    if (!targetPath.isEmpty()) {
+        menu->addSeparator();
+        connect(menu->addAction(tr("Rename…")), &QAction::triggered, this,
+                [this, targetPath, targetIsDir] { emit renameRequested(targetPath, targetIsDir); });
+        connect(menu->addAction(tr("Delete")), &QAction::triggered, this,
+                [this, targetPath, targetIsDir] { emit deleteRequested(targetPath, targetIsDir); });
+    }
+    return menu;
+}
+
+void FileTreePanel::showContextMenu(const QPoint& pos)
+{
+    if (QMenu* menu = contextMenuFor(tree_->itemAt(pos))) {
+        menu->popup(tree_->viewport()->mapToGlobal(pos));
     }
 }
 

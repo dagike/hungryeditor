@@ -23,6 +23,10 @@ public:
     /// if the root is unchanged and a scan is not already stale.
     void setRoot(const QString& directory);
 
+    /// Re-scan the current root unconditionally — for when the tree changed
+    /// under us (a file created or deleted in the sidebar).
+    void refresh();
+
     /// The most recent snapshot of absolute file paths (empty until the first
     /// scan completes).
     QStringList files() const { return files_; }

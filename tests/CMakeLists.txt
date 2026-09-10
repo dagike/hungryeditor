@@ -131,6 +131,10 @@ hungryeditor_add_test(test_workspace_store
     SOURCES test_workspace_store.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_file_operations
+    SOURCES test_file_operations.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_image_resolver
     SOURCES test_image_resolver.cpp
     LIBS hungryeditor::core)

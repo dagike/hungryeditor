@@ -1,5 +1,7 @@
 #include "app/MainWindow.h"
 
+#include <algorithm>
+#include <functional>
 #include <utility>
 
 #include <QActionGroup>
@@ -44,6 +46,7 @@
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileIndex.h"
+#include "workspace/FileOperations.h"
 #include "workspace/FileSearch.h"
 #include "workspace/WorkspaceStore.h"
 
@@ -169,6 +172,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             editor_->setFocus();
         }
     });
+    connect(fileTree_, &FileTreePanel::createFileRequested, this, &MainWindow::promptCreateFile);
+    connect(fileTree_, &FileTreePanel::createFolderRequested, this,
+            &MainWindow::promptCreateFolder);
+    connect(fileTree_, &FileTreePanel::renameRequested, this, &MainWindow::promptRename);
+    connect(fileTree_, &FileTreePanel::deleteRequested, this, &MainWindow::promptDelete);
 
     outlineTimer_ = new QTimer(this);
     outlineTimer_->setSingleShot(true);
@@ -615,6 +623,152 @@ void MainWindow::saveWorkspaceViewState()
     state.expandedDirs = fileTree_->expandedDirectories();
     state.hasExpandedList = true;
     workspaceStore_->save(workspaceRoot_, state);
+}
+
+QList<int> MainWindow::documentsAffectedBy(const QString& path) const
+{
+    const QFileInfo info(path);
+    const QString target = info.absoluteFilePath();
+    const QString prefix = target + QLatin1Char('/');
+    const bool isDir = info.isDir();
+
+    QList<int> hits;
+    for (int i = 0; i < documents_->count(); ++i) {
+        const QString docPath = documents_->documentAt(i)->path();
+        if (docPath.isEmpty()) {
+            continue;
+        }
+        const QString resolved = QFileInfo(docPath).absoluteFilePath();
+        if (resolved == target || (isDir && resolved.startsWith(prefix))) {
+            hits.append(i);
+        }
+    }
+    return hits;
+}
+
+bool MainWindow::createFileInWorkspace(const QString& parentDir, const QString& name)
+{
+    const fileops::Result result = fileops::createFile(parentDir, name);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+    fileIndex_->refresh();
+    openPath(result.path);
+    return true;
+}
+
+bool MainWindow::createFolderInWorkspace(const QString& parentDir, const QString& name)
+{
+    const fileops::Result result = fileops::createFolder(parentDir, name);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+    fileIndex_->refresh();
+    return true;
+}
+
+bool MainWindow::renameInWorkspace(const QString& path, const QString& newName)
+{
+    QList<int> affected = documentsAffectedBy(path);
+    for (int index : affected) {
+        if (documents_->documentAt(index)->isModified()) {
+            lastError_ =
+                tr("Save your changes before renaming “%1”.").arg(QFileInfo(path).fileName());
+            return false;
+        }
+    }
+
+    const bool renamingCurrent =
+        !affected.isEmpty() && affected.contains(documents_->currentIndex());
+
+    const fileops::Result result = fileops::rename(path, newName);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+
+    // Close the now-stale buffers, highest index first so the rest stay valid.
+    std::sort(affected.begin(), affected.end(), std::greater<>());
+    for (int index : affected) {
+        documents_->closeDocument(index);
+    }
+    if (renamingCurrent && QFileInfo(result.path).isFile()) {
+        openPath(result.path);
+    }
+    fileIndex_->refresh();
+    return true;
+}
+
+bool MainWindow::deleteFromWorkspace(const QString& path)
+{
+    QList<int> affected = documentsAffectedBy(path);
+    for (int index : affected) {
+        if (documents_->documentAt(index)->isModified()) {
+            lastError_ =
+                tr("Save your changes before deleting “%1”.").arg(QFileInfo(path).fileName());
+            return false;
+        }
+    }
+
+    const fileops::Result result = fileops::moveToTrash(path);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+
+    std::sort(affected.begin(), affected.end(), std::greater<>());
+    for (int index : affected) {
+        documents_->closeDocument(index);
+    }
+    fileIndex_->refresh();
+    return true;
+}
+
+void MainWindow::promptCreateFile(const QString& parentDir)
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("New File"), tr("File name:"),
+                                               QLineEdit::Normal, QString(), &ok);
+    if (ok && !name.isEmpty() && !createFileInWorkspace(parentDir, name)) {
+        QMessageBox::warning(this, tr("New File"), lastError_);
+    }
+}
+
+void MainWindow::promptCreateFolder(const QString& parentDir)
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("New Folder"), tr("Folder name:"),
+                                               QLineEdit::Normal, QString(), &ok);
+    if (ok && !name.isEmpty() && !createFolderInWorkspace(parentDir, name)) {
+        QMessageBox::warning(this, tr("New Folder"), lastError_);
+    }
+}
+
+void MainWindow::promptRename(const QString& path, bool /*isDirectory*/)
+{
+    bool ok = false;
+    const QString current = QFileInfo(path).fileName();
+    const QString name =
+        QInputDialog::getText(this, tr("Rename"), tr("New name:"), QLineEdit::Normal, current, &ok);
+    if (ok && !name.isEmpty() && name != current && !renameInWorkspace(path, name)) {
+        QMessageBox::warning(this, tr("Rename"), lastError_);
+    }
+}
+
+void MainWindow::promptDelete(const QString& path, bool isDirectory)
+{
+    const QString name = QFileInfo(path).fileName();
+    const QString question = isDirectory
+                                 ? tr("Delete the folder “%1” and everything in it?").arg(name)
+                                 : tr("Delete “%1”?").arg(name);
+    if (QMessageBox::question(this, tr("Delete"), question) != QMessageBox::Yes) {
+        return;
+    }
+    if (!deleteFromWorkspace(path)) {
+        QMessageBox::warning(this, tr("Delete"), lastError_);
+    }
 }
 
 void MainWindow::rebuildOutline()

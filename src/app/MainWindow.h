@@ -104,6 +104,15 @@ public:
     /// The explicitly opened workspace folder, or empty when none is open.
     QString workspaceFolder() const { return workspaceRoot_; }
 
+    /// Sidebar file operations. Each performs the filesystem change, refreshes
+    /// the tree and reconciles any open buffer, returning false (with
+    /// lastError() set) on failure. The private slots wrap these with the
+    /// name/confirm dialogs; tests call them directly.
+    bool createFileInWorkspace(const QString& parentDir, const QString& name);
+    bool createFolderInWorkspace(const QString& parentDir, const QString& name);
+    bool renameInWorkspace(const QString& path, const QString& newName);
+    bool deleteFromWorkspace(const QString& path);
+
     /// Open every path in `paths`, activating the first that loads. A pristine
     /// untitled buffer is dropped so command-line and drag-and-drop opens do
     /// not leave a stray tab. Returns false if any path failed; lastError()
@@ -193,6 +202,14 @@ private:
     // Load / persist the open workspace's remembered filter and tree state.
     void loadWorkspaceViewState();
     void saveWorkspaceViewState();
+    // Indices of open buffers whose file is `path` (or, when `path` is a
+    // directory, sits under it), current-first.
+    QList<int> documentsAffectedBy(const QString& path) const;
+    // Sidebar context-menu handlers: prompt, then call the public do-ers.
+    void promptCreateFile(const QString& parentDir);
+    void promptCreateFolder(const QString& parentDir);
+    void promptRename(const QString& path, bool isDirectory);
+    void promptDelete(const QString& path, bool isDirectory);
 
     // Recent-files list and its menu.
     void recordRecent(const QString& path);

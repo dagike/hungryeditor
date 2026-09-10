@@ -1,7 +1,9 @@
 // Coverage for the workspace folder sidebar.
 
+#include <QAction>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QSignalSpy>
 #include <QTreeWidget>
 #include <QtTest>
@@ -50,7 +52,24 @@ private slots:
     void filterTextRoundTrips();
     void restoringExpandedDirsCollapsesTheRest();
     void expandedDirectoriesReportsThemBack();
+    void contextMenuOnAFileTargetsItAndItsParent();
+    void contextMenuOnEmptySpaceTargetsTheRoot();
+    void noContextMenuWithoutAFolder();
 };
+
+namespace {
+
+QAction* actionNamed(QMenu* menu, const QString& text)
+{
+    for (QAction* action : menu->actions()) {
+        if (action->text() == text) {
+            return action;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
 
 void TestFileTreePanel::buildsANestedTreeWithDirectoriesFirst()
 {
@@ -214,6 +233,54 @@ void TestFileTreePanel::expandedDirectoriesReportsThemBack()
 
     panel.applyState(QString(), {QStringLiteral("docs")}, true);
     QCOMPARE(panel.expandedDirectories(), QStringList{QStringLiteral("docs")});
+}
+
+void TestFileTreePanel::contextMenuOnAFileTargetsItAndItsParent()
+{
+    FileTreePanel panel;
+    panel.setRoot(QStringLiteral("/ws"));
+    panel.setFiles(sampleFiles());
+    auto* tree = panel.findChild<QTreeWidget*>();
+    QTreeWidgetItem* guide = childNamed(tree->topLevelItem(0), QStringLiteral("guide.md"));
+    QVERIFY(guide != nullptr);
+
+    QMenu* menu = panel.contextMenuFor(guide);
+    QVERIFY(menu != nullptr);
+
+    QSignalSpy newFile(&panel, &FileTreePanel::createFileRequested);
+    QSignalSpy renamed(&panel, &FileTreePanel::renameRequested);
+
+    actionNamed(menu, QStringLiteral("New File…"))->trigger();
+    QCOMPARE(newFile.first().first().toString(), QStringLiteral("/ws/docs")); // the file's parent
+
+    actionNamed(menu, QStringLiteral("Rename…"))->trigger();
+    QCOMPARE(renamed.first().at(0).toString(), QStringLiteral("/ws/docs/guide.md"));
+    QCOMPARE(renamed.first().at(1).toBool(), false); // not a directory
+
+    delete menu;
+}
+
+void TestFileTreePanel::contextMenuOnEmptySpaceTargetsTheRoot()
+{
+    FileTreePanel panel;
+    panel.setRoot(QStringLiteral("/ws"));
+    panel.setFiles(sampleFiles());
+
+    QMenu* menu = panel.contextMenuFor(nullptr);
+    QVERIFY(menu != nullptr);
+    QVERIFY(actionNamed(menu, QStringLiteral("Rename…")) == nullptr); // nothing to rename
+
+    QSignalSpy newFolder(&panel, &FileTreePanel::createFolderRequested);
+    actionNamed(menu, QStringLiteral("New Folder…"))->trigger();
+    QCOMPARE(newFolder.first().first().toString(), QStringLiteral("/ws"));
+
+    delete menu;
+}
+
+void TestFileTreePanel::noContextMenuWithoutAFolder()
+{
+    FileTreePanel panel;
+    QVERIFY(panel.contextMenuFor(nullptr) == nullptr);
 }
 
 QTEST_MAIN(TestFileTreePanel)
