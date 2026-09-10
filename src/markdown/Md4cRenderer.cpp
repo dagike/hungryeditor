@@ -194,7 +194,7 @@ int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata)
         const auto* d = static_cast<const MD_BLOCK_LI_DETAIL*>(detail);
         if (d != nullptr && d->is_task != 0) {
             openBlock(ctx, "<li class=\"task-list-item\"", ">");
-            ctx.out += "<input type=\"checkbox\" disabled";
+            ctx.out += "<input type=\"checkbox\" class=\"task-checkbox\"";
             if (d->task_mark == 'x' || d->task_mark == 'X') {
                 ctx.out += " checked";
             }

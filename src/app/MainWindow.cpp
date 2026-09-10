@@ -184,6 +184,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             &MainWindow::syncEditorToPreview);
     connect(preview_.get(), &PreviewBackend::clickedSourceLine, this,
             &MainWindow::jumpEditorToLine);
+    connect(preview_.get(), &PreviewBackend::taskToggled, this,
+            [this](int line, bool checked) { editor_->setTaskChecked(line, checked); });
 
     buildMenus();
     setStateDirectory(defaultStateDirectory());

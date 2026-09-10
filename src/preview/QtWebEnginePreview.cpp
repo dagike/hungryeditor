@@ -83,11 +83,19 @@ const char* const kShellHtml = R"HTML(<!doctype html>
         }
       }
 
+      function reportTaskToggle(event) {
+        var box = event.target;
+        if (box.tagName !== "INPUT" || box.type !== "checkbox") return;
+        var li = box.closest("[data-src-line]");
+        if (li) bridge.reportTaskToggle(lineOf(li), box.checked);
+      }
+
       bridge.contentChanged.connect(apply);
       bridge.themeCssChanged.connect(applyTheme);
       bridge.scrollToLineRequested.connect(scrollToLine);
       window.addEventListener("scroll", reportScroll, { passive: true });
       target.addEventListener("click", reportHeadingClick);
+      target.addEventListener("change", reportTaskToggle);
 
       applyTheme(bridge.themeCss);
       apply(bridge.content);
@@ -112,6 +120,7 @@ QtWebEnginePreview::QtWebEnginePreview(QObject* parent)
     connect(bridge_, &PreviewBridge::pageReady, this, &PreviewBackend::ready);
     connect(bridge_, &PreviewBridge::viewerScrolled, this, &PreviewBackend::scrolledToSourceLine);
     connect(bridge_, &PreviewBridge::headingClicked, this, &PreviewBackend::clickedSourceLine);
+    connect(bridge_, &PreviewBridge::taskToggled, this, &PreviewBackend::taskToggled);
 }
 
 QtWebEnginePreview::~QtWebEnginePreview() = default;

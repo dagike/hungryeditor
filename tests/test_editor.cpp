@@ -42,6 +42,7 @@ private slots:
     void tabNavigatesTableCellsAndAppendsRows();
     void formatTableAlignsColumns();
     void tabOutsideATableIsNotConsumed();
+    void togglesTaskCheckboxAndWritesBack();
     void foldsFrontMatterOnRequest();
     void noFrontMatterLeavesTheFoldMarginHidden();
     void visualDefaultsAreApplied();
@@ -501,6 +502,28 @@ void TestEditor::tabOutsideATableIsNotConsumed()
 
     editor.formatTable(); // a no-op that must not disturb the buffer
     QCOMPARE(editor.text(), QStringLiteral("just prose here\n"));
+}
+
+void TestEditor::togglesTaskCheckboxAndWritesBack()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("- [ ] one\n- [x] two\n1) [ ] three\nplain line\n"));
+
+    editor.setTaskChecked(0, true);
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [x] two\n1) [ ] three\nplain line\n"));
+
+    editor.setTaskChecked(1, false);
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [ ] three\nplain line\n"));
+
+    editor.setTaskChecked(2, true); // ordered-list task marker
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [x] three\nplain line\n"));
+
+    editor.setTaskChecked(1, false); // already unchecked -> no-op
+    editor.setTaskChecked(3, true);  // not a task line -> no-op
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [x] three\nplain line\n"));
+
+    editor.undo(); // the ordered-list toggle was one undo step
+    QCOMPARE(editor.text(), QStringLiteral("- [x] one\n- [ ] two\n1) [ ] three\nplain line\n"));
 }
 
 void TestEditor::foldsFrontMatterOnRequest()

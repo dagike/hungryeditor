@@ -147,6 +147,11 @@ public:
     /// Realign the pipe table under the caret in place. No-op otherwise.
     void formatTable();
 
+    /// Set the task-list checkbox on `line` (`- [ ]` / `- [x]`, ordered markers
+    /// included) to `checked`, as one undo step. No-op when the line carries no
+    /// task marker or is already in that state. Driven by a click in the preview.
+    void setTaskChecked(int line, bool checked);
+
     /// True when the document opens with a YAML front-matter block (`---` … `---`).
     bool hasFrontMatter() const;
     /// True when that block exists and is currently folded.

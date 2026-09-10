@@ -134,8 +134,11 @@ void TestMd4cRenderer::rendersTaskListItems()
     const QString html = renderer.toHtml(QStringLiteral("- [ ] todo\n- [x] done\n"));
 
     QVERIFY(html.contains(QStringLiteral("<li class=\"task-list-item\" data-src-line=\"0\">")));
-    QVERIFY(html.contains(QStringLiteral("<input type=\"checkbox\" disabled> todo")));
-    QVERIFY(html.contains(QStringLiteral("<input type=\"checkbox\" disabled checked> done")));
+    QVERIFY(
+        html.contains(QStringLiteral("<input type=\"checkbox\" class=\"task-checkbox\"> todo")));
+    QVERIFY(html.contains(
+        QStringLiteral("<input type=\"checkbox\" class=\"task-checkbox\" checked> done")));
+    QVERIFY(!html.contains(QStringLiteral("disabled")));
 }
 
 void TestMd4cRenderer::rendersBareUrlAutolinks()

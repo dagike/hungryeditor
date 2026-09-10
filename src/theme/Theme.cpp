@@ -64,7 +64,7 @@ QString Theme::previewCss() const
                "th, td { border: 1px solid var(--he-border); padding: .4em .75em; }"
                "thead th { background: var(--he-code-bg); }"
                "li.task-list-item { list-style: none; }"
-               "li.task-list-item > input { margin: 0 .45em 0 -1.35em; }"
+               "li.task-list-item > input { margin: 0 .45em 0 -1.35em; cursor: pointer; }"
                ".footnotes {"
                "  margin-top: 2em; padding-top: 1em;"
                "  border-top: 1px solid var(--he-border);"

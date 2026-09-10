@@ -70,6 +70,7 @@ private slots:
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
     void clickingAPreviewHeadingMovesTheCaret();
+    void clickingAPreviewCheckboxRewritesTheSource();
     void selectNextActionAddsACaret();
     void lineActionsEditTheBuffer();
     void formatActionsEditTheBuffer();
@@ -699,6 +700,24 @@ void TestMainWindow::clickingAPreviewHeadingMovesTheCaret()
         QStringLiteral("document.querySelectorAll('h2')[0].click(); void 0"));
 
     QTRY_COMPARE_WITH_TIMEOUT(window.editor()->cursorLine(), 4, 10000);
+}
+
+void TestMainWindow::clickingAPreviewCheckboxRewritesTheSource()
+{
+    hungryeditor::MainWindow window;
+    window.resize(720, 320);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QSignalSpy ready(window.previewBackend(), &hungryeditor::PreviewBackend::ready);
+    window.editor()->setText(QStringLiteral("# Chores\n\n- [ ] water plants\n"));
+    QVERIFY(ready.wait(20000));
+
+    window.previewBackend()->runJavaScript(
+        QStringLiteral("document.querySelector('input.task-checkbox').click(); void 0"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(window.editor()->text(),
+                              QStringLiteral("# Chores\n\n- [x] water plants\n"), 10000);
 }
 
 void TestMainWindow::selectNextActionAddsACaret()

@@ -965,6 +965,72 @@ void Editor::formatTable()
     reflowTable(/*moveCaret=*/false, /*forward=*/true);
 }
 
+namespace {
+
+/// Byte offset of the task-mark character (the one between `[` and `]`) on a
+/// list line, or npos when the line is not `<indent><marker> [ ] …`.
+std::size_t taskMarkOffset(const std::string& body)
+{
+    std::size_t i = 0;
+    while (i < body.size() && (body[i] == ' ' || body[i] == '\t')) {
+        ++i;
+    }
+    if (i >= body.size()) {
+        return std::string::npos;
+    }
+    if (body[i] == '-' || body[i] == '*' || body[i] == '+') {
+        ++i;
+    } else {
+        std::size_t digits = i;
+        while (digits < body.size() &&
+               std::isdigit(static_cast<unsigned char>(body[digits])) != 0) {
+            ++digits;
+        }
+        if (digits == i || digits >= body.size() || (body[digits] != '.' && body[digits] != ')')) {
+            return std::string::npos;
+        }
+        i = digits + 1;
+    }
+    if (i >= body.size() || (body[i] != ' ' && body[i] != '\t')) {
+        return std::string::npos;
+    }
+    while (i < body.size() && (body[i] == ' ' || body[i] == '\t')) {
+        ++i;
+    }
+    if (i + 2 >= body.size() || body[i] != '[' || body[i + 2] != ']') {
+        return std::string::npos;
+    }
+    const char mark = body[i + 1];
+    if (mark != ' ' && mark != 'x' && mark != 'X') {
+        return std::string::npos;
+    }
+    return i + 1;
+}
+
+} // namespace
+
+void Editor::setTaskChecked(int line, bool checked)
+{
+    if (line < 0 || line >= lineCount()) {
+        return;
+    }
+    const Scintilla::Position lineStart = call_.PositionFromLine(line);
+    const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+    const std::size_t mark = taskMarkOffset(body);
+    if (mark == std::string::npos) {
+        return;
+    }
+    const bool isChecked = body[mark] != ' ';
+    if (isChecked == checked) {
+        return;
+    }
+    const Scintilla::Position at = lineStart + static_cast<Scintilla::Position>(mark);
+    call_.BeginUndoAction();
+    call_.SetTargetRange(at, at + 1);
+    call_.ReplaceTarget(1, checked ? "x" : " ");
+    call_.EndUndoAction();
+}
+
 void Editor::setImagePasteHandler(ImagePasteHandler handler)
 {
     imagePasteHandler_ = std::move(handler);
