@@ -61,4 +61,11 @@ void FileIndex::setRoot(const QString& directory)
     watcher_.setFuture(QtConcurrent::run(scan, directory));
 }
 
+void FileIndex::refresh()
+{
+    if (!root_.isEmpty()) {
+        watcher_.setFuture(QtConcurrent::run(scan, root_));
+    }
+}
+
 } // namespace hungryeditor

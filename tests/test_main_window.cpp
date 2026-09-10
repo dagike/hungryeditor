@@ -1,6 +1,7 @@
 // Smoke coverage for the application window.
 
 #include <QAction>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QElapsedTimer>
@@ -12,10 +13,12 @@
 #include <QMenuBar>
 #include <QMimeData>
 #include <QSignalSpy>
+#include <QSplitter>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <QtTest>
 #include <QUrl>
 
@@ -30,9 +33,11 @@
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "ui/CommandPalette.h"
+#include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
+#include "ui/TabSwitcher.h"
 #include "workspace/FileSearch.h"
 
 class TestMainWindow : public QObject
@@ -77,8 +82,18 @@ private slots:
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
     void outlinePanelListsHeadingsAndJumpsToThem();
+    void fileSidebarListsTheFolderAndOpensAFile();
+    void openFolderRootsTheSidebarAndRevealsIt();
+    void workspaceAndFilterSurviveASessionReload();
+    void sidebarCreatesRenamesAndDeletes();
     void commandPaletteRunsTheChosenAction();
     void quickOpenOpensAFuzzilyMatchedFile();
+    void mruOrderFollowsActivation();
+    void quickSwitchWalksMruAndCommits();
+    void goToAnythingListsOpenBuffersFirst();
+    void goToLineMovesTheCaretWithinTheBuffer();
+    void caretHistoryReturnsToPriorSpots();
+    void panelLayoutSurvivesAReload();
 };
 
 namespace {
@@ -546,6 +561,14 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("formatTable") << QStringLiteral("action.formatTable");
     QTest::newRow("foldFrontMatter") << QStringLiteral("action.foldFrontMatter");
     QTest::newRow("toggleOutline") << QStringLiteral("action.toggleOutline");
+    QTest::newRow("toggleFiles") << QStringLiteral("action.toggleFiles");
+    QTest::newRow("nextTab") << QStringLiteral("action.nextTab");
+    QTest::newRow("previousTab") << QStringLiteral("action.previousTab");
+    QTest::newRow("goToLine") << QStringLiteral("action.goToLine");
+    QTest::newRow("navigateBack") << QStringLiteral("action.navigateBack");
+    QTest::newRow("navigateForward") << QStringLiteral("action.navigateForward");
+    QTest::newRow("openFolder") << QStringLiteral("action.openFolder");
+    QTest::newRow("closeFolder") << QStringLiteral("action.closeFolder");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -846,6 +869,141 @@ void TestMainWindow::outlinePanelListsHeadingsAndJumpsToThem()
     QVERIFY(toggle->isCheckable());
 }
 
+void TestMainWindow::fileSidebarListsTheFolderAndOpensAFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    writeText(dir.filePath(QStringLiteral("one.md")), "one\n");
+    const QString two = writeText(dir.filePath(QStringLiteral("two.md")), "two\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(dir.filePath(QStringLiteral("one.md")))); // roots the workspace here
+
+    window.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->trigger();
+
+    auto* panel = window.findChild<hungryeditor::FileTreePanel*>();
+    QVERIFY(panel != nullptr);
+    auto* tree = panel->findChild<QTreeWidget*>();
+    QVERIFY(tree != nullptr);
+
+    QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 2, 5000); // background scan landed
+
+    QTreeWidgetItem* twoItem = nullptr;
+    for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+        if (tree->topLevelItem(i)->text(0) == QStringLiteral("two.md")) {
+            twoItem = tree->topLevelItem(i);
+        }
+    }
+    QVERIFY(twoItem != nullptr);
+
+    QMetaObject::invokeMethod(tree, "itemActivated", Q_ARG(QTreeWidgetItem*, twoItem),
+                              Q_ARG(int, 0));
+    QCOMPARE(window.currentPath(), two);
+}
+
+void TestMainWindow::openFolderRootsTheSidebarAndRevealsIt()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("note.md")), "n\n");
+    writeText(folder.filePath(QStringLiteral("other.md")), "o\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.openFolder(folder.path());
+
+    QCOMPARE(window.workspaceFolder(), QDir(folder.path()).absolutePath());
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->isChecked());
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.closeFolder"))->isEnabled());
+
+    auto* panel = window.findChild<hungryeditor::FileTreePanel*>();
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->root(), QDir(folder.path()).absolutePath());
+    auto* tree = panel->findChild<QTreeWidget*>();
+    QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 2, 5000);
+
+    window.openFolder(QString()); // Close Folder
+    QVERIFY(window.workspaceFolder().isEmpty());
+    QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.closeFolder"))->isEnabled());
+}
+
+void TestMainWindow::workspaceAndFilterSurviveASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("alpha.md")), "a\n");
+    writeText(folder.filePath(QStringLiteral("beta.md")), "b\n");
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        first.openFolder(folder.path());
+        auto* panel = first.findChild<hungryeditor::FileTreePanel*>();
+        auto* tree = panel->findChild<QTreeWidget*>();
+        QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 2, 5000);
+        panel->findChild<QLineEdit*>()->setText(QStringLiteral("beta"));
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+
+    QCOMPARE(second.workspaceFolder(), QDir(folder.path()).absolutePath());
+    QVERIFY(second.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->isChecked());
+    auto* panel = second.findChild<hungryeditor::FileTreePanel*>();
+    QCOMPARE(panel->findChild<QLineEdit*>()->text(), QStringLiteral("beta"));
+}
+
+namespace {
+
+bool treeShows(QTreeWidget* tree, const QString& name)
+{
+    for (QTreeWidgetItemIterator it(tree); *it != nullptr; ++it) {
+        if ((*it)->text(0) == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+void TestMainWindow::sidebarCreatesRenamesAndDeletes()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("seed.md")), "s\n");
+    const QDir root(folder.path());
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.openFolder(folder.path());
+
+    auto* tree = window.findChild<hungryeditor::FileTreePanel*>()->findChild<QTreeWidget*>();
+    QTRY_VERIFY_WITH_TIMEOUT(treeShows(tree, QStringLiteral("seed.md")), 5000);
+
+    QVERIFY(window.createFileInWorkspace(folder.path(), QStringLiteral("fresh.md")));
+    QCOMPARE(window.currentPath(), root.absoluteFilePath(QStringLiteral("fresh.md")));
+    QTRY_VERIFY_WITH_TIMEOUT(treeShows(tree, QStringLiteral("fresh.md")), 5000);
+
+    QVERIFY(window.renameInWorkspace(root.absoluteFilePath(QStringLiteral("fresh.md")),
+                                     QStringLiteral("renamed.md")));
+    QCOMPARE(window.currentPath(), root.absoluteFilePath(QStringLiteral("renamed.md")));
+    QTRY_VERIFY_WITH_TIMEOUT(treeShows(tree, QStringLiteral("renamed.md")), 5000);
+    QVERIFY(!treeShows(tree, QStringLiteral("fresh.md")));
+
+    QVERIFY(window.deleteFromWorkspace(root.absoluteFilePath(QStringLiteral("renamed.md"))));
+    QVERIFY(window.currentPath() != root.absoluteFilePath(QStringLiteral("renamed.md")));
+    QTRY_VERIFY_WITH_TIMEOUT(!treeShows(tree, QStringLiteral("renamed.md")), 5000);
+}
+
 void TestMainWindow::commandPaletteRunsTheChosenAction()
 {
     hungryeditor::MainWindow window;
@@ -892,6 +1050,181 @@ void TestMainWindow::quickOpenOpensAFuzzilyMatchedFile()
     QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QCoreApplication::sendEvent(query, &enter);
     QCOMPARE(window.currentPath(), beta);
+}
+
+void TestMainWindow::mruOrderFollowsActivation()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "a\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b\n");
+    const QString c = writeText(files.filePath(QStringLiteral("c.md")), "c\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b, c}));
+
+    window.documents()->setCurrentIndex(1); // b
+    window.documents()->setCurrentIndex(2); // c
+    window.documents()->setCurrentIndex(0); // a
+
+    QCOMPARE(window.mruDocumentNames(),
+             (QStringList{QStringLiteral("a.md"), QStringLiteral("c.md"), QStringLiteral("b.md")}));
+}
+
+void TestMainWindow::quickSwitchWalksMruAndCommits()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const QString a = writeText(files.filePath(QStringLiteral("a.md")), "a\n");
+    const QString b = writeText(files.filePath(QStringLiteral("b.md")), "b\n");
+    const QString c = writeText(files.filePath(QStringLiteral("c.md")), "c\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b, c}));
+    window.documents()->setCurrentIndex(1); // b
+    window.documents()->setCurrentIndex(2); // c   -> mru [c, b, a]
+
+    QAction* nextTab = window.findChild<QAction*>(QStringLiteral("action.nextTab"));
+    QVERIFY(nextTab != nullptr);
+
+    nextTab->trigger();
+    auto* switcher = window.findChild<hungryeditor::TabSwitcher*>();
+    QVERIFY(switcher != nullptr);
+    QVERIFY(switcher->isActive());
+    QCOMPARE(switcher->currentRow(), 1); // previous document (b)
+
+    nextTab->trigger(); // steps to the third-most-recent (a)
+    QCOMPARE(switcher->currentRow(), 2);
+
+    switcher->commit();
+    QVERIFY(!switcher->isActive());
+    QCOMPARE(window.currentPath(), a);
+}
+
+void TestMainWindow::goToAnythingListsOpenBuffersFirst()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("alpha.md")), "a\n");
+    const QString beta = writeText(folder.filePath(QStringLiteral("beta.md")), "b\n");
+    writeText(folder.filePath(QStringLiteral("gamma.md")), "g\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.openFolder(folder.path());
+    QVERIFY(window.openPath(beta)); // one open buffer
+
+    window.findChild<QAction*>(QStringLiteral("action.quickOpen"))->trigger();
+    auto* palette = window.findChild<hungryeditor::CommandPalette*>();
+    QVERIFY(palette != nullptr);
+    auto* list = palette->findChild<QListWidget*>();
+    QVERIFY(list != nullptr);
+
+    QTRY_VERIFY_WITH_TIMEOUT(list->count() >= 3, 5000); // background index landed
+
+    const auto nameAt = [list](int row) {
+        return list->item(row)->text().split(QLatin1Char('\t')).first();
+    };
+    QCOMPARE(nameAt(0), QStringLiteral("beta.md")); // the open buffer leads
+
+    int betaRows = 0;
+    for (int i = 0; i < list->count(); ++i) {
+        if (nameAt(i) == QStringLiteral("beta.md")) {
+            ++betaRows;
+        }
+    }
+    QCOMPARE(betaRows, 1); // listed once, not also from the file index
+}
+
+void TestMainWindow::goToLineMovesTheCaretWithinTheBuffer()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("l0\nl1\nl2\nl3\nl4\nl5\n"));
+
+    window.goToLine(4);
+    QCOMPARE(window.editor()->cursorLine(), 3);
+
+    window.goToLine(9999); // clamps to the last line
+    QCOMPARE(window.editor()->cursorLine(), window.editor()->lineCount() - 1);
+
+    window.goToLine(0); // clamps up to the first line
+    QCOMPARE(window.editor()->cursorLine(), 0);
+}
+
+void TestMainWindow::caretHistoryReturnsToPriorSpots()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString a = writeText(dir.filePath(QStringLiteral("a.md")),
+                                "# A0\n\np\n\n## A1\n\np\n\n### A2\n\np\n\np\n\np\n");
+    const QString b = writeText(dir.filePath(QStringLiteral("b.md")), "# B\n\nbbb\n");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openFiles({a, b}));
+    window.documents()->setCurrentIndex(0);
+    window.editor()->setCursorPosition(0, 0);
+
+    QAction* back = window.findChild<QAction*>(QStringLiteral("action.navigateBack"));
+    QAction* forward = window.findChild<QAction*>(QStringLiteral("action.navigateForward"));
+    QVERIFY(back != nullptr);
+    QVERIFY(forward != nullptr);
+
+    // A same-file jump is retraceable.
+    window.goToLine(9);
+    QVERIFY(window.editor()->cursorLine() >= 6);
+    back->trigger();
+    QCOMPARE(window.editor()->cursorLine(), 0);
+    forward->trigger();
+    QVERIFY(window.editor()->cursorLine() >= 6);
+
+    // A cross-file jump (through the search panel) is too.
+    window.editor()->setCursorPosition(2, 0);
+    const auto hits = hungryeditor::searchDirectory(dir.path(), QStringLiteral("bbb"),
+                                                    hungryeditor::FileSearchOptions{});
+    window.searchResultsPanel()->showResults(QStringLiteral("bbb"), hits);
+    window.searchResultsPanel()->activateResult(0);
+    QCOMPARE(window.currentPath(), b);
+
+    back->trigger();
+    QCOMPARE(window.currentPath(), a);
+    QCOMPARE(window.editor()->cursorLine(), 2);
+}
+
+void TestMainWindow::panelLayoutSurvivesAReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        first.resize(800, 600);
+        first.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&first));
+
+        first.findChild<QAction*>(QStringLiteral("action.toggleOutline"))->trigger(); // reveal it
+        auto* splitter = first.findChild<QSplitter*>();
+        QVERIFY(splitter != nullptr);
+        splitter->setSizes({250, 550}); // a deliberately uneven split
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+    second.resize(800, 600);
+    second.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&second));
+
+    QVERIFY(second.findChild<QAction*>(QStringLiteral("action.toggleOutline"))->isChecked());
+
+    const QList<int> sizes = second.findChild<QSplitter*>()->sizes();
+    QCOMPARE(sizes.size(), 2);
+    QVERIFY(sizes.at(0) > 0);
+    QVERIFY(sizes.at(1) > 0);
+    QVERIFY(sizes.at(0) < sizes.at(1)); // the uneven split was restored, not the default
 }
 
 QTEST_MAIN(TestMainWindow)

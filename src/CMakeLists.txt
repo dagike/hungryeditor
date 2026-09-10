@@ -41,6 +41,8 @@ add_library(hungryeditor_core STATIC
     app/MainWindow.h
     app/TabBar.cpp
     app/TabBar.h
+    editor/CaretHistory.cpp
+    editor/CaretHistory.h
     editor/Document.cpp
     editor/Document.h
     editor/DocumentManager.cpp
@@ -90,6 +92,8 @@ add_library(hungryeditor_core STATIC
     theme/Theme.h
     ui/CommandPalette.cpp
     ui/CommandPalette.h
+    ui/FileTreePanel.cpp
+    ui/FileTreePanel.h
     ui/FindReplaceBar.cpp
     ui/FindReplaceBar.h
     ui/FuzzyMatch.cpp
@@ -98,10 +102,16 @@ add_library(hungryeditor_core STATIC
     ui/OutlinePanel.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
+    ui/TabSwitcher.cpp
+    ui/TabSwitcher.h
     workspace/FileIndex.cpp
     workspace/FileIndex.h
+    workspace/FileOperations.cpp
+    workspace/FileOperations.h
     workspace/FileSearch.cpp
     workspace/FileSearch.h
+    workspace/WorkspaceStore.cpp
+    workspace/WorkspaceStore.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

@@ -24,8 +24,10 @@ struct Session
 {
     bool valid = false; ///< false when no session file was found
     QByteArray windowGeometry;
+    QByteArray windowState;   ///< QMainWindow::saveState — dock placement and visibility
+    QByteArray splitterState; ///< QSplitter::saveState — the editor/preview split
     int currentIndex = 0;
-    bool outlineVisible = false; ///< whether the heading outline dock was open
+    QString workspaceFolder; ///< explicitly opened folder, empty for none
     QList<SessionDocument> documents;
 };
 

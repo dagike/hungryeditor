@@ -1,5 +1,7 @@
 #include "app/MainWindow.h"
 
+#include <algorithm>
+#include <functional>
 #include <utility>
 
 #include <QActionGroup>
@@ -26,6 +28,7 @@
 #include <QWidget>
 
 #include "app/TabBar.h"
+#include "editor/CaretHistory.h"
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
@@ -39,11 +42,15 @@
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
 #include "ui/CommandPalette.h"
+#include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
 #include "ui/SearchResultsPanel.h"
+#include "ui/TabSwitcher.h"
 #include "workspace/FileIndex.h"
+#include "workspace/FileOperations.h"
 #include "workspace/FileSearch.h"
+#include "workspace/WorkspaceStore.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -122,11 +129,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     commandPalette_ = new CommandPalette(this);
     connect(commandPalette_, &CommandPalette::commandChosen, this, &MainWindow::runPaletteChoice);
 
+    tabSwitcher_ = new TabSwitcher(this);
+    connect(tabSwitcher_, &TabSwitcher::accepted, this, [this](int row) {
+        if (row >= 0 && row < mruDocuments_.size()) {
+            const int index = documents_->indexOf(mruDocuments_.at(row));
+            if (index >= 0) {
+                documents_->setCurrentIndex(index);
+            }
+        }
+        editor_->setFocus();
+    });
+    connect(tabSwitcher_, &TabSwitcher::cancelled, this, [this] { editor_->setFocus(); });
+
     fileIndex_ = new FileIndex(this);
     connect(fileIndex_, &FileIndex::refreshed, this, [this] {
         if (paletteShowsFiles_ && !commandPalette_->isHidden()) {
             populateQuickOpen();
         }
+        fileTree_->setFiles(fileIndex_->files());
     });
 
     searchResults_ = new SearchResultsPanel(this);
@@ -137,6 +157,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     searchDock_->hide();
     connect(searchResults_, &SearchResultsPanel::resultActivated, this,
             [this](const QString& path, int line) {
+                recordCaretForHistory();
                 if (openPath(path)) {
                     editor_->setCursorPosition(line, 0);
                 }
@@ -149,9 +170,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     addDockWidget(Qt::LeftDockWidgetArea, outlineDock_);
     outlineDock_->hide();
     connect(outline_, &OutlinePanel::headingActivated, this, [this](int line) {
+        recordCaretForHistory();
         editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
         editor_->setFocus();
     });
+
+    fileTree_ = new FileTreePanel(this);
+    fileTree_->setMinimumWidth(160);
+    fileTreeDock_ = new QDockWidget(tr("Files"), this);
+    fileTreeDock_->setObjectName(QStringLiteral("dock.fileTree"));
+    fileTreeDock_->setWidget(fileTree_);
+    addDockWidget(Qt::LeftDockWidgetArea, fileTreeDock_);
+    tabifyDockWidget(fileTreeDock_, outlineDock_);
+    fileTreeDock_->hide();
+    connect(fileTree_, &FileTreePanel::fileActivated, this, [this](const QString& path) {
+        if (openPath(path)) {
+            editor_->setFocus();
+        }
+    });
+    connect(fileTree_, &FileTreePanel::createFileRequested, this, &MainWindow::promptCreateFile);
+    connect(fileTree_, &FileTreePanel::createFolderRequested, this,
+            &MainWindow::promptCreateFolder);
+    connect(fileTree_, &FileTreePanel::renameRequested, this, &MainWindow::promptRename);
+    connect(fileTree_, &FileTreePanel::deleteRequested, this, &MainWindow::promptDelete);
 
     outlineTimer_ = new QTimer(this);
     outlineTimer_->setSingleShot(true);
@@ -257,6 +298,15 @@ void MainWindow::buildMenus()
     recentMenu_->menuAction()->setObjectName(QStringLiteral("action.openRecent"));
     connect(recentMenu_, &QMenu::aboutToShow, this, &MainWindow::refreshRecentFilesMenu);
 
+    QAction* openFolderAction =
+        fileMenu->addAction(tr("Open &Folder…"), this, &MainWindow::openFolderDialog);
+    openFolderAction->setObjectName(QStringLiteral("action.openFolder"));
+
+    closeFolderAction_ =
+        fileMenu->addAction(tr("Close Folder"), this, [this] { openFolder(QString()); });
+    closeFolderAction_->setObjectName(QStringLiteral("action.closeFolder"));
+    closeFolderAction_->setEnabled(false);
+
     saveAction_ = fileMenu->addAction(tr("&Save"), this, &MainWindow::save);
     saveAction_->setShortcut(QKeySequence::Save);
     saveAction_->setObjectName(QStringLiteral("action.save"));
@@ -282,6 +332,16 @@ void MainWindow::buildMenus()
         fileMenu->addAction(tr("&Previous Document"), this, &MainWindow::previousDocument);
     prevAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_PageUp));
     prevAction->setObjectName(QStringLiteral("action.previousDocument"));
+
+    QAction* nextTabAction =
+        fileMenu->addAction(tr("Next &Recent Document"), this, [this] { quickSwitch(1); });
+    nextTabAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Tab));
+    nextTabAction->setObjectName(QStringLiteral("action.nextTab"));
+
+    QAction* prevTabAction =
+        fileMenu->addAction(tr("Previous Rece&nt Document"), this, [this] { quickSwitch(-1); });
+    prevTabAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab));
+    prevTabAction->setObjectName(QStringLiteral("action.previousTab"));
 
     fileMenu->addSeparator();
 
@@ -319,7 +379,7 @@ void MainWindow::buildMenus()
     editMenu->addSeparator();
 
     QAction* quickOpenAction =
-        editMenu->addAction(tr("&Quick Open…"), this, &MainWindow::openQuickOpen);
+        editMenu->addAction(tr("Go to &Anything…"), this, &MainWindow::openQuickOpen);
     quickOpenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
     quickOpenAction->setObjectName(QStringLiteral("action.quickOpen"));
 
@@ -327,6 +387,23 @@ void MainWindow::buildMenus()
         editMenu->addAction(tr("Command &Palette…"), this, &MainWindow::openCommandPalette);
     paletteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     paletteAction->setObjectName(QStringLiteral("action.commandPalette"));
+
+    editMenu->addSeparator();
+
+    QAction* goToLineAction =
+        editMenu->addAction(tr("&Go to Line…"), this, &MainWindow::goToLineDialog);
+    goToLineAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    goToLineAction->setObjectName(QStringLiteral("action.goToLine"));
+
+    QAction* backAction =
+        editMenu->addAction(tr("Navigate &Back"), this, &MainWindow::navigateBack);
+    backAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Left));
+    backAction->setObjectName(QStringLiteral("action.navigateBack"));
+
+    QAction* forwardAction =
+        editMenu->addAction(tr("Navigate &Forward"), this, &MainWindow::navigateForward);
+    forwardAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Right));
+    forwardAction->setObjectName(QStringLiteral("action.navigateForward"));
 
     editMenu->addSeparator();
 
@@ -438,6 +515,17 @@ void MainWindow::buildMenus()
             [this](bool on) { editor_->setFrontMatterFolded(on); });
     updateFrontMatterAction();
 
+    QAction* filesAction = fileTreeDock_->toggleViewAction();
+    filesAction->setText(tr("&Files"));
+    filesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    filesAction->setObjectName(QStringLiteral("action.toggleFiles"));
+    connect(filesAction, &QAction::toggled, this, [this](bool on) {
+        if (on) {
+            updateWorkspaceRoot();
+        }
+    });
+    viewMenu->addAction(filesAction);
+
     QAction* outlineAction = outlineDock_->toggleViewAction();
     outlineAction->setText(tr("&Outline"));
     outlineAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
@@ -493,6 +581,12 @@ void MainWindow::onDocumentClosed(int index)
 
 void MainWindow::onCurrentChanged(int index)
 {
+    if (Document* current = documents_->current()) {
+        mruDocuments_.removeAll(current);
+        mruDocuments_.prepend(current);
+    }
+    reconcileMru();
+
     syncingTabs_ = true;
     if (index >= 0 && index < tabBar_->count()) {
         tabBar_->setCurrentIndex(index);
@@ -510,6 +604,220 @@ void MainWindow::onCurrentChanged(int index)
 
     updateFrontMatterAction();
     rebuildOutline();
+    updateWorkspaceRoot();
+}
+
+void MainWindow::updateWorkspaceRoot()
+{
+    if (fileTreeDock_ == nullptr || !fileTreeDock_->toggleViewAction()->isChecked()) {
+        return; // nothing scans until the sidebar is switched on
+    }
+    QString dir = workspaceRoot_;
+    if (dir.isEmpty()) {
+        const QString current = currentPath();
+        dir = current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath();
+    }
+    fileTree_->setRoot(dir);
+    fileIndex_->setRoot(dir);
+    fileTree_->setFiles(fileIndex_->files()); // last scan now; refreshed() supplies the next
+}
+
+void MainWindow::openFolder(const QString& dir)
+{
+    const QString normalised = dir.isEmpty() ? QString() : QDir(dir).absolutePath();
+    if (normalised == workspaceRoot_) {
+        return;
+    }
+
+    saveWorkspaceViewState(); // remember the folder being left
+
+    workspaceRoot_ = normalised;
+    closeFolderAction_->setEnabled(!workspaceRoot_.isEmpty());
+    if (!workspaceRoot_.isEmpty()) {
+        fileTreeDock_->toggleViewAction()->setChecked(true); // reveal the sidebar
+    }
+    updateWorkspaceRoot();
+    loadWorkspaceViewState();
+    updateWindowTitle();
+}
+
+void MainWindow::openFolderDialog()
+{
+    const QString current = currentPath();
+    const QString start = !workspaceRoot_.isEmpty() ? workspaceRoot_
+                          : current.isEmpty()       ? QDir::homePath()
+                                                    : QFileInfo(current).absolutePath();
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Open Folder"), start);
+    if (!dir.isEmpty()) {
+        openFolder(dir);
+    }
+}
+
+void MainWindow::loadWorkspaceViewState()
+{
+    if (workspaceRoot_.isEmpty() || workspaceStore_ == nullptr) {
+        return;
+    }
+    const WorkspaceState state = workspaceStore_->load(workspaceRoot_);
+    fileTree_->applyState(state.filter, state.expandedDirs, state.hasExpandedList);
+}
+
+void MainWindow::saveWorkspaceViewState()
+{
+    if (workspaceRoot_.isEmpty() || workspaceStore_ == nullptr) {
+        return;
+    }
+    WorkspaceState state;
+    state.filter = fileTree_->filterText();
+    state.expandedDirs = fileTree_->expandedDirectories();
+    state.hasExpandedList = true;
+    workspaceStore_->save(workspaceRoot_, state);
+}
+
+QList<int> MainWindow::documentsAffectedBy(const QString& path) const
+{
+    const QFileInfo info(path);
+    const QString target = info.absoluteFilePath();
+    const QString prefix = target + QLatin1Char('/');
+    const bool isDir = info.isDir();
+
+    QList<int> hits;
+    for (int i = 0; i < documents_->count(); ++i) {
+        const QString docPath = documents_->documentAt(i)->path();
+        if (docPath.isEmpty()) {
+            continue;
+        }
+        const QString resolved = QFileInfo(docPath).absoluteFilePath();
+        if (resolved == target || (isDir && resolved.startsWith(prefix))) {
+            hits.append(i);
+        }
+    }
+    return hits;
+}
+
+bool MainWindow::createFileInWorkspace(const QString& parentDir, const QString& name)
+{
+    const fileops::Result result = fileops::createFile(parentDir, name);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+    fileIndex_->refresh();
+    openPath(result.path);
+    return true;
+}
+
+bool MainWindow::createFolderInWorkspace(const QString& parentDir, const QString& name)
+{
+    const fileops::Result result = fileops::createFolder(parentDir, name);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+    fileIndex_->refresh();
+    return true;
+}
+
+bool MainWindow::renameInWorkspace(const QString& path, const QString& newName)
+{
+    QList<int> affected = documentsAffectedBy(path);
+    for (int index : affected) {
+        if (documents_->documentAt(index)->isModified()) {
+            lastError_ =
+                tr("Save your changes before renaming “%1”.").arg(QFileInfo(path).fileName());
+            return false;
+        }
+    }
+
+    const bool renamingCurrent =
+        !affected.isEmpty() && affected.contains(documents_->currentIndex());
+
+    const fileops::Result result = fileops::rename(path, newName);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+
+    // Close the now-stale buffers, highest index first so the rest stay valid.
+    std::sort(affected.begin(), affected.end(), std::greater<>());
+    for (int index : affected) {
+        documents_->closeDocument(index);
+    }
+    if (renamingCurrent && QFileInfo(result.path).isFile()) {
+        openPath(result.path);
+    }
+    fileIndex_->refresh();
+    return true;
+}
+
+bool MainWindow::deleteFromWorkspace(const QString& path)
+{
+    QList<int> affected = documentsAffectedBy(path);
+    for (int index : affected) {
+        if (documents_->documentAt(index)->isModified()) {
+            lastError_ =
+                tr("Save your changes before deleting “%1”.").arg(QFileInfo(path).fileName());
+            return false;
+        }
+    }
+
+    const fileops::Result result = fileops::moveToTrash(path);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+
+    std::sort(affected.begin(), affected.end(), std::greater<>());
+    for (int index : affected) {
+        documents_->closeDocument(index);
+    }
+    fileIndex_->refresh();
+    return true;
+}
+
+void MainWindow::promptCreateFile(const QString& parentDir)
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("New File"), tr("File name:"),
+                                               QLineEdit::Normal, QString(), &ok);
+    if (ok && !name.isEmpty() && !createFileInWorkspace(parentDir, name)) {
+        QMessageBox::warning(this, tr("New File"), lastError_);
+    }
+}
+
+void MainWindow::promptCreateFolder(const QString& parentDir)
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("New Folder"), tr("Folder name:"),
+                                               QLineEdit::Normal, QString(), &ok);
+    if (ok && !name.isEmpty() && !createFolderInWorkspace(parentDir, name)) {
+        QMessageBox::warning(this, tr("New Folder"), lastError_);
+    }
+}
+
+void MainWindow::promptRename(const QString& path, bool /*isDirectory*/)
+{
+    bool ok = false;
+    const QString current = QFileInfo(path).fileName();
+    const QString name =
+        QInputDialog::getText(this, tr("Rename"), tr("New name:"), QLineEdit::Normal, current, &ok);
+    if (ok && !name.isEmpty() && name != current && !renameInWorkspace(path, name)) {
+        QMessageBox::warning(this, tr("Rename"), lastError_);
+    }
+}
+
+void MainWindow::promptDelete(const QString& path, bool isDirectory)
+{
+    const QString name = QFileInfo(path).fileName();
+    const QString question = isDirectory
+                                 ? tr("Delete the folder “%1” and everything in it?").arg(name)
+                                 : tr("Delete “%1”?").arg(name);
+    if (QMessageBox::question(this, tr("Delete"), question) != QMessageBox::Yes) {
+        return;
+    }
+    if (!deleteFromWorkspace(path)) {
+        QMessageBox::warning(this, tr("Delete"), lastError_);
+    }
 }
 
 void MainWindow::rebuildOutline()
@@ -593,6 +901,7 @@ void MainWindow::syncEditorToPreview(int line)
 
 void MainWindow::jumpEditorToLine(int line)
 {
+    recordCaretForHistory();
     editor_->setCursorPosition(line, 0); // Scintilla scrolls the caret into view
     if (viewMode_ == ViewMode::Split) {
         editor_->setFocus();
@@ -639,16 +948,39 @@ void MainWindow::openQuickOpen()
 {
     paletteShowsFiles_ = true;
     const QString current = currentPath();
-    fileIndex_->setRoot(current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath());
+    const QString root = !workspaceRoot_.isEmpty() ? workspaceRoot_
+                         : current.isEmpty()       ? QDir::homePath()
+                                                   : QFileInfo(current).absolutePath();
+    fileIndex_->setRoot(root);
     populateQuickOpen();
     commandPalette_->open();
 }
 
 void MainWindow::populateQuickOpen()
 {
+    reconcileMru();
+
     const QDir root(fileIndex_->root());
     QList<CommandPalette::Command> commands;
+    QSet<QString> listed; // absolute paths already shown as open buffers
+
+    // Open buffers first, in most-recently-used order.
+    for (Document* document : mruDocuments_) {
+        const QString path = document->path();
+        if (path.isEmpty()) {
+            commands.append(
+                {QStringLiteral("buffer:") + QString::number(documents_->indexOf(document)),
+                 document->displayName(), tr("open")});
+        } else {
+            listed.insert(QFileInfo(path).absoluteFilePath());
+            commands.append({path, document->displayName(), tr("open")});
+        }
+    }
+
     for (const QString& path : fileIndex_->files()) {
+        if (listed.contains(QFileInfo(path).absoluteFilePath())) {
+            continue;
+        }
         commands.append({path, root.relativeFilePath(path), QString()});
     }
     commandPalette_->setCommands(commands);
@@ -660,9 +992,132 @@ void MainWindow::runPaletteChoice(const QString& id)
         if (QAction* action = findChild<QAction*>(id)) {
             action->trigger();
         }
+    } else if (id.startsWith(QLatin1String("buffer:"))) {
+        bool ok = false;
+        const int index = id.mid(7).toInt(&ok);
+        if (ok) {
+            recordCaretForHistory();
+            documents_->setCurrentIndex(index);
+        }
     } else {
+        recordCaretForHistory();
         openPath(id);
     }
+}
+
+void MainWindow::recordCaretForHistory()
+{
+    if (!navigatingHistory_) {
+        caretHistory_.record(currentLocation());
+    }
+}
+
+CaretLocation MainWindow::currentLocation() const
+{
+    return {currentPath(), editor_->cursorLine(), editor_->cursorColumn()};
+}
+
+void MainWindow::applyLocation(const CaretLocation& location)
+{
+    if (!location.path.isEmpty() && location.path != currentPath() && !openPath(location.path)) {
+        return; // the file is gone — leave the caret where it is
+    }
+    editor_->setCursorPosition(location.line, location.column);
+    editor_->setFocus();
+}
+
+void MainWindow::goToLine(int oneBasedLine)
+{
+    const int lastLine = qMax(1, editor_->lineCount());
+    recordCaretForHistory();
+    editor_->setCursorPosition(qBound(1, oneBasedLine, lastLine) - 1, 0);
+    editor_->setFocus();
+}
+
+void MainWindow::goToLineDialog()
+{
+    bool ok = false;
+    const int line =
+        QInputDialog::getInt(this, tr("Go to Line"), tr("Line:"), editor_->cursorLine() + 1, 1,
+                             qMax(1, editor_->lineCount()), 1, &ok);
+    if (ok) {
+        goToLine(line);
+    }
+}
+
+void MainWindow::navigateBack()
+{
+    if (!caretHistory_.canGoBack()) {
+        return;
+    }
+    navigatingHistory_ = true;
+    applyLocation(caretHistory_.goBack(currentLocation()));
+    navigatingHistory_ = false;
+}
+
+void MainWindow::navigateForward()
+{
+    if (!caretHistory_.canGoForward()) {
+        return;
+    }
+    navigatingHistory_ = true;
+    applyLocation(caretHistory_.goForward(currentLocation()));
+    navigatingHistory_ = false;
+}
+
+void MainWindow::reconcileMru()
+{
+    for (auto it = mruDocuments_.begin(); it != mruDocuments_.end();) {
+        if (documents_->indexOf(*it) < 0) {
+            it = mruDocuments_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (int i = 0; i < documents_->count(); ++i) {
+        Document* document = documents_->documentAt(i);
+        if (!mruDocuments_.contains(document)) {
+            mruDocuments_.append(document);
+        }
+    }
+}
+
+QStringList MainWindow::mruDocumentNames() const
+{
+    QStringList names;
+    for (Document* document : mruDocuments_) {
+        if (documents_->indexOf(document) >= 0) {
+            names.append(document->displayName());
+        }
+    }
+    return names;
+}
+
+void MainWindow::quickSwitch(int direction)
+{
+    if (tabSwitcher_->isActive()) {
+        if (direction < 0) {
+            tabSwitcher_->selectPrevious();
+        } else {
+            tabSwitcher_->selectNext();
+        }
+        return;
+    }
+
+    reconcileMru();
+    if (mruDocuments_.size() < 2) {
+        return;
+    }
+
+    QList<TabSwitcher::Entry> entries;
+    for (Document* document : mruDocuments_) {
+        entries.append({document->displayName(),
+                        document->isUntitled()
+                            ? QString()
+                            : QDir::toNativeSeparators(QFileInfo(document->path()).absolutePath()),
+                        document->isModified()});
+    }
+    tabSwitcher_->present(entries, direction < 0 ? static_cast<int>(entries.size()) - 1 : 1);
 }
 
 void MainWindow::findInFiles()
@@ -770,6 +1225,8 @@ void MainWindow::setStateDirectory(const QString& directory)
     stateDir_ = directory;
     documents_->setDraftDirectory(directory + QLatin1String("/drafts"));
     sessionStore_ = std::make_unique<SessionStore>(directory + QLatin1String("/session.json"));
+    workspaceStore_ =
+        std::make_unique<WorkspaceStore>(directory + QLatin1String("/workspaces.json"));
     recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));
     refreshRecentFilesMenu();
 }
@@ -860,13 +1317,23 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (!session.windowGeometry.isEmpty()) {
         restoreGeometry(session.windowGeometry);
     }
+    if (!session.windowState.isEmpty()) {
+        restoreState(session.windowState);
+    }
+    if (!session.splitterState.isEmpty()) {
+        splitter_->restoreState(session.splitterState);
+    }
     documents_->restoreSession(session, documents_->pendingDrafts());
     dropInitialBlankBuffer();
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
         documents_->setCurrentIndex(session.currentIndex);
     }
-    outlineDock_->setVisible(session.outlineVisible);
     rebuildOutline();
+    if (!session.workspaceFolder.isEmpty()) {
+        openFolder(session.workspaceFolder); // re-roots, scans, re-checks the dock
+    } else if (fileTreeDock_->toggleViewAction()->isChecked()) {
+        updateWorkspaceRoot(); // restoreState revealed the sidebar — kick the scan
+    }
     sessionStore_->clear(); // consumed; only a crash should leave one behind
     updateWindowTitle();
 }
@@ -879,7 +1346,10 @@ void MainWindow::saveSession()
     documents_->autosaveDirtyDocuments(); // flush the latest text into drafts
     Session session = documents_->buildSession();
     session.windowGeometry = saveGeometry();
-    session.outlineVisible = outlineDock_->isVisible();
+    session.windowState = saveState();
+    session.splitterState = splitter_->saveState();
+    session.workspaceFolder = workspaceRoot_;
+    saveWorkspaceViewState();
     sessionStore_->save(session);
 }
 
@@ -1094,7 +1564,11 @@ void MainWindow::updateWindowTitle()
     const QString name = document != nullptr ? document->displayName() : tr("Untitled");
     const QString marker =
         (document != nullptr && document->isModified()) ? QStringLiteral("*") : QString();
-    setWindowTitle(QStringLiteral("%1%2 — hungryeditor").arg(marker, name));
+    QString title = QStringLiteral("%1%2 — hungryeditor").arg(marker, name);
+    if (!workspaceRoot_.isEmpty()) {
+        title += QStringLiteral(" [%1]").arg(QDir(workspaceRoot_).dirName());
+    }
+    setWindowTitle(title);
 }
 
 void MainWindow::showAbout()

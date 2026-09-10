@@ -74,6 +74,10 @@ hungryeditor_add_test(test_markdown_table
     SOURCES test_markdown_table.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_caret_history
+    SOURCES test_caret_history.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_document_manager
     SOURCES test_document_manager.cpp
     LIBS hungryeditor::core)
@@ -107,6 +111,10 @@ hungryeditor_add_test(test_command_palette
     SOURCES test_command_palette.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_tab_switcher
+    SOURCES test_tab_switcher.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_code_highlighter
     SOURCES test_code_highlighter.cpp
     LIBS hungryeditor::core)
@@ -121,6 +129,18 @@ hungryeditor_add_test(test_outline
 
 hungryeditor_add_test(test_outline_panel
     SOURCES test_outline_panel.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_file_tree_panel
+    SOURCES test_file_tree_panel.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_workspace_store
+    SOURCES test_workspace_store.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_file_operations
+    SOURCES test_file_operations.cpp
     LIBS hungryeditor::core)
 
 hungryeditor_add_test(test_image_resolver
