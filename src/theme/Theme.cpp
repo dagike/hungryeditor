@@ -87,6 +87,7 @@ QString Theme::previewCss() const
                ".front-matter-card dd { margin: 0; }"
                ".mermaid-diagram { margin: 1em 0; text-align: center; }"
                ".mermaid-diagram svg { max-width: 100%; height: auto; }"
+               ".mermaid-diagram.mermaid-pending { min-height: 3em; }"
                ".math-display { display: block; overflow-x: auto; margin: 1em 0; }"
                "img { max-width: 100%; }"
                "img[data-img-missing], img[data-img-toobig] {"

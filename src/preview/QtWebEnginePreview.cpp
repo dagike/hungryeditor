@@ -56,6 +56,7 @@ const char* const kShellHtml = R"HTML(<!doctype html>
       // Bumped on every apply() so a diagram that finishes rendering after the
       // body has moved on is dropped instead of painted over fresh content.
       var renderToken = 0;
+      var lazyObserver = null;
 
       // Swap a failed diagram/math node for a labelled error surface, keeping
       // its source line so scroll-sync still lands on it. Inline math gets an
@@ -84,55 +85,85 @@ const char* const kShellHtml = R"HTML(<!doctype html>
         el.replaceWith(box);
       }
 
-      function renderMermaid() {
-        if (!mermaidReady) return;
+      function renderMermaidHolder(holder) {
+        if (!mermaidReady) { holder.classList.remove("mermaid-pending"); return; }
+        var id = holder.dataset.mermaidId;
+        var src = holder.dataset.src || "";
+        function fail(err) {
+          renderError(holder, "Diagram", err, true);
+          var orphan = document.getElementById("d" + id);
+          if (orphan) orphan.remove();
+        }
+        try {
+          mermaid.render(id, src).then(function (out) {
+            if (!holder.isConnected) return;
+            holder.classList.remove("mermaid-pending");
+            holder.innerHTML = out.svg;
+          }, fail);
+        } catch (err) {
+          fail(err);
+        }
+      }
+
+      function renderMathSpan(span) {
+        if (!katexReady) return;
+        var display = span.classList.contains("math-display");
+        try {
+          katex.render(span.textContent, span, { displayMode: display, throwOnError: true });
+        } catch (err) {
+          renderError(span, "Math", err, display);
+        }
+      }
+
+      function renderLazily(el) {
+        if (el.dataset.heRendered) return;
+        el.dataset.heRendered = "1";
+        if (el.classList.contains("mermaid-diagram")) {
+          renderMermaidHolder(el);
+        } else {
+          renderMathSpan(el);
+        }
+      }
+
+      // Diagrams and math are the slow part of a render — a page with dozens
+      // would stall on apply(). Swap each mermaid fence for a stable holder up
+      // front (so scroll-sync keeps its source line) but defer the actual
+      // mermaid/katex work until the block nears the viewport.
+      function scheduleRenders() {
         var token = ++renderToken;
+        if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+
         var codes = target.querySelectorAll("code.language-mermaid");
         for (var i = 0; i < codes.length; i++) {
-          (function (code, index) {
-            var pre = code.closest("pre");
-            if (!pre) return;
-            var holder = document.createElement("div");
-            holder.className = "mermaid-diagram";
-            if (pre.hasAttribute("data-src-line")) {
-              holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
-            }
-            pre.replaceWith(holder);
-            var fullId = "he-mermaid-" + token + "-" + index;
-            function fail(err) {
-              if (token !== renderToken) return;
-              renderError(holder, "Diagram", err, true);
-              var orphan = document.getElementById("d" + fullId);
-              if (orphan) orphan.remove();
-            }
-            try {
-              mermaid.render(fullId, code.textContent).then(
-                function (out) { if (token === renderToken) holder.innerHTML = out.svg; },
-                fail);
-            } catch (err) {
-              fail(err);
-            }
-          })(codes[i], i);
-        }
-      }
-
-      function renderMath() {
-        if (!katexReady) return;
-        var spans = target.querySelectorAll(".math-inline, .math-display");
-        for (var i = 0; i < spans.length; i++) {
-          var span = spans[i];
-          if (span.dataset.rendered) continue;
-          span.dataset.rendered = "1";
-          var display = span.classList.contains("math-display");
-          try {
-            katex.render(span.textContent, span, { displayMode: display, throwOnError: true });
-          } catch (err) {
-            renderError(span, "Math", err, display);
+          var pre = codes[i].closest("pre");
+          if (!pre) continue;
+          var holder = document.createElement("div");
+          holder.className = "mermaid-diagram mermaid-pending";
+          if (pre.hasAttribute("data-src-line")) {
+            holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
           }
+          holder.dataset.src = codes[i].textContent;
+          holder.dataset.mermaidId = "he-mermaid-" + token + "-" + i;
+          pre.replaceWith(holder);
         }
+
+        var items = target.querySelectorAll(".mermaid-diagram, .math-inline, .math-display");
+        if (!("IntersectionObserver" in window)) {
+          for (var j = 0; j < items.length; j++) renderLazily(items[j]);
+          return;
+        }
+        lazyObserver = new IntersectionObserver(function (entries) {
+          for (var k = 0; k < entries.length; k++) {
+            if (entries[k].isIntersecting) {
+              lazyObserver.unobserve(entries[k].target);
+              renderLazily(entries[k].target);
+            }
+          }
+        }, { rootMargin: "800px 0px" });
+        for (var m = 0; m < items.length; m++) lazyObserver.observe(items[m]);
       }
 
-      function apply(html) { target.innerHTML = html; renderMermaid(); renderMath(); }
+      function apply(html) { target.innerHTML = html; scheduleRenders(); }
       function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
 
       function blocks() { return target.querySelectorAll("[data-src-line]"); }

@@ -28,6 +28,7 @@ private slots:
     void rendersBundledKatexMath();
     void showsAnInlineErrorForABrokenDiagram();
     void showsAnInlineErrorForBrokenMath();
+    void defersOffscreenDiagramsUntilTheyScrollIntoView();
 };
 
 namespace {
@@ -275,6 +276,9 @@ void TestPreview::rendersABundledMermaidDiagram()
 void TestPreview::rendersBundledKatexMath()
 {
     QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
     QSignalSpy ready(&preview, &PreviewBackend::ready);
     preview.setContent(QStringLiteral(
         "<p data-src-line=\"0\">Mass energy: <span class=\"math-inline\">E = mc^2</span></p>"));
@@ -329,6 +333,9 @@ void TestPreview::showsAnInlineErrorForABrokenDiagram()
 void TestPreview::showsAnInlineErrorForBrokenMath()
 {
     QtWebEnginePreview preview;
+    preview.widget()->resize(400, 300);
+    preview.widget()->show();
+
     QSignalSpy ready(&preview, &PreviewBackend::ready);
     preview.setContent(QStringLiteral("<p data-src-line=\"1\">"
                                       "<span class=\"math-display\">\\frac{1}{</span></p>"));
@@ -347,6 +354,49 @@ void TestPreview::showsAnInlineErrorForBrokenMath()
         QTest::qWait(100);
     }
     QCOMPARE(probe, QStringLiteral("ok"));
+}
+
+void TestPreview::defersOffscreenDiagramsUntilTheyScrollIntoView()
+{
+    QtWebEnginePreview preview;
+    preview.widget()->resize(360, 200);
+    preview.widget()->show();
+
+    // A diagram at the top, a tall run of prose, then a second far below.
+    QString body = QStringLiteral("<pre data-src-line=\"0\"><code class=\"language-mermaid\">graph "
+                                  "TD; A--&gt;B;</code></pre>");
+    body += tallBody();
+    body += QStringLiteral("<pre data-src-line=\"200\"><code class=\"language-mermaid\">"
+                           "graph TD; C--&gt;D;</code></pre>");
+
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(body);
+    QVERIFY(ready.wait(20000));
+
+    const QString countRendered =
+        QStringLiteral("(function () {"
+                       "  var all = document.querySelectorAll('.mermaid-diagram');"
+                       "  var done = document.querySelectorAll('.mermaid-diagram svg');"
+                       "  return all.length + '/' + done.length;"
+                       "})()");
+
+    // The top diagram renders; the one 2000px down stays pending.
+    QString state;
+    QElapsedTimer clock;
+    clock.start();
+    while (state != QStringLiteral("2/1") && clock.elapsed() < 20000) {
+        state = evalJs(preview, countRendered).toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(state, QStringLiteral("2/1"));
+
+    // Scroll it into view and it renders too.
+    evalJs(preview, QStringLiteral("window.scrollTo(0, document.body.scrollHeight); void 0"));
+    while (state != QStringLiteral("2/2") && clock.elapsed() < 40000) {
+        state = evalJs(preview, countRendered).toString();
+        QTest::qWait(100);
+    }
+    QCOMPARE(state, QStringLiteral("2/2"));
 }
 
 QTEST_MAIN(TestPreview)
