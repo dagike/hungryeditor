@@ -73,6 +73,8 @@ add_library(hungryeditor_core STATIC
     io/TextFile.h
     markdown/FrontMatter.cpp
     markdown/FrontMatter.h
+    markdown/ImageResolver.cpp
+    markdown/ImageResolver.h
     markdown/Outline.cpp
     markdown/Outline.h
     markdown/Md4cRenderer.cpp

@@ -502,6 +502,7 @@ void MainWindow::onCurrentChanged(int index)
 
     // A tab switch replaces the buffer wholesale; push it now rather than
     // leaving the preview a debounce behind the visible document.
+    previewController_->setDocumentPath(currentPath());
     if (viewMode_ != ViewMode::Editor) {
         previewController_->setMarkdown(editor_->text());
         previewController_->flush();
@@ -543,6 +544,7 @@ void MainWindow::setViewMode(ViewMode mode)
 
     // Newly revealed, the preview needs the current buffer straight away.
     if (viewMode_ != ViewMode::Editor) {
+        previewController_->setDocumentPath(currentPath());
         previewController_->setMarkdown(editor_->text());
         previewController_->flush();
     }
@@ -913,6 +915,7 @@ bool MainWindow::savePath(const QString& path)
     }
     lastError_.clear();
     recordRecent(document->path());
+    previewController_->setDocumentPath(document->path()); // a Save As re-anchors images
     return true;
 }
 

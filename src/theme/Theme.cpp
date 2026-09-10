@@ -85,7 +85,12 @@ QString Theme::previewCss() const
                ".mermaid-diagram { margin: 1em 0; text-align: center; }"
                ".mermaid-diagram svg { max-width: 100%; height: auto; }"
                ".math-display { display: block; overflow-x: auto; margin: 1em 0; }"
-               "img { max-width: 100%; }")
+               "img { max-width: 100%; }"
+               "img[data-img-missing], img[data-img-toobig] {"
+               "  display: inline-block; min-width: 8em; min-height: 3em; padding: .4em .6em;"
+               "  border: 1px dashed var(--he-border); border-radius: 6px;"
+               "  color: var(--he-muted); font-size: .85em; font-style: italic;"
+               "}")
                .arg(bg, fg, mut, head, lnk, codeFg, codeBg, bord) +
            codeTokenCss();
 }

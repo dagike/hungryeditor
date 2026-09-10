@@ -1,5 +1,8 @@
 #include "preview/PreviewController.h"
 
+#include <QFileInfo>
+
+#include "markdown/ImageResolver.h"
 #include "preview/PreviewBackend.h"
 
 namespace hungryeditor {
@@ -29,6 +32,19 @@ void PreviewController::setMarkdown(const QString& markdown)
     timer_.start();
 }
 
+void PreviewController::setDocumentPath(const QString& path)
+{
+    const QString dir = path.isEmpty() ? QString() : QFileInfo(path).absolutePath();
+    if (dir == documentDir_) {
+        return;
+    }
+    documentDir_ = dir;
+    if (!pending_.isEmpty()) {
+        dirty_ = true;
+        timer_.start();
+    }
+}
+
 void PreviewController::flush()
 {
     if (!dirty_) {
@@ -45,7 +61,7 @@ void PreviewController::render()
     }
     dirty_ = false;
 
-    const QString html = renderer_.toHtml(pending_);
+    const QString html = images::inlineLocalImages(renderer_.toHtml(pending_), documentDir_);
     if (backend_ != nullptr) {
         backend_->setContent(html);
     }
