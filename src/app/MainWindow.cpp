@@ -1,5 +1,7 @@
 #include "app/MainWindow.h"
 
+#include <utility>
+
 #include <QActionGroup>
 #include <QApplication>
 #include <QDir>
@@ -322,6 +324,53 @@ void MainWindow::buildMenus()
                   QKeySequence(Qt::CTRL | Qt::Key_J), &Editor::joinLines);
     addLineAction(tr("Toggle &Comment"), QStringLiteral("action.toggleComment"),
                   QKeySequence(Qt::CTRL | Qt::Key_Slash), &Editor::toggleLineComment);
+
+    QMenu* formatMenu = menuBar()->addMenu(tr("F&ormat"));
+
+    const auto addFormatAction = [&](const QString& text, const QString& objectName,
+                                     const QKeySequence& shortcut, auto&& slot) {
+        QAction* action = formatMenu->addAction(text, this, std::forward<decltype(slot)>(slot));
+        action->setShortcut(shortcut);
+        action->setObjectName(objectName);
+        return action;
+    };
+    addFormatAction(tr("&Bold"), QStringLiteral("action.bold"), QKeySequence::Bold,
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("**")); });
+    addFormatAction(tr("&Italic"), QStringLiteral("action.italic"), QKeySequence::Italic,
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("*")); });
+    addFormatAction(tr("&Strikethrough"), QStringLiteral("action.strikethrough"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_X),
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("~~")); });
+    addFormatAction(tr("Inline &Code"), QStringLiteral("action.inlineCode"),
+                    QKeySequence(Qt::CTRL | Qt::Key_E),
+                    [this] { editor_->toggleInlineFormat(QStringLiteral("`")); });
+    addFormatAction(tr("&Link…"), QStringLiteral("action.link"), QKeySequence(Qt::CTRL | Qt::Key_K),
+                    [this] { editor_->insertLink(); });
+
+    formatMenu->addSeparator();
+    QMenu* headingMenu = formatMenu->addMenu(tr("&Heading"));
+    for (int level = 1; level <= 6; ++level) {
+        const auto key = static_cast<Qt::Key>(Qt::Key_0 + level);
+        QAction* action = headingMenu->addAction(
+            tr("Heading &%1").arg(level), this, [this, level] { editor_->setHeadingLevel(level); });
+        action->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | key));
+        action->setObjectName(QStringLiteral("action.heading%1").arg(level));
+    }
+    QAction* paragraphAction =
+        headingMenu->addAction(tr("&Paragraph"), this, [this] { editor_->setHeadingLevel(0); });
+    paragraphAction->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_0));
+    paragraphAction->setObjectName(QStringLiteral("action.headingParagraph"));
+
+    formatMenu->addSeparator();
+    addFormatAction(tr("Block&quote"), QStringLiteral("action.blockquote"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Period),
+                    [this] { editor_->toggleBlockquote(); });
+    addFormatAction(tr("&Bulleted List"), QStringLiteral("action.bulletList"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_8),
+                    [this] { editor_->toggleBulletList(); });
+    addFormatAction(tr("&Numbered List"), QStringLiteral("action.numberedList"),
+                    QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_7),
+                    [this] { editor_->toggleNumberedList(); });
 
     QMenu* viewMenu = menuBar()->addMenu(tr("&View"));
     viewModeGroup_ = new QActionGroup(this);

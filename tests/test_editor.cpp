@@ -30,6 +30,11 @@ private slots:
     void togglesHtmlCommentIdempotently();
     void matchesBrackets();
     void newlineCarriesIndentAndContinuesLists();
+    void togglesInlineFormattingIdempotently();
+    void inlineFormattingWrapsEverySelection();
+    void setsAndCyclesHeadingLevels();
+    void togglesBlockquoteAndListPrefixes();
+    void insertsMarkdownLinks();
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
@@ -301,6 +306,116 @@ void TestEditor::newlineCarriesIndentAndContinuesLists()
 
     pressEnterAtEnd(QStringLiteral("- ")); // empty bullet
     QCOMPARE(editor.text(), QString());    // the marker and its newline are removed
+}
+
+void TestEditor::togglesInlineFormattingIdempotently()
+{
+    hungryeditor::Editor editor;
+
+    // Wrap a selection, then strip it again.
+    editor.setText(QStringLiteral("make me bold please\n"));
+    editor.call().SetSelection(12, 8); // "bold"
+    editor.toggleInlineFormat(QStringLiteral("**"));
+    QCOMPARE(editor.text(), QStringLiteral("make me **bold** please\n"));
+    QCOMPARE(editor.selectedText(), QStringLiteral("bold"));
+    editor.toggleInlineFormat(QStringLiteral("**"));
+    QCOMPARE(editor.text(), QStringLiteral("make me bold please\n"));
+
+    // A bare caret takes the word under it.
+    editor.setText(QStringLiteral("emphasise word here\n"));
+    editor.setCursorPosition(0, 12); // inside "word"
+    editor.toggleInlineFormat(QStringLiteral("*"));
+    QCOMPARE(editor.text(), QStringLiteral("emphasise *word* here\n"));
+
+    // Markers already inside the selection are removed.
+    editor.setText(QStringLiteral("a `code` b\n"));
+    editor.call().SetSelection(8, 2); // "`code`"
+    editor.toggleInlineFormat(QStringLiteral("`"));
+    QCOMPARE(editor.text(), QStringLiteral("a code b\n"));
+}
+
+void TestEditor::inlineFormattingWrapsEverySelection()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("one two three\n"));
+
+    editor.call().SetSelection(3, 0);  // "one"
+    editor.call().AddSelection(13, 8); // "three"
+    editor.toggleInlineFormat(QStringLiteral("**"));
+
+    QCOMPARE(editor.text(), QStringLiteral("**one** two **three**\n"));
+}
+
+void TestEditor::setsAndCyclesHeadingLevels()
+{
+    hungryeditor::Editor editor;
+    editor.setText(QStringLiteral("Title\n"));
+
+    editor.setCursorPosition(0, 0);
+    editor.setHeadingLevel(1);
+    QCOMPARE(editor.text(), QStringLiteral("# Title\n"));
+
+    editor.setHeadingLevel(3);
+    QCOMPARE(editor.text(), QStringLiteral("### Title\n"));
+
+    editor.setHeadingLevel(0);
+    QCOMPARE(editor.text(), QStringLiteral("Title\n"));
+
+    editor.cycleHeading();
+    QCOMPARE(editor.text(), QStringLiteral("# Title\n"));
+    for (int i = 0; i < 5; ++i) {
+        editor.cycleHeading();
+    }
+    QCOMPARE(editor.text(), QStringLiteral("###### Title\n"));
+    editor.cycleHeading();
+    QCOMPARE(editor.text(), QStringLiteral("Title\n"));
+}
+
+void TestEditor::togglesBlockquoteAndListPrefixes()
+{
+    hungryeditor::Editor editor;
+
+    editor.setText(QStringLiteral("alpha\nbeta\ngamma\n"));
+    editor.call().SetSelection(editor.call().PositionFromLine(2) + 2, 0);
+    editor.toggleBlockquote();
+    QCOMPARE(editor.text(), QStringLiteral("> alpha\n> beta\n> gamma\n"));
+    editor.call().SetSelection(editor.call().PositionFromLine(2) + 2, 0);
+    editor.toggleBlockquote();
+    QCOMPARE(editor.text(), QStringLiteral("alpha\nbeta\ngamma\n"));
+
+    const auto selectAll = [&] {
+        editor.call().SetSelection(editor.call().PositionFromLine(2) + 2, 0);
+    };
+
+    selectAll();
+    editor.toggleBulletList();
+    QCOMPARE(editor.text(), QStringLiteral("- alpha\n- beta\n- gamma\n"));
+    selectAll();
+    editor.toggleBulletList();
+    QCOMPARE(editor.text(), QStringLiteral("alpha\nbeta\ngamma\n"));
+
+    selectAll();
+    editor.toggleNumberedList();
+    QCOMPARE(editor.text(), QStringLiteral("1. alpha\n2. beta\n3. gamma\n"));
+    selectAll();
+    editor.toggleNumberedList();
+    QCOMPARE(editor.text(), QStringLiteral("alpha\nbeta\ngamma\n"));
+}
+
+void TestEditor::insertsMarkdownLinks()
+{
+    hungryeditor::Editor editor;
+
+    editor.setText(QStringLiteral("see the docs\n"));
+    editor.call().SetSelection(12, 8); // "docs"
+    editor.insertLink();
+    QCOMPARE(editor.text(), QStringLiteral("see the [docs](url)\n"));
+    QCOMPARE(editor.selectedText(), QStringLiteral("url"));
+
+    editor.setText(QStringLiteral("https://example.com\n"));
+    editor.call().SetSelection(19, 0);
+    editor.insertLink();
+    QCOMPARE(editor.text(), QStringLiteral("[](https://example.com)\n"));
 }
 
 void TestEditor::visualDefaultsAreApplied()

@@ -95,6 +95,32 @@ public:
     /// tokens arrive with the grammar registry.
     void toggleLineComment();
 
+    /// Markdown formatting shortcuts. Every operation is idempotent, acts on
+    /// every active selection, and is a single undo step.
+
+    /// Wrap each selection (or the word under a bare caret) in `marker`
+    /// (`**`, `*`, `` ` ``, `~~`), or strip it when it is already there.
+    void toggleInlineFormat(const QString& marker);
+    /// Set the ATX heading level (1–6, or 0 to demote to a paragraph) on every
+    /// line the selection touches, replacing any existing `#` prefix.
+    void setHeadingLevel(int level);
+    /// Advance the caret line's heading one level, wrapping `H6` back to a
+    /// paragraph.
+    void cycleHeading();
+    /// Toggle a `> ` blockquote prefix on every selected line — added unless
+    /// they all already have one, in which case it is removed.
+    void toggleBlockquote();
+    /// Toggle a `- ` bullet prefix on every selected line (same all-or-none
+    /// rule as toggleBlockquote()).
+    void toggleBulletList();
+    /// Toggle an ordered-list prefix on every selected line, renumbering
+    /// `1.`, `2.`, … down the block.
+    void toggleNumberedList();
+    /// Turn the selection into a Markdown link: a URL-looking selection becomes
+    /// `[](url)` with the caret in the text slot, other text becomes
+    /// `[text](url)` with `url` selected, and a bare caret inserts `[](url)`.
+    void insertLink();
+
     /// Position of the bracket that pairs with the one at `position`, or -1 if
     /// there is no bracket there or it is unbalanced.
     int matchingBrace(int position) const;

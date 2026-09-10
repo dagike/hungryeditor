@@ -4,6 +4,8 @@
 #include <cctype>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include <QColor>
 #include <QFontDatabase>
@@ -363,6 +365,18 @@ bool isHtmlComment(const std::string& body)
     return t.size() >= 7 && t.rfind("<!--", 0) == 0 && t.compare(t.size() - 3, 3, "-->") == 0;
 }
 
+/// The inclusive range of lines the current selection touches. A selection
+/// ending exactly at a line's start does not pull that line in.
+std::pair<Scintilla::Line, Scintilla::Line> selectedLineSpan(Scintilla::ScintillaCall& call)
+{
+    const Scintilla::Line first = call.LineFromPosition(call.SelectionStart());
+    Scintilla::Line last = call.LineFromPosition(call.SelectionEnd());
+    if (last > first && call.SelectionEnd() == call.PositionFromLine(last)) {
+        --last;
+    }
+    return {first, last};
+}
+
 } // namespace
 
 void Editor::toggleLineComment()
@@ -418,6 +432,338 @@ void Editor::toggleLineComment()
         }
         call_.SetTargetRange(call_.PositionFromLine(line), call_.LineEndPosition(line));
         call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::toggleInlineFormat(const QString& marker)
+{
+    using Position = Scintilla::Position;
+
+    const std::string mk = marker.toStdString();
+    if (mk.empty()) {
+        return;
+    }
+    const auto mkLen = static_cast<Position>(mk.size());
+
+    // Resolve every selection to a span up front (a bare caret takes the word
+    // under it), then edit bottom-up so earlier positions stay valid.
+    struct Span
+    {
+        Position start;
+        Position end;
+    };
+    std::vector<Span> spans;
+    const int count = static_cast<int>(call_.Selections());
+    spans.reserve(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        Position s = call_.SelectionNStart(i);
+        Position e = call_.SelectionNEnd(i);
+        if (s == e) {
+            s = call_.WordStartPosition(s, true);
+            e = call_.WordEndPosition(e, true);
+        }
+        spans.push_back({s, e});
+    }
+    std::sort(spans.begin(), spans.end(),
+              [](const Span& a, const Span& b) { return a.start > b.start; });
+
+    call_.BeginUndoAction();
+    bool firstSpan = true;
+    for (const Span& span : spans) {
+        const Position s = span.start;
+        const Position e = span.end;
+        const std::string before = call_.StringOfSpan({std::max<Position>(0, s - mkLen), s});
+        const std::string after = call_.StringOfSpan({e, std::min(call_.TextLength(), e + mkLen)});
+        const std::string inner = call_.StringOfSpan({s, e});
+
+        Position selStart = 0;
+        Position selEnd = 0;
+        if (before == mk && after == mk) {
+            call_.SetTargetRange(e, e + mkLen);
+            call_.ReplaceTarget(0, "");
+            call_.SetTargetRange(s - mkLen, s);
+            call_.ReplaceTarget(0, "");
+            selStart = s - mkLen;
+            selEnd = e - mkLen;
+        } else if (static_cast<Position>(inner.size()) >= 2 * mkLen &&
+                   inner.compare(0, mk.size(), mk) == 0 &&
+                   inner.compare(inner.size() - mk.size(), mk.size(), mk) == 0) {
+            call_.SetTargetRange(e - mkLen, e);
+            call_.ReplaceTarget(0, "");
+            call_.SetTargetRange(s, s + mkLen);
+            call_.ReplaceTarget(0, "");
+            selStart = s;
+            selEnd = e - 2 * mkLen;
+        } else {
+            call_.SetTargetRange(e, e);
+            call_.ReplaceTarget(mkLen, mk.c_str());
+            call_.SetTargetRange(s, s);
+            call_.ReplaceTarget(mkLen, mk.c_str());
+            selStart = s + mkLen;
+            selEnd = e + mkLen;
+        }
+
+        if (firstSpan) {
+            call_.SetSelection(selEnd, selStart); // caret, anchor
+            firstSpan = false;
+        } else {
+            call_.AddSelection(selEnd, selStart);
+        }
+    }
+    call_.EndUndoAction();
+}
+
+namespace {
+
+/// Length of a leading ATX heading marker (`#`…`###### ` then whitespace), or 0
+/// when the line does not open with one.
+std::size_t headingMarkerLength(const std::string& body)
+{
+    std::size_t hashes = 0;
+    while (hashes < body.size() && body[hashes] == '#') {
+        ++hashes;
+    }
+    if (hashes < 1 || hashes > 6 || hashes >= body.size()) {
+        return 0;
+    }
+    if (body[hashes] != ' ' && body[hashes] != '\t') {
+        return 0;
+    }
+    std::size_t end = hashes;
+    while (end < body.size() && (body[end] == ' ' || body[end] == '\t')) {
+        ++end;
+    }
+    return end;
+}
+
+} // namespace
+
+void Editor::setHeadingLevel(int level)
+{
+    level = std::clamp(level, 0, 6);
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = lastLine; line >= firstLine; --line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::string content = body.substr(headingMarkerLength(body));
+
+        std::string replacement;
+        if (level > 0) {
+            replacement.assign(static_cast<std::size_t>(level), '#');
+            replacement += ' ';
+        }
+        replacement += content;
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::cycleHeading()
+{
+    const Scintilla::Line line = call_.LineFromPosition(call_.SelectionStart());
+    const std::string body =
+        call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+    std::size_t hashes = 0;
+    while (hashes < body.size() && body[hashes] == '#') {
+        ++hashes;
+    }
+    const int current = headingMarkerLength(body) > 0 ? static_cast<int>(hashes) : 0;
+    setHeadingLevel(current >= 6 ? 0 : current + 1);
+}
+
+namespace {
+
+/// Offset of the first non-blank character, or npos for a blank line.
+std::size_t indentEnd(const std::string& body)
+{
+    return body.find_first_not_of(" \t");
+}
+
+bool isBulletMarker(const std::string& body, std::size_t at)
+{
+    return at + 1 < body.size() && (body[at] == '-' || body[at] == '*' || body[at] == '+') &&
+           body[at + 1] == ' ';
+}
+
+/// Length of a leading ordered-list marker (`12. ` / `3) `) at `at`, or 0.
+std::size_t orderedMarkerLength(const std::string& body, std::size_t at)
+{
+    std::size_t digits = at;
+    while (digits < body.size() && std::isdigit(static_cast<unsigned char>(body[digits])) != 0) {
+        ++digits;
+    }
+    if (digits == at || digits + 1 >= body.size()) {
+        return 0;
+    }
+    if ((body[digits] != '.' && body[digits] != ')') || body[digits + 1] != ' ') {
+        return 0;
+    }
+    return digits + 2 - at;
+}
+
+} // namespace
+
+void Editor::toggleBlockquote()
+{
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    bool add = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body =
+            call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c != std::string::npos && body[c] != '>') {
+            add = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = lastLine; line >= firstLine; --line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+
+        std::string replacement;
+        if (add) {
+            const std::size_t at = (c == std::string::npos) ? body.size() : c;
+            replacement = body.substr(0, at);
+            replacement += "> ";
+            replacement += body.substr(at);
+        } else {
+            if (c == std::string::npos || body[c] != '>') {
+                continue;
+            }
+            std::size_t rest = c + 1;
+            if (rest < body.size() && body[rest] == ' ') {
+                ++rest;
+            }
+            replacement = body.substr(0, c);
+            replacement += body.substr(rest);
+        }
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::toggleBulletList()
+{
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    bool add = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body =
+            call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c != std::string::npos && !isBulletMarker(body, c)) {
+            add = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    for (Scintilla::Line line = lastLine; line >= firstLine; --line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c == std::string::npos) {
+            continue;
+        }
+
+        std::string replacement = body.substr(0, c);
+        if (add) {
+            replacement += "- ";
+            replacement += body.substr(c);
+        } else {
+            if (!isBulletMarker(body, c)) {
+                continue;
+            }
+            replacement += body.substr(c + 2);
+        }
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::toggleNumberedList()
+{
+    const auto [firstLine, lastLine] = selectedLineSpan(call_);
+
+    bool add = false;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const std::string body =
+            call_.StringOfSpan({call_.PositionFromLine(line), call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c != std::string::npos && orderedMarkerLength(body, c) == 0) {
+            add = true;
+            break;
+        }
+    }
+
+    call_.BeginUndoAction();
+    long ordinal = 1;
+    for (Scintilla::Line line = firstLine; line <= lastLine; ++line) {
+        const Scintilla::Position lineStart = call_.PositionFromLine(line);
+        const std::string body = call_.StringOfSpan({lineStart, call_.LineEndPosition(line)});
+        const std::size_t c = indentEnd(body);
+        if (c == std::string::npos) {
+            continue;
+        }
+
+        std::string replacement = body.substr(0, c);
+        if (add) {
+            replacement += std::to_string(ordinal);
+            replacement += ". ";
+            replacement += body.substr(c);
+            ++ordinal;
+        } else {
+            const std::size_t markerLen = orderedMarkerLength(body, c);
+            if (markerLen == 0) {
+                continue;
+            }
+            replacement += body.substr(c + markerLen);
+        }
+        call_.SetTargetRange(lineStart, call_.LineEndPosition(line));
+        call_.ReplaceTarget(Scintilla::Position(replacement.size()), replacement.c_str());
+    }
+    call_.EndUndoAction();
+}
+
+void Editor::insertLink()
+{
+    using Position = Scintilla::Position;
+
+    const Position s = call_.SelectionStart();
+    const Position e = call_.SelectionEnd();
+    const std::string sel = call_.StringOfSpan({s, e});
+    const bool looksLikeUrl = sel.rfind("http://", 0) == 0 || sel.rfind("https://", 0) == 0 ||
+                              sel.rfind("www.", 0) == 0 || sel.rfind("mailto:", 0) == 0;
+
+    call_.BeginUndoAction();
+    if (s != e && looksLikeUrl) {
+        std::string repl = "[](";
+        repl += sel;
+        repl += ")";
+        call_.SetTargetRange(s, e);
+        call_.ReplaceTarget(Position(repl.size()), repl.c_str());
+        call_.SetSelection(s + 1, s + 1); // caret between the brackets
+    } else if (s != e) {
+        std::string repl = "[";
+        repl += sel;
+        repl += "](url)";
+        call_.SetTargetRange(s, e);
+        call_.ReplaceTarget(Position(repl.size()), repl.c_str());
+        const Position urlStart = s + 1 + static_cast<Position>(sel.size()) + 2;
+        call_.SetSelection(urlStart + 3, urlStart); // select "url"
+    } else {
+        call_.ReplaceSel("[](url)");
+        call_.SetSelection(s + 1, s + 1); // caret between the brackets
     }
     call_.EndUndoAction();
 }

@@ -70,6 +70,7 @@ private slots:
     void clickingAPreviewHeadingMovesTheCaret();
     void selectNextActionAddsACaret();
     void lineActionsEditTheBuffer();
+    void formatActionsEditTheBuffer();
     void findBarSearchesAndReplaces();
     void activatingASearchResultOpensTheFile();
     void commandPaletteRunsTheChosenAction();
@@ -117,7 +118,7 @@ void TestMainWindow::editorSitsBelowTheTabBar()
 void TestMainWindow::hasExpectedMenus()
 {
     hungryeditor::MainWindow window;
-    QCOMPARE(window.menuBar()->actions().size(), 4); // File, Edit, View, Help
+    QCOMPARE(window.menuBar()->actions().size(), 5); // File, Edit, Format, View, Help
 }
 
 void TestMainWindow::saveActionFollowsDirtyState()
@@ -527,6 +528,17 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("deleteLine") << QStringLiteral("action.deleteLine");
     QTest::newRow("joinLines") << QStringLiteral("action.joinLines");
     QTest::newRow("toggleComment") << QStringLiteral("action.toggleComment");
+    QTest::newRow("bold") << QStringLiteral("action.bold");
+    QTest::newRow("italic") << QStringLiteral("action.italic");
+    QTest::newRow("strikethrough") << QStringLiteral("action.strikethrough");
+    QTest::newRow("inlineCode") << QStringLiteral("action.inlineCode");
+    QTest::newRow("link") << QStringLiteral("action.link");
+    QTest::newRow("heading1") << QStringLiteral("action.heading1");
+    QTest::newRow("heading6") << QStringLiteral("action.heading6");
+    QTest::newRow("headingParagraph") << QStringLiteral("action.headingParagraph");
+    QTest::newRow("blockquote") << QStringLiteral("action.blockquote");
+    QTest::newRow("bulletList") << QStringLiteral("action.bulletList");
+    QTest::newRow("numberedList") << QStringLiteral("action.numberedList");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -710,6 +722,20 @@ void TestMainWindow::lineActionsEditTheBuffer()
     window.editor()->setCursorPosition(0, 0);
     window.findChild<QAction*>(QStringLiteral("action.toggleComment"))->trigger();
     QCOMPARE(window.editor()->text(), QStringLiteral("<!-- keep me -->\nkeep me\n"));
+}
+
+void TestMainWindow::formatActionsEditTheBuffer()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("word\n"));
+    window.editor()->setCursorPosition(0, 2);
+
+    window.findChild<QAction*>(QStringLiteral("action.bold"))->trigger();
+    QCOMPARE(window.editor()->text(), QStringLiteral("**word**\n"));
+
+    window.editor()->setCursorPosition(0, 0);
+    window.findChild<QAction*>(QStringLiteral("action.heading2"))->trigger();
+    QCOMPARE(window.editor()->text(), QStringLiteral("## **word**\n"));
 }
 
 void TestMainWindow::findBarSearchesAndReplaces()
