@@ -41,7 +41,7 @@ QString toLocalPath(const QString& src, const QString& documentDir)
         return QUrl(src).toLocalFile();
     }
 
-    const QString decoded = QUrl::fromPercentEncoding(src.toUtf8());
+    QString decoded = QUrl::fromPercentEncoding(src.toUtf8());
     const QFileInfo info(decoded);
     if (info.isAbsolute()) {
         return decoded;

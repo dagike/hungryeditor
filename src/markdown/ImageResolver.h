@@ -6,7 +6,7 @@ namespace hungryeditor::images {
 
 /// Bytes above which a local image is left out of the preview rather than
 /// inlined — a guard so one oversized file cannot stall rendering.
-inline constexpr qint64 kDefaultMaxBytes = 10 * 1024 * 1024;
+inline constexpr qint64 kDefaultMaxBytes = 10LL * 1024 * 1024;
 
 /// Rewrite `<img>` tags in `html` so local image references render in the
 /// preview offline: a readable image file within `maxBytes` becomes a
