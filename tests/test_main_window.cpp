@@ -1,6 +1,7 @@
 // Smoke coverage for the application window.
 
 #include <QAction>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QElapsedTimer>
@@ -79,6 +80,8 @@ private slots:
     void activatingASearchResultOpensTheFile();
     void outlinePanelListsHeadingsAndJumpsToThem();
     void fileSidebarListsTheFolderAndOpensAFile();
+    void openFolderRootsTheSidebarAndRevealsIt();
+    void workspaceAndFilterSurviveASessionReload();
     void commandPaletteRunsTheChosenAction();
     void quickOpenOpensAFuzzilyMatchedFile();
 };
@@ -549,6 +552,8 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("foldFrontMatter") << QStringLiteral("action.foldFrontMatter");
     QTest::newRow("toggleOutline") << QStringLiteral("action.toggleOutline");
     QTest::newRow("toggleFiles") << QStringLiteral("action.toggleFiles");
+    QTest::newRow("openFolder") << QStringLiteral("action.openFolder");
+    QTest::newRow("closeFolder") << QStringLiteral("action.closeFolder");
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
@@ -879,6 +884,64 @@ void TestMainWindow::fileSidebarListsTheFolderAndOpensAFile()
     QMetaObject::invokeMethod(tree, "itemActivated", Q_ARG(QTreeWidgetItem*, twoItem),
                               Q_ARG(int, 0));
     QCOMPARE(window.currentPath(), two);
+}
+
+void TestMainWindow::openFolderRootsTheSidebarAndRevealsIt()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("note.md")), "n\n");
+    writeText(folder.filePath(QStringLiteral("other.md")), "o\n");
+
+    hungryeditor::MainWindow window;
+    window.setStateDirectory(state.path());
+    window.openFolder(folder.path());
+
+    QCOMPARE(window.workspaceFolder(), QDir(folder.path()).absolutePath());
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->isChecked());
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.closeFolder"))->isEnabled());
+
+    auto* panel = window.findChild<hungryeditor::FileTreePanel*>();
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->root(), QDir(folder.path()).absolutePath());
+    auto* tree = panel->findChild<QTreeWidget*>();
+    QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 2, 5000);
+
+    window.openFolder(QString()); // Close Folder
+    QVERIFY(window.workspaceFolder().isEmpty());
+    QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.closeFolder"))->isEnabled());
+}
+
+void TestMainWindow::workspaceAndFilterSurviveASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir folder;
+    QVERIFY(folder.isValid());
+    writeText(folder.filePath(QStringLiteral("alpha.md")), "a\n");
+    writeText(folder.filePath(QStringLiteral("beta.md")), "b\n");
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        first.openFolder(folder.path());
+        auto* panel = first.findChild<hungryeditor::FileTreePanel*>();
+        auto* tree = panel->findChild<QTreeWidget*>();
+        QTRY_VERIFY_WITH_TIMEOUT(tree->topLevelItemCount() >= 2, 5000);
+        panel->findChild<QLineEdit*>()->setText(QStringLiteral("beta"));
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+
+    QCOMPARE(second.workspaceFolder(), QDir(folder.path()).absolutePath());
+    QVERIFY(second.findChild<QAction*>(QStringLiteral("action.toggleFiles"))->isChecked());
+    auto* panel = second.findChild<hungryeditor::FileTreePanel*>();
+    QCOMPARE(panel->findChild<QLineEdit*>()->text(), QStringLiteral("beta"));
 }
 
 void TestMainWindow::commandPaletteRunsTheChosenAction()

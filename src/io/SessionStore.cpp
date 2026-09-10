@@ -33,6 +33,8 @@ Session SessionStore::load() const
         QByteArray::fromBase64(root.value(QStringLiteral("geometry")).toString().toLatin1());
     session.currentIndex = root.value(QStringLiteral("current")).toInt();
     session.outlineVisible = root.value(QStringLiteral("outlineVisible")).toBool();
+    session.filesVisible = root.value(QStringLiteral("filesVisible")).toBool();
+    session.workspaceFolder = root.value(QStringLiteral("workspaceFolder")).toString();
     const QJsonArray documents = root.value(QStringLiteral("documents")).toArray();
     for (const auto& value : documents) {
         const QJsonObject entry = value.toObject();
@@ -66,6 +68,8 @@ bool SessionStore::save(const Session& session) const
     root.insert(QStringLiteral("geometry"), QString::fromLatin1(session.windowGeometry.toBase64()));
     root.insert(QStringLiteral("current"), session.currentIndex);
     root.insert(QStringLiteral("outlineVisible"), session.outlineVisible);
+    root.insert(QStringLiteral("filesVisible"), session.filesVisible);
+    root.insert(QStringLiteral("workspaceFolder"), session.workspaceFolder);
     root.insert(QStringLiteral("documents"), documents);
 
     QDir().mkpath(QFileInfo(filePath_).absolutePath());

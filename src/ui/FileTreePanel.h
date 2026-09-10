@@ -25,14 +25,24 @@ public:
     QString root() const { return root_; }
 
     /// Set the directory every supplied path is shown relative to. Clears the
-    /// tree until the next setFiles().
+    /// tree and any restored view state until the next setFiles().
     void setRoot(const QString& dir);
 
     /// Rebuild the tree from `absolutePaths`, folding each into nested directory
     /// items under the root. Paths outside the root are ignored. Directories
-    /// sort before files, then by name; every directory starts expanded. The
-    /// active filter is re-applied.
+    /// sort before files, then by name. The restored view state (see
+    /// applyState) is re-applied; with none, every directory starts expanded.
     void setFiles(const QStringList& absolutePaths);
+
+    /// Restore a saved view: the filter text, and — when `hasExpandedList` —
+    /// exactly the directories in `expandedDirs` (plus their ancestors) are
+    /// expanded and the rest collapsed. Persists across setFiles() rebuilds.
+    void applyState(const QString& filter, const QStringList& expandedDirs, bool hasExpandedList);
+
+    QString filterText() const;
+
+    /// Directory paths (relative to the root) that are currently expanded.
+    QStringList expandedDirectories() const;
 
 signals:
     void fileActivated(const QString& path);
@@ -43,12 +53,15 @@ private:
     /// Hide `item` and its descendants that do not match `needle` (already
     /// lower-cased); returns whether `item` stays visible.
     bool filterItem(QTreeWidgetItem* item, const QString& needle);
+    void applyExpansion();
     void updatePlaceholder();
 
     QLineEdit* filter_ = nullptr;
     QTreeWidget* tree_ = nullptr;
     QLabel* empty_ = nullptr;
     QString root_;
+    QStringList restoredExpanded_;
+    bool hasRestoredExpanded_ = false;
 };
 
 } // namespace hungryeditor

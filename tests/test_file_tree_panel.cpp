@@ -47,6 +47,9 @@ private slots:
     void clearingTheFilterRestoresEveryRow();
     void anEmptyRootShowsThePlaceholder();
     void changingTheRootClearsTheTree();
+    void filterTextRoundTrips();
+    void restoringExpandedDirsCollapsesTheRest();
+    void expandedDirectoriesReportsThemBack();
 };
 
 void TestFileTreePanel::buildsANestedTreeWithDirectoriesFirst()
@@ -173,6 +176,44 @@ void TestFileTreePanel::changingTheRootClearsTheTree()
     panel.setRoot(QStringLiteral("/other"));
     QCOMPARE(panel.findChild<QTreeWidget*>()->topLevelItemCount(), 0);
     QVERIFY(!panel.findChild<QLabel*>()->isHidden());
+}
+
+void TestFileTreePanel::filterTextRoundTrips()
+{
+    FileTreePanel panel;
+    panel.setRoot(QStringLiteral("/ws"));
+    panel.setFiles(sampleFiles());
+    panel.applyState(QStringLiteral("guide"), {}, false);
+
+    QCOMPARE(panel.filterText(), QStringLiteral("guide"));
+    auto* tree = panel.findChild<QTreeWidget*>();
+    QVERIFY(tree->topLevelItem(1)->isHidden()); // readme.md filtered out
+}
+
+void TestFileTreePanel::restoringExpandedDirsCollapsesTheRest()
+{
+    FileTreePanel panel;
+    panel.setRoot(QStringLiteral("/ws"));
+    panel.setFiles(sampleFiles());
+    panel.applyState(QString(), {QStringLiteral("docs")}, true);
+
+    auto* tree = panel.findChild<QTreeWidget*>();
+    QTreeWidgetItem* docs = tree->topLevelItem(0);
+    QVERIFY(docs->isExpanded());
+    QVERIFY(!docs->child(0)->isExpanded()); // "docs/api" left collapsed
+}
+
+void TestFileTreePanel::expandedDirectoriesReportsThemBack()
+{
+    FileTreePanel panel;
+    panel.setRoot(QStringLiteral("/ws"));
+    panel.setFiles(sampleFiles()); // expand-all default
+
+    QCOMPARE(panel.expandedDirectories(),
+             (QStringList{QStringLiteral("docs"), QStringLiteral("docs/api")}));
+
+    panel.applyState(QString(), {QStringLiteral("docs")}, true);
+    QCOMPARE(panel.expandedDirectories(), QStringList{QStringLiteral("docs")});
 }
 
 QTEST_MAIN(TestFileTreePanel)

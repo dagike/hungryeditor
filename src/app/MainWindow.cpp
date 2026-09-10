@@ -45,6 +45,7 @@
 #include "ui/SearchResultsPanel.h"
 #include "workspace/FileIndex.h"
 #include "workspace/FileSearch.h"
+#include "workspace/WorkspaceStore.h"
 
 #ifndef HUNGRYEDITOR_VERSION
 #define HUNGRYEDITOR_VERSION "0.0.0"
@@ -272,6 +273,15 @@ void MainWindow::buildMenus()
     recentMenu_->setObjectName(QStringLiteral("menu.openRecent"));
     recentMenu_->menuAction()->setObjectName(QStringLiteral("action.openRecent"));
     connect(recentMenu_, &QMenu::aboutToShow, this, &MainWindow::refreshRecentFilesMenu);
+
+    QAction* openFolderAction =
+        fileMenu->addAction(tr("Open &Folder…"), this, &MainWindow::openFolderDialog);
+    openFolderAction->setObjectName(QStringLiteral("action.openFolder"));
+
+    closeFolderAction_ =
+        fileMenu->addAction(tr("Close Folder"), this, [this] { openFolder(QString()); });
+    closeFolderAction_->setObjectName(QStringLiteral("action.closeFolder"));
+    closeFolderAction_->setEnabled(false);
 
     saveAction_ = fileMenu->addAction(tr("&Save"), this, &MainWindow::save);
     saveAction_->setShortcut(QKeySequence::Save);
@@ -545,11 +555,66 @@ void MainWindow::updateWorkspaceRoot()
     if (fileTreeDock_ == nullptr || !fileTreeDock_->toggleViewAction()->isChecked()) {
         return; // nothing scans until the sidebar is switched on
     }
-    const QString current = currentPath();
-    const QString dir = current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath();
+    QString dir = workspaceRoot_;
+    if (dir.isEmpty()) {
+        const QString current = currentPath();
+        dir = current.isEmpty() ? QDir::homePath() : QFileInfo(current).absolutePath();
+    }
     fileTree_->setRoot(dir);
     fileIndex_->setRoot(dir);
     fileTree_->setFiles(fileIndex_->files()); // last scan now; refreshed() supplies the next
+}
+
+void MainWindow::openFolder(const QString& dir)
+{
+    const QString normalised = dir.isEmpty() ? QString() : QDir(dir).absolutePath();
+    if (normalised == workspaceRoot_) {
+        return;
+    }
+
+    saveWorkspaceViewState(); // remember the folder being left
+
+    workspaceRoot_ = normalised;
+    closeFolderAction_->setEnabled(!workspaceRoot_.isEmpty());
+    if (!workspaceRoot_.isEmpty()) {
+        fileTreeDock_->toggleViewAction()->setChecked(true); // reveal the sidebar
+    }
+    updateWorkspaceRoot();
+    loadWorkspaceViewState();
+    updateWindowTitle();
+}
+
+void MainWindow::openFolderDialog()
+{
+    const QString current = currentPath();
+    const QString start = !workspaceRoot_.isEmpty() ? workspaceRoot_
+                          : current.isEmpty()       ? QDir::homePath()
+                                                    : QFileInfo(current).absolutePath();
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Open Folder"), start);
+    if (!dir.isEmpty()) {
+        openFolder(dir);
+    }
+}
+
+void MainWindow::loadWorkspaceViewState()
+{
+    if (workspaceRoot_.isEmpty() || workspaceStore_ == nullptr) {
+        return;
+    }
+    const WorkspaceState state = workspaceStore_->load(workspaceRoot_);
+    fileTree_->applyState(state.filter, state.expandedDirs, state.hasExpandedList);
+}
+
+void MainWindow::saveWorkspaceViewState()
+{
+    if (workspaceRoot_.isEmpty() || workspaceStore_ == nullptr) {
+        return;
+    }
+    WorkspaceState state;
+    state.filter = fileTree_->filterText();
+    state.expandedDirs = fileTree_->expandedDirectories();
+    state.hasExpandedList = true;
+    workspaceStore_->save(workspaceRoot_, state);
 }
 
 void MainWindow::rebuildOutline()
@@ -810,6 +875,8 @@ void MainWindow::setStateDirectory(const QString& directory)
     stateDir_ = directory;
     documents_->setDraftDirectory(directory + QLatin1String("/drafts"));
     sessionStore_ = std::make_unique<SessionStore>(directory + QLatin1String("/session.json"));
+    workspaceStore_ =
+        std::make_unique<WorkspaceStore>(directory + QLatin1String("/workspaces.json"));
     recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));
     refreshRecentFilesMenu();
 }
@@ -907,6 +974,11 @@ void MainWindow::restoreLastSession(bool askFirst)
     }
     outlineDock_->setVisible(session.outlineVisible);
     rebuildOutline();
+    if (!session.workspaceFolder.isEmpty()) {
+        openFolder(session.workspaceFolder);
+    } else if (session.filesVisible) {
+        fileTreeDock_->toggleViewAction()->setChecked(true);
+    }
     sessionStore_->clear(); // consumed; only a crash should leave one behind
     updateWindowTitle();
 }
@@ -920,6 +992,9 @@ void MainWindow::saveSession()
     Session session = documents_->buildSession();
     session.windowGeometry = saveGeometry();
     session.outlineVisible = outlineDock_->isVisible();
+    session.filesVisible = fileTreeDock_->toggleViewAction()->isChecked();
+    session.workspaceFolder = workspaceRoot_;
+    saveWorkspaceViewState();
     sessionStore_->save(session);
 }
 
@@ -1134,7 +1209,11 @@ void MainWindow::updateWindowTitle()
     const QString name = document != nullptr ? document->displayName() : tr("Untitled");
     const QString marker =
         (document != nullptr && document->isModified()) ? QStringLiteral("*") : QString();
-    setWindowTitle(QStringLiteral("%1%2 — hungryeditor").arg(marker, name));
+    QString title = QStringLiteral("%1%2 — hungryeditor").arg(marker, name);
+    if (!workspaceRoot_.isEmpty()) {
+        title += QStringLiteral(" [%1]").arg(QDir(workspaceRoot_).dirName());
+    }
+    setWindowTitle(title);
 }
 
 void MainWindow::showAbout()

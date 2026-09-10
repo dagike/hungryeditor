@@ -104,6 +104,8 @@ add_library(hungryeditor_core STATIC
     workspace/FileIndex.h
     workspace/FileSearch.cpp
     workspace/FileSearch.h
+    workspace/WorkspaceStore.cpp
+    workspace/WorkspaceStore.h
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 

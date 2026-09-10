@@ -32,6 +32,7 @@ class RecentFiles;
 class SearchResultsPanel;
 class SessionStore;
 class TabBar;
+class WorkspaceStore;
 
 /// The application's single top-level window. It hosts one editor widget
 /// backed by a DocumentManager (multiple open buffers, switched in place),
@@ -95,6 +96,14 @@ public:
     /// same path. Returns false on an I/O error (see lastError()).
     bool openPath(const QString& path);
 
+    /// Pin the folder sidebar to `dir` (revealing it) and remember that
+    /// workspace's view state; an empty `dir` closes the folder and lets the
+    /// sidebar follow the current document again.
+    void openFolder(const QString& dir);
+
+    /// The explicitly opened workspace folder, or empty when none is open.
+    QString workspaceFolder() const { return workspaceRoot_; }
+
     /// Open every path in `paths`, activating the first that loads. A pristine
     /// untitled buffer is dropped so command-line and drag-and-drop opens do
     /// not leave a stray tab. Returns false if any path failed; lastError()
@@ -143,6 +152,7 @@ private slots:
     void showAbout();
     void newDocument();
     void openFileDialog();
+    void openFolderDialog();
     void save();
     void saveAsDialog();
     void closeCurrentDocument();
@@ -176,9 +186,13 @@ private:
     void populateQuickOpen();
     void runPaletteChoice(const QString& id);
 
-    // Folder sidebar: point it (and the shared file index) at the current
-    // document's directory, but only while the sidebar is switched on.
+    // Folder sidebar: point it (and the shared file index) at the open
+    // workspace folder, or the current document's directory when none is
+    // pinned — but only while the sidebar is switched on.
     void updateWorkspaceRoot();
+    // Load / persist the open workspace's remembered filter and tree state.
+    void loadWorkspaceViewState();
+    void saveWorkspaceViewState();
 
     // Recent-files list and its menu.
     void recordRecent(const QString& path);
@@ -213,6 +227,8 @@ private:
     bool paletteShowsFiles_ = false;
     FileTreePanel* fileTree_ = nullptr;
     QDockWidget* fileTreeDock_ = nullptr;
+    QAction* closeFolderAction_ = nullptr;
+    QString workspaceRoot_; ///< explicitly opened folder, empty for none
     SearchResultsPanel* searchResults_ = nullptr;
     QDockWidget* searchDock_ = nullptr;
     OutlinePanel* outline_ = nullptr;
@@ -221,6 +237,7 @@ private:
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;
+    std::unique_ptr<WorkspaceStore> workspaceStore_;
     std::unique_ptr<RecentFiles> recentFiles_;
     // previewController_ is declared after preview_ so it is torn down first —
     // it holds a raw pointer to the backend.

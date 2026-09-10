@@ -26,6 +26,8 @@ struct Session
     QByteArray windowGeometry;
     int currentIndex = 0;
     bool outlineVisible = false; ///< whether the heading outline dock was open
+    bool filesVisible = false;   ///< whether the folder sidebar dock was open
+    QString workspaceFolder;     ///< explicitly opened folder, empty for none
     QList<SessionDocument> documents;
 };
 

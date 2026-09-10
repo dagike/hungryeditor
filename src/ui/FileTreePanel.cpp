@@ -6,7 +6,10 @@
 #include <QHash>
 #include <QLabel>
 #include <QLineEdit>
+#include <QSet>
+#include <QSignalBlocker>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
 
 namespace hungryeditor {
@@ -18,6 +21,16 @@ constexpr int kPathRole = Qt::UserRole; ///< set on file leaves only
 bool isDirectory(const QTreeWidgetItem* item)
 {
     return !item->data(0, kPathRole).isValid();
+}
+
+/// The item's path relative to the tree root, "/"-joined.
+QString itemPath(const QTreeWidgetItem* item)
+{
+    QStringList parts;
+    for (const QTreeWidgetItem* node = item; node != nullptr; node = node->parent()) {
+        parts.prepend(node->text(0));
+    }
+    return parts.join(QLatin1Char('/'));
 }
 
 void sortChildren(QTreeWidgetItem* parent)
@@ -70,6 +83,12 @@ void FileTreePanel::setRoot(const QString& dir)
         return;
     }
     root_ = dir;
+    restoredExpanded_.clear();
+    hasRestoredExpanded_ = false;
+    {
+        const QSignalBlocker block(filter_);
+        filter_->clear();
+    }
     tree_->clear();
     updatePlaceholder();
 }
@@ -102,7 +121,6 @@ void FileTreePanel::setFiles(const QStringList& absolutePaths)
                 if (dir == nullptr) {
                     dir = new QTreeWidgetItem(parent);
                     dir->setText(0, segments[i]);
-                    dir->setExpanded(true);
                 }
                 parent = dir;
             }
@@ -113,11 +131,47 @@ void FileTreePanel::setFiles(const QStringList& absolutePaths)
         }
 
         sortChildren(tree_->invisibleRootItem());
-        tree_->expandAll();
     }
 
+    applyExpansion();
     applyFilter(filter_->text());
     updatePlaceholder();
+}
+
+void FileTreePanel::applyState(const QString& filter, const QStringList& expandedDirs,
+                               bool hasExpandedList)
+{
+    restoredExpanded_ = expandedDirs;
+    hasRestoredExpanded_ = hasExpandedList;
+    {
+        const QSignalBlocker block(filter_);
+        filter_->setText(filter);
+    }
+    applyExpansion();
+    applyFilter(filter_->text());
+}
+
+void FileTreePanel::applyExpansion()
+{
+    if (!hasRestoredExpanded_) {
+        tree_->expandAll();
+        return;
+    }
+
+    QSet<QString> wanted;
+    for (const QString& dir : restoredExpanded_) {
+        QString sofar;
+        for (const QString& segment : dir.split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
+            sofar = sofar.isEmpty() ? segment : sofar + QLatin1Char('/') + segment;
+            wanted.insert(sofar);
+        }
+    }
+
+    for (QTreeWidgetItemIterator it(tree_); *it != nullptr; ++it) {
+        if (isDirectory(*it)) {
+            (*it)->setExpanded(wanted.contains(itemPath(*it)));
+        }
+    }
 }
 
 void FileTreePanel::applyFilter(const QString& text)
@@ -142,6 +196,22 @@ bool FileTreePanel::filterItem(QTreeWidgetItem* item, const QString& needle)
     }
     item->setHidden(!anyVisible);
     return anyVisible;
+}
+
+QString FileTreePanel::filterText() const
+{
+    return filter_->text();
+}
+
+QStringList FileTreePanel::expandedDirectories() const
+{
+    QStringList dirs;
+    for (QTreeWidgetItemIterator it(tree_); *it != nullptr; ++it) {
+        if (isDirectory(*it) && (*it)->isExpanded()) {
+            dirs.append(itemPath(*it));
+        }
+    }
+    return dirs;
 }
 
 void FileTreePanel::updatePlaceholder()
