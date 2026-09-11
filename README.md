@@ -27,7 +27,8 @@ Prebuilt packages are on the
 | Windows | `hungryeditor-*-win64.msi` | run the installer |
 | Windows (portable) | `hungryeditor-*-win64.zip` | extract, run `hungryeditor.exe` |
 
-Either package registers hungryeditor as a handler for `.md` files.
+Either package registers hungryeditor as a handler for `.md` files. See
+`CHANGELOG.md` for what's new in each release.
 
 ## Features
 
