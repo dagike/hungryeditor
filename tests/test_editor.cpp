@@ -48,6 +48,8 @@ private slots:
     void visualDefaultsAreApplied();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
+    void setTabWidthChangesScintillaTabWidth();
+    void setWordWrapTogglesScintillaWrapMode();
     void headingsAndCodeGetSyntaxStyles();
     void plainParagraphStaysUnstyled();
     void inlineEmphasisInProseGetsStyled();
@@ -593,6 +595,25 @@ void TestEditor::changingFontReappliesStyling()
 
     QCOMPARE(editor.editorFont().pointSize(), bigger.pointSize());
     QCOMPARE(editor.call().TabWidth(), 4); // still applied after re-styling
+}
+
+void TestEditor::setTabWidthChangesScintillaTabWidth()
+{
+    hungryeditor::Editor editor;
+    editor.setTabWidth(8);
+    QCOMPARE(editor.tabWidth(), 8);
+    QCOMPARE(editor.call().TabWidth(), 8);
+}
+
+void TestEditor::setWordWrapTogglesScintillaWrapMode()
+{
+    hungryeditor::Editor editor;
+    QVERIFY(!editor.wordWrap());
+    QCOMPARE(editor.call().WrapMode(), Scintilla::Wrap::None);
+
+    editor.setWordWrap(true);
+    QVERIFY(editor.wordWrap());
+    QCOMPARE(editor.call().WrapMode(), Scintilla::Wrap::Word);
 }
 
 void TestEditor::headingsAndCodeGetSyntaxStyles()

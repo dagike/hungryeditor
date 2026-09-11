@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include "editor/CaretHistory.h"
+#include "io/Preferences.h"
 #include "theme/Theme.h"
 
 class QAction;
@@ -31,6 +32,7 @@ class FileIndex;
 class FileTreePanel;
 class FindReplaceBar;
 class OutlinePanel;
+class PreferencesStore;
 class PreviewBackend;
 class PreviewController;
 class RecentFiles;
@@ -102,6 +104,12 @@ public:
 
     /// The "Open Recent" submenu. Exposed for tests.
     QMenu* recentFilesMenu() const { return recentMenu_; }
+
+    /// The active editor preferences. Exposed for tests.
+    Preferences preferences() const { return preferences_; }
+    /// Apply and persist `preferences` as if accepted from the dialog.
+    /// Exposed for tests.
+    void setPreferences(const Preferences& preferences);
 
     /// The status bar's segments, e.g. "Ln 3, Col 1" and "12 selected".
     /// Exposed for tests.
@@ -233,6 +241,7 @@ private slots:
     void exportPdfDialog();
     void copyAsRichText();
     void loadCustomThemeDialog();
+    void preferencesDialog();
 
 private:
     void buildMenus();
@@ -244,6 +253,10 @@ private:
     void buildStatusBar();
     void updateCursorStatus(int line, int column);
     void updateDocumentStatus();
+
+    /// Re-apply preferences_ to the editor. Run on load and whenever the
+    /// Preferences dialog is accepted.
+    void applyPreferences();
 
     // Live preview: created on construction, fed the editor's text (debounced)
     // whenever a preview pane is visible.
@@ -355,6 +368,8 @@ private:
     std::unique_ptr<SessionStore> sessionStore_;
     std::unique_ptr<WorkspaceStore> workspaceStore_;
     std::unique_ptr<RecentFiles> recentFiles_;
+    std::unique_ptr<PreferencesStore> preferencesStore_;
+    Preferences preferences_;
     // previewController_ is declared after preview_ so it is torn down first —
     // it holds a raw pointer to the backend.
     std::unique_ptr<PreviewBackend> preview_;

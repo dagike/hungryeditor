@@ -69,7 +69,6 @@ constexpr int kLineNumberMargin = 0;
 constexpr int kSymbolMargin = 1;
 constexpr int kFoldMargin = 2;
 constexpr int kMinLineDigits = 3;
-constexpr int kTabWidth = 4;
 constexpr int kFindIndicator = 20; // in the user range (8..31)
 constexpr int kFoldMarginWidth = 14;
 
@@ -1197,6 +1196,18 @@ void Editor::setEditorFont(const QFont& font)
     applyVisualDefaults();
 }
 
+void Editor::setTabWidth(int width)
+{
+    tabWidth_ = width;
+    call_.SetTabWidth(width);
+}
+
+void Editor::setWordWrap(bool wrap)
+{
+    wordWrap_ = wrap;
+    call_.SetWrapMode(wrap ? Scintilla::Wrap::Word : Scintilla::Wrap::None);
+}
+
 void Editor::attachDocument(Document* document)
 {
     document_ = document;
@@ -1246,10 +1257,10 @@ void Editor::applyVisualDefaults()
     call_.StyleSetBold(STYLE_BRACEBAD, true);
 
     call_.SetEOLMode(Scintilla::EndOfLine::Lf);
-    call_.SetTabWidth(kTabWidth);
+    call_.SetTabWidth(tabWidth_);
     call_.SetUseTabs(false);
     call_.SetViewWS(Scintilla::WhiteSpace::Invisible);
-    call_.SetWrapMode(Scintilla::Wrap::None);
+    call_.SetWrapMode(wordWrap_ ? Scintilla::Wrap::Word : Scintilla::Wrap::None);
     call_.SetScrollWidthTracking(true);
     call_.SetScrollWidth(1);
 

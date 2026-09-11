@@ -69,6 +69,8 @@ add_library(hungryeditor_core STATIC
     io/AssetWriter.h
     io/DraftStore.cpp
     io/DraftStore.h
+    io/Preferences.cpp
+    io/Preferences.h
     io/RecentFiles.cpp
     io/RecentFiles.h
     io/SessionStore.cpp
@@ -104,6 +106,8 @@ add_library(hungryeditor_core STATIC
     ui/FuzzyMatch.h
     ui/OutlinePanel.cpp
     ui/OutlinePanel.h
+    ui/PreferencesDialog.cpp
+    ui/PreferencesDialog.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
     ui/TabSwitcher.cpp

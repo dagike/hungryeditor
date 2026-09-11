@@ -200,6 +200,14 @@ public:
     QFont editorFont() const { return font_; }
     void setEditorFont(const QFont& font);
 
+    /// Spaces a Tab key press inserts (soft tabs; the buffer never holds "\t").
+    int tabWidth() const { return tabWidth_; }
+    void setTabWidth(int width);
+
+    /// Whether long lines wrap at the viewport edge instead of scrolling.
+    bool wordWrap() const { return wordWrap_; }
+    void setWordWrap(bool wrap);
+
     /// Style byte at a position — for tests to check colouring.
     int styleAt(int position) const;
 
@@ -280,6 +288,8 @@ private:
     ImagePasteHandler imagePasteHandler_;
     Document* document_ = nullptr;
     QFont font_;
+    int tabWidth_ = 4;
+    bool wordWrap_ = false;
     bool modified_ = false;
     int lineDigits_ = 0;
     int frontMatterLastLine_ = -1; ///< closing `---` line, or -1 when absent

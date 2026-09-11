@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QListWidget>
@@ -87,6 +88,8 @@ private slots:
     void statusBarShowsCursorPositionAndSelection();
     void statusBarShowsWordAndCharCounts();
     void statusBarShowsEncodingAndLineEndingForTheCurrentDocument();
+    void setPreferencesAppliesFontTabWidthAndWordWrap();
+    void preferencesSurviveASessionReload();
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
@@ -668,6 +671,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("themeHighContrast") << QStringLiteral("action.themeHighContrast");
     QTest::newRow("themeSepia") << QStringLiteral("action.themeSepia");
     QTest::newRow("loadCustomTheme") << QStringLiteral("action.loadCustomTheme");
+    QTest::newRow("preferences") << QStringLiteral("action.preferences");
 }
 
 void TestMainWindow::hasNamedActions()
@@ -866,6 +870,48 @@ void TestMainWindow::statusBarShowsEncodingAndLineEndingForTheCurrentDocument()
 
     QCOMPARE(window.statusLineEndingText(), QStringLiteral("CRLF"));
     QCOMPARE(window.statusEncodingText(), QStringLiteral("UTF-8"));
+}
+
+void TestMainWindow::setPreferencesAppliesFontTabWidthAndWordWrap()
+{
+    hungryeditor::MainWindow window;
+
+    hungryeditor::Preferences preferences;
+    preferences.fontFamily = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    preferences.fontSize = 20;
+    preferences.tabWidth = 2;
+    preferences.wordWrap = true;
+    window.setPreferences(preferences);
+
+    QCOMPARE(window.preferences().fontSize, 20);
+    QCOMPARE(window.editor()->editorFont().pointSize(), 20);
+    QCOMPARE(window.editor()->tabWidth(), 2);
+    QVERIFY(window.editor()->wordWrap());
+}
+
+void TestMainWindow::preferencesSurviveASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        hungryeditor::Preferences preferences;
+        preferences.fontSize = 22;
+        preferences.tabWidth = 3;
+        preferences.wordWrap = true;
+        first.setPreferences(preferences);
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+
+    QCOMPARE(second.preferences().fontSize, 22);
+    QCOMPARE(second.preferences().tabWidth, 3);
+    QVERIFY(second.preferences().wordWrap);
+    QCOMPARE(second.editor()->tabWidth(), 3);
+    QVERIFY(second.editor()->wordWrap());
 }
 
 void TestMainWindow::editorTextFlowsIntoThePreview()

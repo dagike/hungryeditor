@@ -14,6 +14,8 @@
 #include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontDatabase>
 #include <QImage>
 #include <QInputDialog>
 #include <QLabel>
@@ -44,6 +46,7 @@
 #include "export/HtmlDocument.h"
 #include "io/AssetWriter.h"
 #include "io/DraftStore.h"
+#include "io/Preferences.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
 #include "io/TextFile.h"
@@ -57,6 +60,7 @@
 #include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
+#include "ui/PreferencesDialog.h"
 #include "ui/SearchResultsPanel.h"
 #include "ui/TabSwitcher.h"
 #include "workspace/FileIndex.h"
@@ -479,6 +483,12 @@ void MainWindow::buildMenus()
                   QKeySequence(Qt::CTRL | Qt::Key_J), &Editor::joinLines);
     addLineAction(tr("Toggle &Comment"), QStringLiteral("action.toggleComment"),
                   QKeySequence(Qt::CTRL | Qt::Key_Slash), &Editor::toggleLineComment);
+
+    editMenu->addSeparator();
+    QAction* preferencesAction =
+        editMenu->addAction(tr("&Preferences…"), this, &MainWindow::preferencesDialog);
+    preferencesAction->setMenuRole(QAction::PreferencesRole);
+    preferencesAction->setObjectName(QStringLiteral("action.preferences"));
 
     QMenu* formatMenu = menuBar()->addMenu(tr("F&ormat"));
 
@@ -1046,6 +1056,35 @@ void MainWindow::loadCustomThemeDialog()
     }
 }
 
+void MainWindow::applyPreferences()
+{
+    QFont font = preferences_.fontFamily.isEmpty()
+                     ? QFontDatabase::systemFont(QFontDatabase::FixedFont)
+                     : QFont(preferences_.fontFamily);
+    font.setPointSize(preferences_.fontSize);
+    editor_->setEditorFont(font);
+    editor_->setTabWidth(preferences_.tabWidth);
+    editor_->setWordWrap(preferences_.wordWrap);
+}
+
+void MainWindow::setPreferences(const Preferences& preferences)
+{
+    preferences_ = preferences;
+    applyPreferences();
+    if (preferencesStore_) {
+        preferencesStore_->save(preferences_);
+    }
+}
+
+void MainWindow::preferencesDialog()
+{
+    PreferencesDialog dialog(this);
+    dialog.setPreferences(preferences_);
+    if (dialog.exec() == QDialog::Accepted) {
+        setPreferences(dialog.preferences());
+    }
+}
+
 void MainWindow::refreshPreview()
 {
     if (viewMode_ != ViewMode::Editor) {
@@ -1403,6 +1442,11 @@ void MainWindow::setStateDirectory(const QString& directory)
         std::make_unique<WorkspaceStore>(directory + QLatin1String("/workspaces.json"));
     recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));
     refreshRecentFilesMenu();
+
+    preferencesStore_ =
+        std::make_unique<PreferencesStore>(directory + QLatin1String("/preferences.json"));
+    preferences_ = preferencesStore_->load();
+    applyPreferences();
 }
 
 void MainWindow::refreshRecentFilesMenu()
