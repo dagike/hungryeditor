@@ -6,6 +6,7 @@
 
 #include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
+#include "highlight/TreeSitterEngine.h"
 
 extern "C" const TSLanguage* tree_sitter_markdown(void);
 
@@ -42,6 +43,26 @@ qint32 styleAtByte(const hungryeditor::HighlightResult& result, int byte)
     }
     return -1;
 }
+
+/// A PendingEdit appending `after.substr(before.size())` to `before`, for a
+/// submission whose text is `after`.
+hungryeditor::PendingEdit appendEdit(const QString& before, const QString& after)
+{
+    const std::string beforeUtf8 = before.toStdString();
+    const std::string afterUtf8 = after.toStdString();
+    const auto start = static_cast<uint32_t>(beforeUtf8.size());
+    const auto newEnd = static_cast<uint32_t>(afterUtf8.size());
+    using hungryeditor::TreeSitterEngine;
+    const TSInputEdit edit{
+        start,
+        start,
+        newEnd,
+        TreeSitterEngine::pointAt(beforeUtf8, start),
+        TreeSitterEngine::pointAt(beforeUtf8, start),
+        TreeSitterEngine::pointAt(afterUtf8, newEnd),
+    };
+    return hungryeditor::PendingEdit{/*present=*/true, edit};
+}
 } // namespace
 
 class TestHighlightWorker : public QObject
@@ -57,6 +78,8 @@ private slots:
     void unknownFenceLanguageKeepsLiteralStyle();
     void fencedCodeIsStyledByItsLanguageGrammar();
     void disabledControllerIgnoresSubmissions();
+    void incrementalSubmitMatchesFullReparse();
+    void multipleQueuedEditsProduceOneCorrectResult();
 };
 
 void TestHighlightWorker::parsesOnASeparateThread()
@@ -223,6 +246,97 @@ void TestHighlightWorker::disabledControllerIgnoresSubmissions()
     controller.setEnabled(true);
     controller.submit(QStringLiteral("# picked up\n"));
     QVERIFY(spy.wait(2000));
+}
+
+void TestHighlightWorker::incrementalSubmitMatchesFullReparse()
+{
+    hungryeditor::HighlightController incremental;
+    incremental.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    const QString doc0 = QStringLiteral("# Heading\n\ntext\n");
+    const QString doc1 = doc0 + QStringLiteral("\n```rust\nfn demo() -> i32 { 0 }\n```\n");
+
+    QSignalSpy spy(&incremental, &hungryeditor::HighlightController::highlighted);
+    incremental.submit(doc0); // no edit: establishes the tree doc1's edit applies against
+    QVERIFY(spy.wait(2000));
+    spy.clear();
+
+    incremental.submit(doc1, appendEdit(doc0, doc1));
+    QVERIFY(spy.wait(2000));
+    const auto incrementalResult = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(incrementalResult.ok);
+
+    hungryeditor::HighlightController full;
+    full.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+    QSignalSpy fullSpy(&full, &hungryeditor::HighlightController::highlighted);
+    full.submit(doc1);
+    QVERIFY(fullSpy.wait(2000));
+    const auto fullResult = fullSpy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(fullResult.ok);
+
+    // The incremental path (noteEdit + reparse) must produce byte-identical
+    // output to a plain full reparse of the same final text.
+    QCOMPARE(incrementalResult.rootType, fullResult.rootType);
+    QCOMPARE(incrementalResult.namedChildCount, fullResult.namedChildCount);
+    QCOMPARE(incrementalResult.spans.size(), fullResult.spans.size());
+    for (int i = 0; i < incrementalResult.spans.size(); ++i) {
+        QCOMPARE(incrementalResult.spans[i].start, fullResult.spans[i].start);
+        QCOMPARE(incrementalResult.spans[i].length, fullResult.spans[i].length);
+        QCOMPARE(incrementalResult.spans[i].style, fullResult.spans[i].style);
+    }
+}
+
+void TestHighlightWorker::multipleQueuedEditsProduceOneCorrectResult()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    // Establish a real tree first, and let that settle — a burst that
+    // includes the very first (tree-less) submission would always take the
+    // full-reparse fallback regardless, which isn't what this test means to
+    // exercise.
+    QString text = QStringLiteral("intro\n");
+    QSignalSpy setupSpy(&controller, &hungryeditor::HighlightController::highlighted);
+    controller.submit(text);
+    QVERIFY(setupSpy.wait(2000));
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+
+    // Three edits fired back-to-back, well inside one debounce window — the
+    // shape a fast typist, or a delete+insert replace-selection, produces.
+    // All three must fold into one incremental reparse.
+    const QString step1 = text + QStringLiteral("# Heading\n");
+    controller.submit(step1, appendEdit(text, step1));
+    text = step1;
+
+    const QString step2 = text + QStringLiteral("\ntext\n");
+    controller.submit(step2, appendEdit(text, step2));
+    text = step2;
+
+    const QString step3 = text + QStringLiteral("\n```rust\nfn demo() {}\n```\n");
+    controller.submit(step3, appendEdit(text, step3));
+    text = step3;
+
+    QVERIFY(spy.wait(2000));
+    QTest::qWait(50); // allow any stragglers
+    QCOMPARE(spy.count(), 1);
+
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+
+    hungryeditor::HighlightController full;
+    full.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+    QSignalSpy fullSpy(&full, &hungryeditor::HighlightController::highlighted);
+    full.submit(text);
+    QVERIFY(fullSpy.wait(2000));
+    const auto fullResult = fullSpy.first().at(0).value<hungryeditor::HighlightResult>();
+
+    QCOMPARE(result.spans.size(), fullResult.spans.size());
+    for (int i = 0; i < result.spans.size(); ++i) {
+        QCOMPARE(result.spans[i].start, fullResult.spans[i].start);
+        QCOMPARE(result.spans[i].length, fullResult.spans[i].length);
+        QCOMPARE(result.spans[i].style, fullResult.spans[i].style);
+    }
 }
 
 QTEST_MAIN(TestHighlightWorker)

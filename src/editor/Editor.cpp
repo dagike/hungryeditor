@@ -28,6 +28,7 @@
 #include "editor/MarkdownTable.h"
 #include "highlight/CaptureStyles.h"
 #include "highlight/HighlightController.h"
+#include "highlight/TreeSitterEngine.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
 #include "markdown/FrontMatter.h"
 
@@ -182,7 +183,9 @@ Editor::Editor(QWidget* parent) : ScintillaEditBase(parent)
         QString::fromUtf8(queries::kMarkdownInjections.data(),
                           static_cast<qsizetype>(queries::kMarkdownInjections.size())));
     connect(highlight_, &HighlightController::highlighted, this, &Editor::applyHighlight);
-    connect(this, &Editor::textChanged, this, [this] { highlight_->submit(text()); });
+    // onNotify() submits directly (with edit info when it has it) once it
+    // knows a modification actually landed; no need to also listen for the
+    // textChanged() signal that same code path emits.
 
     updateHighlightTier();
 }
@@ -1538,6 +1541,48 @@ void Editor::setFrontMatterFolded(bool folded)
     call_.FoldLine(0, folded ? Scintilla::FoldAction::Contract : Scintilla::FoldAction::Expand);
 }
 
+namespace {
+
+/// The TSInputEdit for one Scintilla insert/delete notification. Scintilla
+/// notifies *after* applying the change, so `call`'s buffer already reflects
+/// it — but everything strictly before the edit's start is identical in the
+/// old and new text, so LineFromPosition()/PositionFromLine() (Scintilla's
+/// own O(log n) line index) give the correct start row/column regardless.
+/// The end point only needs the bytes that actually changed (`notification`
+/// carries them directly: the inserted text for an insert, the just-removed
+/// text for a delete), walked forward from the start point — never the
+/// whole document. This is what keeps a single edit's cost independent of
+/// document size and cursor position.
+TSInputEdit editFromNotification(Scintilla::ScintillaCall& call,
+                                 const Scintilla::NotificationData& notification)
+{
+    using hungryeditor::TreeSitterEngine;
+
+    const auto position = static_cast<uint32_t>(notification.position);
+    const auto length = static_cast<uint32_t>(notification.length);
+    const std::string_view changed = notification.text != nullptr
+                                         ? std::string_view(notification.text, length)
+                                         : std::string_view{};
+
+    const auto row =
+        static_cast<uint32_t>(call.LineFromPosition(static_cast<Scintilla::Position>(position)));
+    const auto lineStart =
+        static_cast<uint32_t>(call.PositionFromLine(static_cast<Scintilla::Line>(row)));
+    const TSPoint startPoint{row, position - lineStart};
+    const TSPoint changedEndPoint = TreeSitterEngine::pointAfter(startPoint, changed);
+
+    if (Scintilla::FlagSet(notification.modificationType,
+                           Scintilla::ModificationFlags::InsertText)) {
+        return TSInputEdit{position,   position,   position + length,
+                           startPoint, startPoint, changedEndPoint};
+    }
+    // DeleteText.
+    return TSInputEdit{position,   position + length, position,
+                       startPoint, changedEndPoint,   startPoint};
+}
+
+} // namespace
+
 void Editor::onNotify(Scintilla::NotificationData* notification)
 {
     using Scintilla::FlagSet;
@@ -1549,11 +1594,13 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
     case Notification::Modified:
         if (FlagSet(notification->modificationType,
                     ModificationFlags::InsertText | ModificationFlags::DeleteText)) {
+            const TSInputEdit edit = editFromNotification(call_, *notification);
             if (notification->linesAdded != 0) {
                 updateLineNumberMargin();
             }
             updateHighlightTier();
             updateFrontMatterFold();
+            highlight_->submit(text(), PendingEdit{/*present=*/true, edit});
             emit textChanged();
         }
         break;

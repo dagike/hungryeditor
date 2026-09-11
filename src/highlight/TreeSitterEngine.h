@@ -35,8 +35,23 @@ public:
 
     /// Apply a single edit and incrementally reparse. `newSource` is the full
     /// document text after the edit. `edit` describes the changed byte range
-    /// and its row/column extents (see pointAt()).
+    /// and its row/column extents (see pointAt()). Equivalent to
+    /// noteEdit(edit) followed by reparse(newSource); kept for the common
+    /// one-edit case and as this type's original API.
     void applyEdit(const TSInputEdit& edit, std::string newSource);
+
+    /// Record one edit's byte/point deltas against the current tree, without
+    /// reparsing yet (a no-op if there is no tree). Call once per edit, in
+    /// the order the edits happened, then reparse() once at the end against
+    /// the final text — tree-sitter's own pattern for folding several edits
+    /// (e.g. two that landed within one highlight-debounce window) into a
+    /// single incremental reparse instead of one full reparse per edit.
+    void noteEdit(const TSInputEdit& edit);
+
+    /// Reparse against `newSource`, reusing whatever edits were noted via
+    /// noteEdit() since the last parse — a plain full parse if none were, or
+    /// if there is no tree yet.
+    void reparse(std::string newSource);
 
     bool hasTree() const { return tree_ != nullptr; }
     /// Root of the current tree. Only valid when hasTree().
@@ -47,6 +62,14 @@ public:
     /// Row/column (both zero-based, columns counted in bytes) of a byte
     /// offset within `text` — the coordinate space tree-sitter edits use.
     static TSPoint pointAt(std::string_view text, uint32_t byteOffset);
+
+    /// Row/column reached after walking `span`'s bytes starting from
+    /// `start` — `start` plus `span`'s own newline count and trailing-line
+    /// length. Lets a TSInputEdit's end point be computed from just the
+    /// bytes that changed (what Scintilla's own modification notification
+    /// already carries) instead of re-scanning the whole document the way a
+    /// pointAt() call from byte 0 would.
+    static TSPoint pointAfter(TSPoint start, std::string_view span);
 
 private:
     void reset() noexcept;

@@ -39,13 +39,32 @@ struct HighlightResult
     QVector<HighlightSpan> spans;
 };
 
+/// The single-range edit one Scintilla notification describes, or "none"
+/// (`present == false`) when the caller has no such description for a
+/// HighlightWorker::submit()/HighlightController::submit() call. Any
+/// submission in a debounce window without one falls that whole window back
+/// to a full reparse of its final text — always correct, just not the fast
+/// path — so callers that can't describe an edit (or don't bother to) never
+/// need special-casing. Namespace-scope, not nested in HighlightWorker: a
+/// default argument referencing a slot's own enclosing class's nested type
+/// doesn't compile on this toolchain, and Qt 6.4's QMetaObject::invokeMethod
+/// has no member-function-pointer overload that forwards arguments (that
+/// needs 6.5+), so the cross-thread call goes through the older
+/// string+Q_ARG form — which matches by the exact spelling moc recorded,
+/// so the type's name must read the same, unqualified, everywhere it's used.
+struct PendingEdit
+{
+    bool present = false;
+    TSInputEdit edit{};
+};
+
 /// Runs tree-sitter parsing and highlight-query evaluation off the GUI
 /// thread. Lives on a worker QThread (see HighlightController); every slot
 /// here executes on that thread.
 ///
-/// Rapid edits are coalesced: only the most recent submission is parsed once
-/// the debounce interval elapses, so a burst of keystrokes costs one parse
-/// and intermediate revisions are never processed.
+/// Rapid edits are coalesced: every submission within one debounce interval
+/// is queued, and the interval's single parse applies them all — see
+/// PendingEdit and submit().
 class HighlightWorker : public QObject
 {
     Q_OBJECT
@@ -62,8 +81,15 @@ public slots:
     /// sub-grammar highlighting for fenced code blocks and inline spans.
     void configure(const TSLanguage* language, const QString& highlightQuery,
                    const QString& injectionQuery);
-    /// Queue a full-document parse at the given revision.
-    void submit(const QString& text, quint64 revision);
+    /// Queue a parse at the given revision. `edit` describes the single-range
+    /// change this submission's text reflects relative to the previous
+    /// submission, if any; several edits queued within one debounce interval
+    /// are folded into one incremental reparse (see TreeSitterEngine::
+    /// noteEdit()/reparse()) as long as every one of them has an edit —
+    /// otherwise the interval's parse falls back to a full reparse of `text`.
+    /// No default here — every real call goes through HighlightController,
+    /// which is where the convenience of omitting `edit` belongs.
+    void submit(const QString& text, quint64 revision, PendingEdit edit);
 
 signals:
     void parsed(const hungryeditor::HighlightResult& result);
@@ -92,8 +118,15 @@ private:
     QString pendingText_;
     quint64 pendingRevision_ = 0;
     bool havePending_ = false;
+    // Edits queued since the last parse, in the order submit() received
+    // them. Cleared — and pendingEditsAllPresent_ reset to true — at the
+    // start of runPendingParse(), which is also where the accumulated batch
+    // is actually applied.
+    std::vector<TSInputEdit> pendingEdits_;
+    bool pendingEditsAllPresent_ = true;
 };
 
 } // namespace hungryeditor
 
 Q_DECLARE_METATYPE(hungryeditor::HighlightResult)
+Q_DECLARE_METATYPE(hungryeditor::PendingEdit)

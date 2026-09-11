@@ -28,10 +28,13 @@ public:
     void configure(const TSLanguage* language, const QString& highlightQuery,
                    const QString& injectionQuery = {});
 
-    /// Submit the current document text. Returns the revision assigned to
-    /// this submission; results for superseded revisions are discarded.
-    /// A no-op (returns the current revision) while disabled.
-    quint64 submit(const QString& text);
+    /// Submit the current document text. `edit` describes the single-range
+    /// change it reflects relative to the previous submission, when the
+    /// caller has one (see PendingEdit) — omit it for a plain full reparse.
+    /// Returns the revision assigned to this submission; results for
+    /// superseded revisions are discarded. A no-op (returns the current
+    /// revision) while disabled.
+    quint64 submit(const QString& text, PendingEdit edit = {});
 
     /// Enable or disable parsing. Disabled by the editor's large-file
     /// fallback: submissions are ignored and no results are emitted until

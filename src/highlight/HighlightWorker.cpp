@@ -91,11 +91,18 @@ void HighlightWorker::configure(const TSLanguage* language, const QString& highl
     injectionQuery_ = newQuery(language, injectionQuery.toUtf8());
 }
 
-void HighlightWorker::submit(const QString& text, quint64 revision)
+void HighlightWorker::submit(const QString& text, quint64 revision, PendingEdit edit)
 {
     pendingText_ = text;
     pendingRevision_ = revision;
     havePending_ = true;
+    if (edit.present) {
+        pendingEdits_.push_back(edit.edit);
+    } else {
+        // No edit for this submission — the whole batch can only be
+        // described by a full reparse, so stop bothering to accumulate.
+        pendingEditsAllPresent_ = false;
+    }
     debounce_->start(); // restart: coalesce bursts into one parse
 }
 
@@ -110,7 +117,25 @@ void HighlightWorker::runPendingParse()
     const std::string source = pendingText_.toStdString();
     pendingText_.clear();
 
-    engine_.setText(source);
+    // Every edit since the last parse, still in order — or none, if any
+    // submission in this batch had no edit of its own (see submit()).
+    const bool haveEdits = pendingEditsAllPresent_ && !pendingEdits_.empty();
+    const std::vector<TSInputEdit> edits = std::move(pendingEdits_);
+    pendingEdits_.clear();
+    pendingEditsAllPresent_ = true;
+
+    if (haveEdits) {
+        // Cheap bookkeeping per edit (shifts the existing tree's node
+        // ranges; no-op if there is no tree yet), then one real reparse
+        // against the final text — tree-sitter's own pattern for folding
+        // several edits into a single incremental parse.
+        for (const TSInputEdit& edit : edits) {
+            engine_.noteEdit(edit);
+        }
+        engine_.reparse(source);
+    } else {
+        engine_.setText(source);
+    }
 
     HighlightResult result;
     result.revision = revision;

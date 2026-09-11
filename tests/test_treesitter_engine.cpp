@@ -52,6 +52,8 @@ private slots:
     void incrementalInsertReflectsNewContent();
     void incrementalEditCanRemoveAFencedBlock();
     void pointAtComputesRowAndColumn();
+    void pointAfterWalksFromAGivenStart();
+    void multipleNotedEditsFoldIntoOneReparse();
     void moveTransfersOwnership();
 };
 
@@ -128,6 +130,60 @@ void TestTreeSitterEngine::pointAtComputesRowAndColumn()
     const TSPoint past = hungryeditor::TreeSitterEngine::pointAt(text, 999);
     QCOMPARE(past.row, 2u);
     QCOMPARE(past.column, 2u);
+}
+
+void TestTreeSitterEngine::pointAfterWalksFromAGivenStart()
+{
+    const TSPoint start{2, 3};
+
+    const TSPoint noNewlines = hungryeditor::TreeSitterEngine::pointAfter(start, "abc");
+    QCOMPARE(noNewlines.row, 2u);
+    QCOMPARE(noNewlines.column, 6u);
+
+    const TSPoint withNewlines = hungryeditor::TreeSitterEngine::pointAfter(start, "ab\ncd\nefg");
+    QCOMPARE(withNewlines.row, 4u);
+    QCOMPARE(withNewlines.column, 3u);
+}
+
+void TestTreeSitterEngine::multipleNotedEditsFoldIntoOneReparse()
+{
+    // The exact shape HighlightWorker uses for edits that land within one
+    // debounce window: several noteEdit() calls against the same tree,
+    // then a single reparse() at the end — not one reparse per edit.
+    hungryeditor::TreeSitterEngine engine;
+    engine.setLanguage(tree_sitter_markdown());
+
+    const std::string text0 = "intro\n";
+    engine.setText(text0);
+    QVERIFY(!containsType(engine.rootNode(), "fenced_code_block"));
+
+    const std::string text1 = text0 + "\n```c\nint x;\n```\n";
+    const auto edit1 =
+        makeEdit(text0, text1, static_cast<uint32_t>(text0.size()),
+                 static_cast<uint32_t>(text0.size()), static_cast<uint32_t>(text1.size()));
+
+    const std::string text2 = text1 + "\noutro\n";
+    const auto edit2 =
+        makeEdit(text1, text2, static_cast<uint32_t>(text1.size()),
+                 static_cast<uint32_t>(text1.size()), static_cast<uint32_t>(text2.size()));
+
+    engine.noteEdit(edit1);
+    engine.noteEdit(edit2);
+    engine.reparse(text2);
+
+    QCOMPARE(engine.source(), std::string_view(text2));
+    QVERIFY(containsType(engine.rootNode(), "fenced_code_block"));
+
+    // Must match a plain from-scratch parse of the same final text: folding
+    // several edits into one reparse has to produce the same tree a full
+    // reparse would, just faster.
+    hungryeditor::TreeSitterEngine fresh;
+    fresh.setLanguage(tree_sitter_markdown());
+    fresh.setText(text2);
+    QCOMPARE(QByteArray(ts_node_type(engine.rootNode())),
+             QByteArray(ts_node_type(fresh.rootNode())));
+    QCOMPARE(ts_node_named_child_count(engine.rootNode()),
+             ts_node_named_child_count(fresh.rootNode()));
 }
 
 void TestTreeSitterEngine::moveTransfersOwnership()

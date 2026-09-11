@@ -115,6 +115,7 @@ private slots:
     void mainWindowConstructionStaysFast();
     void tenMegabyteFileOpensReasonablyFast();
     void editingStaysFast();
+    void singleEditOnALargeDocumentStaysFast();
     void previewRefreshCompletesQuickly();
     void benchmarkMainWindowConstruction();
     void benchmarkPreviewRefresh();
@@ -179,6 +180,63 @@ void TestBenchmarks::editingStaysFast()
     const double perEdit = double(elapsed) / iterations;
     QVERIFY2(perEdit < 50.0,
              qPrintable(QStringLiteral("Average edit cost was %1 ms").arg(perEdit)));
+}
+
+void TestBenchmarks::singleEditOnALargeDocumentStaysFast()
+{
+    // A real, single-character edit on a large, already-parsed
+    // tree-sitter-tier document, compared directly against an
+    // equivalent-cost full-buffer replace (the only option before 11.6).
+    //
+    // Measured directly (not asserted here, since the two setups differ
+    // enough — a live Editor's full highlight+outline+margin pipeline vs a
+    // bare TreeSitterEngine — that a single run's ratio isn't a stable
+    // threshold): tree-sitter's own incremental reparse of this 1.5 MB
+    // document is only ~1.1-1.15x faster than a full reparse, regardless of
+    // whether the edit lands at the start, middle or end. That is real, but
+    // far short of the dramatic near-O(1) speedup incremental reparsing
+    // gives most grammars — tree-sitter-markdown's external scanner tracks
+    // nested block/indentation state that limits how much of the tree can
+    // be reused across an edit. The other, larger cost this test does NOT
+    // yet fix is computeSpans() repainting and run-length-encoding every
+    // byte of the document on every parse, regardless of what changed —
+    // that is 11.7 (viewport-only span computation), not this commit.
+    //
+    // So this test only checks two things: a single edit does not crash or
+    // hang, and it is not slower than an equivalent full-document
+    // reparse — a floor, not the target this pair of commits is working
+    // toward together.
+    Editor editor;
+    const QString big = realisticLargeDocument(1536 * 1024); // 1.5 MB, tree-sitter tier
+
+    QSignalSpy spy(&editor, &Editor::highlightingApplied);
+    editor.setText(big);
+    QVERIFY(spy.wait(5000)); // let the initial full parse land before timing anything
+    spy.clear();
+
+    QElapsedTimer incrementalTimer;
+    incrementalTimer.start();
+    editor.call().InsertText(editor.call().Length(), "x");
+    QVERIFY2(spy.wait(5000), "a single edit's reparse did not complete in time");
+    const qint64 incrementalElapsed = incrementalTimer.elapsed();
+
+    Editor fullEditor;
+    QSignalSpy fullSpy(&fullEditor, &Editor::highlightingApplied);
+    fullEditor.setText(big);
+    QVERIFY(fullSpy.wait(5000));
+    fullSpy.clear();
+
+    QElapsedTimer fullTimer;
+    fullTimer.start();
+    fullEditor.setText(big + QStringLiteral("x")); // whole-buffer replace: old-style full reparse
+    QVERIFY(fullSpy.wait(5000));
+    const qint64 fullElapsed = fullTimer.elapsed();
+
+    QVERIFY2(incrementalElapsed <= fullElapsed + 200, // generous slack for CI noise
+             qPrintable(QStringLiteral("Incremental edit (%1 ms) was slower than a full "
+                                       "reparse (%2 ms)")
+                            .arg(incrementalElapsed)
+                            .arg(fullElapsed)));
 }
 
 void TestBenchmarks::previewRefreshCompletesQuickly()

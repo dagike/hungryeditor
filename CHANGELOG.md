@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gets styled as a constant just because a later, unconditional-looking rule
   in the query file happened to come last.
 
+### Changed
+
+- Editor edits reparse incrementally (tree-sitter's `noteEdit`/`reparse`)
+  instead of reparsing the whole buffer from scratch on every keystroke.
+  Measured effect for `tree-sitter-markdown` specifically is modest
+  (~10-15%, not a dramatic speedup) — its external scanner tracks nested
+  block/indentation state that limits how much of the tree can be reused
+  across an edit. Whole-document span computation, the larger remaining
+  per-keystroke cost, is unchanged by this entry.
+
 ## [0.1.0] - 2026-09-11
 
 First tagged release.
