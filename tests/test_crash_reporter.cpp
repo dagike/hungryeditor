@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QProcess>
 #include <QTemporaryDir>
+#include <QtGlobal>
 #include <QtTest>
 
 #ifndef CRASH_HELPER_PATH
@@ -39,7 +40,14 @@ void TestCrashReporter::writesAReportOnACrash()
     QVERIFY(report.open(QIODevice::ReadOnly));
     const QString contents = QString::fromUtf8(report.readAll());
 
+    // The crash is a real, deliberate null-pointer write in crash_helper: a
+    // SIGSEGV on POSIX, an access-violation exception on Windows. Each
+    // platform's report names it differently — see CrashReporter.cpp.
+#if defined(Q_OS_WIN)
+    QVERIFY(contents.contains(QStringLiteral("exception code:")));
+#else
     QVERIFY(contents.contains(QStringLiteral("SIGSEGV")));
+#endif
     QVERIFY(contents.contains(QStringLiteral("test-version")));
     QVERIFY(contents.contains(QStringLiteral("backtrace:")));
     // The backtrace itself: at least one line beyond the header, from

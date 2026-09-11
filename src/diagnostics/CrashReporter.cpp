@@ -140,11 +140,14 @@ LONG WINAPI handleUnhandledException(EXCEPTION_POINTERS* info)
             (info != nullptr && info->ExceptionRecord != nullptr)
                 ? static_cast<unsigned long>(info->ExceptionRecord->ExceptionCode)
                 : 0UL;
+        // Keeps the same "backtrace:" marker line as the POSIX report above,
+        // so anything parsing either format can look for one literal string.
         char header[512];
         const int len = std::snprintf(
             header, sizeof(header),
             "hungryeditor crash report\nexception code: 0x%08lX\napp version: %s\nqt version: "
-            "%s\n\nbacktrace (raw addresses — resolve offline against this build):\n",
+            "%s\nnote: addresses are unsymbolicated — resolve offline against this build\n\n"
+            "backtrace:\n",
             code, g_appVersion, g_qtVersion);
         DWORD written = 0;
         if (len > 0) {
