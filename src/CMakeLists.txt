@@ -3,7 +3,7 @@
 # Application logic lives in the `hungryeditor_core` static library so that it
 # can be exercised by the test tree; `hungryeditor` is a thin entry point.
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent PrintSupport)
 
 qt_standard_project_setup()
 
@@ -159,6 +159,7 @@ target_link_libraries(hungryeditor_core PRIVATE
     Qt6::WebEngineWidgets
     Qt6::WebChannel
     Qt6::Concurrent
+    Qt6::PrintSupport
     hungryeditor::md4c
 )
 

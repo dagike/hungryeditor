@@ -178,6 +178,11 @@ public:
     /// lastError()).
     bool exportHtmlTo(const QString& path);
 
+    /// Render the current buffer's preview to a standalone PDF at `path`.
+    /// Forces a preview render first, even in Editor-only view. Returns
+    /// false on failure (see lastError()).
+    bool exportPdfTo(const QString& path);
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -193,6 +198,8 @@ private slots:
     void nextDocument();
     void previousDocument();
     void exportHtmlDialog();
+    void printDialog();
+    void exportPdfDialog();
 
 private:
     void buildMenus();
@@ -202,6 +209,9 @@ private:
     // whenever a preview pane is visible.
     void applyViewMode();
     void refreshPreview();
+    // Forces a render even in Editor-only view (refreshPreview() skips it
+    // there) and blocks until the preview shell is up, for Print/PDF export.
+    void ensurePreviewRendered();
 
     // Scroll sync. Each direction guards against the echo the other would cause.
     void syncPreviewToEditor();
@@ -305,6 +315,7 @@ private:
     // it holds a raw pointer to the backend.
     std::unique_ptr<PreviewBackend> preview_;
     std::unique_ptr<PreviewController> previewController_;
+    bool previewReady_ = false; ///< latched true once the preview shell first comes up
     QAction* saveAction_ = nullptr;
     QAction* foldFrontMatterAction_ = nullptr;
     QMenu* recentMenu_ = nullptr;

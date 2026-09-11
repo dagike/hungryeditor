@@ -35,6 +35,8 @@ public:
     void runJavaScript(const QString& script,
                        const std::function<void(const QVariant&)>& callback = {}) override;
     void scrollToSourceLine(int line) override;
+    bool print(QPrinter* printer) override;
+    bool printToPdf(const QString& filePath) override;
 
 private:
     // Owned until widget() is embedded in a layout, which reparents it; the

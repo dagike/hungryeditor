@@ -10,6 +10,7 @@
 #include <QDockWidget>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QImage>
@@ -18,6 +19,8 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPrintDialog>
+#include <QPrinter>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QSignalBlocker>
@@ -229,6 +232,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             &MainWindow::jumpEditorToLine);
     connect(preview_.get(), &PreviewBackend::taskToggled, this,
             [this](int line, bool checked) { editor_->setTaskChecked(line, checked); });
+    connect(preview_.get(), &PreviewBackend::ready, this, [this] { previewReady_ = true; });
 
     buildMenus();
     setStateDirectory(defaultStateDirectory());
@@ -351,6 +355,13 @@ void MainWindow::buildMenus()
     QAction* exportHtmlAction =
         exportMenu->addAction(tr("As &HTML…"), this, &MainWindow::exportHtmlDialog);
     exportHtmlAction->setObjectName(QStringLiteral("action.exportHtml"));
+
+    QAction* printAction = exportMenu->addAction(tr("&Print…"), this, &MainWindow::printDialog);
+    printAction->setObjectName(QStringLiteral("action.print"));
+
+    QAction* exportPdfAction =
+        exportMenu->addAction(tr("Export as &PDF…"), this, &MainWindow::exportPdfDialog);
+    exportPdfAction->setObjectName(QStringLiteral("action.exportPdf"));
 
     fileMenu->addSeparator();
 
@@ -1596,6 +1607,61 @@ void MainWindow::exportHtmlDialog()
         return;
     }
     if (!exportHtmlTo(path)) {
+        QMessageBox::warning(this, tr("Export Failed"), lastError_);
+    }
+}
+
+void MainWindow::ensurePreviewRendered()
+{
+    previewController_->setMarkdown(editor_->text());
+    previewController_->flush();
+    if (previewReady_) {
+        return;
+    }
+    QEventLoop loop;
+    const QMetaObject::Connection connection =
+        connect(preview_.get(), &PreviewBackend::ready, &loop, &QEventLoop::quit);
+    loop.exec();
+    QObject::disconnect(connection);
+}
+
+bool MainWindow::exportPdfTo(const QString& path)
+{
+    ensurePreviewRendered();
+    if (!preview_->printToPdf(path)) {
+        lastError_ = tr("Could not write PDF.");
+        return false;
+    }
+    lastError_.clear();
+    return true;
+}
+
+void MainWindow::printDialog()
+{
+    ensurePreviewRendered();
+    QPrinter printer(QPrinter::HighResolution);
+    QPrintDialog dialog(&printer, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    if (!preview_->print(&printer)) {
+        QMessageBox::warning(this, tr("Print Failed"), tr("The document could not be printed."));
+    }
+}
+
+void MainWindow::exportPdfDialog()
+{
+    const QFileInfo current(currentPath());
+    const QString dir = current.exists() ? current.absolutePath() : QDir::homePath();
+    const QString suggested =
+        QDir(dir).filePath(exportTitle().isEmpty() ? QStringLiteral("export") : exportTitle()) +
+        QStringLiteral(".pdf");
+    const QString path =
+        QFileDialog::getSaveFileName(this, tr("Export as PDF"), suggested, tr("PDF files (*.pdf)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!exportPdfTo(path)) {
         QMessageBox::warning(this, tr("Export Failed"), lastError_);
     }
 }

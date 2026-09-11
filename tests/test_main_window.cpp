@@ -6,6 +6,7 @@
 #include <QDropEvent>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QListWidget>
@@ -55,6 +56,7 @@ private slots:
     void openPathLoadsFileAndClearsDirty();
     void savePathWritesBufferPreservingLineEnding();
     void exportHtmlWritesAStandaloneFile();
+    void exportPdfWritesAFileEvenFromEditorOnlyView();
     void openPathReportsMissingFile();
     void openFilesOpensEachActivatingTheFirst();
     void openFilesReportsFailuresAndOpensTheRest();
@@ -222,6 +224,28 @@ void TestMainWindow::exportHtmlWritesAStandaloneFile()
     QVERIFY(html.startsWith(QLatin1String("<!doctype html>")));
     QVERIFY(html.contains(QLatin1String("<title>Note</title>")));
     QVERIFY(html.contains(QLatin1String("Some <em>text</em>")));
+}
+
+void TestMainWindow::exportPdfWritesAFileEvenFromEditorOnlyView()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString source = dir.filePath(QStringLiteral("note.md"));
+    {
+        QFile file(source);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Note\n\nSome text.\n");
+    }
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(source));
+    // Editor-only view never feeds the preview (refreshPreview() skips it),
+    // so this also proves exportPdfTo() forces a render on its own.
+    window.setViewMode(hungryeditor::MainWindow::ViewMode::Editor);
+
+    const QString target = dir.filePath(QStringLiteral("note.pdf"));
+    QVERIFY(window.exportPdfTo(target));
+    QVERIFY(QFileInfo(target).size() > 0);
 }
 
 void TestMainWindow::openPathReportsMissingFile()
@@ -600,6 +624,8 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
     QTest::newRow("exportHtml") << QStringLiteral("action.exportHtml");
+    QTest::newRow("print") << QStringLiteral("action.print");
+    QTest::newRow("exportPdf") << QStringLiteral("action.exportPdf");
 }
 
 void TestMainWindow::hasNamedActions()

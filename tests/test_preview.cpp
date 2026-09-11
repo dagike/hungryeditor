@@ -1,7 +1,10 @@
 // Coverage for the preview backend and its Qt WebEngine implementation.
 
 #include <QElapsedTimer>
+#include <QFileInfo>
+#include <QPrinter>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QtTest>
 
 #include "preview/QtWebEnginePreview.h"
@@ -30,6 +33,8 @@ private slots:
     void showsAnInlineErrorForBrokenMath();
     void defersOffscreenDiagramsUntilTheyScrollIntoView();
     void blocksExternalPreviewResources();
+    void printWritesAFile();
+    void printToPdfWritesAFile();
 };
 
 namespace {
@@ -429,6 +434,42 @@ void TestPreview::blocksExternalPreviewResources()
     }
     QVERIFY(hits.contains(QStringLiteral("img-src")));
     QVERIFY(hits.contains(QStringLiteral("example.invalid")));
+}
+
+void TestPreview::printWritesAFile()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<p data-src-line=\"0\">printable</p>"));
+    QVERIFY(ready.wait(20000));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("out.pdf"));
+
+    // A printer aimed at a PDF file exercises the real print() codepath
+    // without needing an OS printer or a modal dialog.
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setOutputFormat(QPrinter::PdfFormat);
+    printer.setOutputFileName(path);
+
+    QVERIFY(preview.print(&printer));
+    QVERIFY(QFileInfo(path).size() > 0);
+}
+
+void TestPreview::printToPdfWritesAFile()
+{
+    QtWebEnginePreview preview;
+    QSignalSpy ready(&preview, &PreviewBackend::ready);
+    preview.setContent(QStringLiteral("<p data-src-line=\"0\">printable</p>"));
+    QVERIFY(ready.wait(20000));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("out.pdf"));
+
+    QVERIFY(preview.printToPdf(path));
+    QVERIFY(QFileInfo(path).size() > 0);
 }
 
 QTEST_MAIN(TestPreview)
