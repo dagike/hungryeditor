@@ -16,6 +16,7 @@ class QActionGroup;
 class QDockWidget;
 class QDragEnterEvent;
 class QDropEvent;
+class QLabel;
 class QMenu;
 class QSplitter;
 class QTimer;
@@ -101,6 +102,16 @@ public:
 
     /// The "Open Recent" submenu. Exposed for tests.
     QMenu* recentFilesMenu() const { return recentMenu_; }
+
+    /// The status bar's segments, e.g. "Ln 3, Col 1" and "12 selected".
+    /// Exposed for tests.
+    QString statusPositionText() const;
+    /// e.g. "128 words, 743 chars".
+    QString statusCountsText() const;
+    /// e.g. "LF".
+    QString statusLineEndingText() const;
+    /// e.g. "UTF-8".
+    QString statusEncodingText() const;
 
     /// Repopulate the "Open Recent" submenu from the stored list. Normally run
     /// from the menu's aboutToShow; exposed for tests.
@@ -227,6 +238,13 @@ private:
     void buildMenus();
     void updateWindowTitle();
 
+    // Status bar: cursor position updates immediately (cheap); word/char
+    // counts are debounced off outlineTimer_ (a full-document scan); encoding
+    // and line ending only change on a document switch.
+    void buildStatusBar();
+    void updateCursorStatus(int line, int column);
+    void updateDocumentStatus();
+
     // Live preview: created on construction, fed the editor's text (debounced)
     // whenever a preview pane is visible.
     void applyViewMode();
@@ -327,6 +345,10 @@ private:
     QDockWidget* searchDock_ = nullptr;
     OutlinePanel* outline_ = nullptr;
     QDockWidget* outlineDock_ = nullptr;
+    QLabel* statusPosition_ = nullptr;
+    QLabel* statusCounts_ = nullptr;
+    QLabel* statusLineEnding_ = nullptr;
+    QLabel* statusEncoding_ = nullptr;
     QTimer* outlineTimer_ = nullptr;
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;

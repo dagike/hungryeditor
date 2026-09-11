@@ -60,6 +60,36 @@ QString lineEndingText(LineEnding eol)
     return QStringLiteral("\n");
 }
 
+QString lineEndingLabel(LineEnding eol)
+{
+    switch (eol) {
+    case LineEnding::CrLf:
+        return QStringLiteral("CRLF");
+    case LineEnding::Cr:
+        return QStringLiteral("CR");
+    case LineEnding::Lf:
+        break;
+    }
+    return QStringLiteral("LF");
+}
+
+QString encodingLabel(Encoding encoding)
+{
+    switch (encoding) {
+    case Encoding::Utf8Bom:
+        return QStringLiteral("UTF-8 BOM");
+    case Encoding::Utf16Le:
+        return QStringLiteral("UTF-16 LE");
+    case Encoding::Utf16Be:
+        return QStringLiteral("UTF-16 BE");
+    case Encoding::Latin1:
+        return QStringLiteral("ANSI");
+    case Encoding::Utf8:
+        break;
+    }
+    return QStringLiteral("UTF-8");
+}
+
 TextDocument decodeBytes(const QByteArray& bytes)
 {
     TextDocument doc;

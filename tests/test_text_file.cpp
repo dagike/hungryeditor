@@ -31,6 +31,8 @@ private slots:
     void loadMissingFileReportsError();
     void savesAndReloadsFromDisk();
     void saveIsAtomicOnExistingFile();
+    void lineEndingLabelsAreShortAndDistinct();
+    void encodingLabelsAreShortAndDistinct();
 };
 
 void TestTextFile::decodesPlainUtf8()
@@ -185,6 +187,22 @@ void TestTextFile::saveIsAtomicOnExistingFile()
     QVERIFY(hungryeditor::saveFile(path, second));
 
     QCOMPARE(hungryeditor::loadFile(path).text, QStringLiteral("replacement\n"));
+}
+
+void TestTextFile::lineEndingLabelsAreShortAndDistinct()
+{
+    QCOMPARE(hungryeditor::lineEndingLabel(LineEnding::Lf), QStringLiteral("LF"));
+    QCOMPARE(hungryeditor::lineEndingLabel(LineEnding::CrLf), QStringLiteral("CRLF"));
+    QCOMPARE(hungryeditor::lineEndingLabel(LineEnding::Cr), QStringLiteral("CR"));
+}
+
+void TestTextFile::encodingLabelsAreShortAndDistinct()
+{
+    QCOMPARE(hungryeditor::encodingLabel(Encoding::Utf8), QStringLiteral("UTF-8"));
+    QCOMPARE(hungryeditor::encodingLabel(Encoding::Utf8Bom), QStringLiteral("UTF-8 BOM"));
+    QCOMPARE(hungryeditor::encodingLabel(Encoding::Utf16Le), QStringLiteral("UTF-16 LE"));
+    QCOMPARE(hungryeditor::encodingLabel(Encoding::Utf16Be), QStringLiteral("UTF-16 BE"));
+    QCOMPARE(hungryeditor::encodingLabel(Encoding::Latin1), QStringLiteral("ANSI"));
 }
 
 QTEST_MAIN(TestTextFile)

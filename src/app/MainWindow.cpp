@@ -16,6 +16,8 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QInputDialog>
+#include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -23,10 +25,12 @@
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardPaths>
+#include <QStatusBar>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -42,6 +46,7 @@
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "io/TextFile.h"
 #include "markdown/Outline.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
@@ -94,6 +99,15 @@ QString defaultStateDirectory()
         base = QDir::tempPath() + QLatin1String("/hungryeditor");
     }
     return base;
+}
+
+/// A whitespace-delimited word count of the raw buffer (markdown syntax
+/// counted along with prose, same as most text editors' status bars).
+int wordCount(const QString& text)
+{
+    static const QRegularExpression whitespace(QStringLiteral("\\s+"));
+    const QString trimmed = text.trimmed();
+    return trimmed.isEmpty() ? 0 : static_cast<int>(trimmed.split(whitespace).count());
 }
 } // namespace
 
@@ -205,9 +219,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     outlineTimer_->setSingleShot(true);
     outlineTimer_->setInterval(150);
     connect(outlineTimer_, &QTimer::timeout, this, &MainWindow::rebuildOutline);
+    connect(outlineTimer_, &QTimer::timeout, this, &MainWindow::updateDocumentStatus);
     connect(editor_, &Editor::textChanged, this, [this] { outlineTimer_->start(); });
     connect(editor_, &Editor::cursorPositionChanged, this,
             [this](int line, int /*column*/) { outline_->highlightLine(line); });
+    connect(editor_, &Editor::cursorPositionChanged, this, &MainWindow::updateCursorStatus);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
@@ -236,6 +252,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(preview_.get(), &PreviewBackend::ready, this, [this] { previewReady_ = true; });
 
     buildMenus();
+    buildStatusBar();
     setStateDirectory(defaultStateDirectory());
     applyViewMode();
     setTheme(currentTheme_);
@@ -654,6 +671,8 @@ void MainWindow::onCurrentChanged(int index)
     updateFrontMatterAction();
     rebuildOutline();
     updateWorkspaceRoot();
+    updateCursorStatus(editor_->cursorLine(), editor_->cursorColumn());
+    updateDocumentStatus();
 }
 
 void MainWindow::updateWorkspaceRoot()
@@ -873,6 +892,65 @@ void MainWindow::rebuildOutline()
 {
     outline_->setHeadings(outline::parse(editor_->text()));
     outline_->highlightLine(editor_->cursorLine());
+}
+
+void MainWindow::buildStatusBar()
+{
+    statusPosition_ = new QLabel(this);
+    statusCounts_ = new QLabel(this);
+    statusLineEnding_ = new QLabel(this);
+    statusEncoding_ = new QLabel(this);
+    for (QLabel* label : {statusPosition_, statusCounts_, statusLineEnding_, statusEncoding_}) {
+        label->setContentsMargins(6, 0, 6, 0);
+        statusBar()->addPermanentWidget(label);
+    }
+    updateCursorStatus(editor_->cursorLine(), editor_->cursorColumn());
+    updateDocumentStatus();
+}
+
+void MainWindow::updateCursorStatus(int line, int column)
+{
+    const int selected = static_cast<int>(editor_->selectedText().size());
+    statusPosition_->setText(selected > 0 ? tr("Ln %1, Col %2 (%3 selected)")
+                                                .arg(line + 1)
+                                                .arg(column + 1)
+                                                .arg(QLocale().toString(selected))
+                                          : tr("Ln %1, Col %2").arg(line + 1).arg(column + 1));
+}
+
+void MainWindow::updateDocumentStatus()
+{
+    const QLocale locale;
+    const QString text = editor_->text();
+    statusCounts_->setText(
+        tr("%1 words, %2 chars")
+            .arg(locale.toString(wordCount(text)), locale.toString(static_cast<int>(text.size()))));
+
+    const Document* current = documents_ ? documents_->current() : nullptr;
+    statusLineEnding_->setText(
+        lineEndingLabel(current != nullptr ? current->lineEnding() : LineEnding::Lf));
+    statusEncoding_->setText(
+        encodingLabel(current != nullptr ? current->encoding() : Encoding::Utf8));
+}
+
+QString MainWindow::statusPositionText() const
+{
+    return statusPosition_ != nullptr ? statusPosition_->text() : QString();
+}
+
+QString MainWindow::statusCountsText() const
+{
+    return statusCounts_ != nullptr ? statusCounts_->text() : QString();
+}
+
+QString MainWindow::statusLineEndingText() const
+{
+    return statusLineEnding_ != nullptr ? statusLineEnding_->text() : QString();
+}
+
+QString MainWindow::statusEncodingText() const
+{
+    return statusEncoding_ != nullptr ? statusEncoding_->text() : QString();
 }
 
 void MainWindow::updateFrontMatterAction()

@@ -84,6 +84,9 @@ private slots:
     void loadCustomThemeAppliesOverridesAndCustomCss();
     void pickingABuiltinThemeClearsAnActiveCustomTheme();
     void customThemeSurvivesASessionReload();
+    void statusBarShowsCursorPositionAndSelection();
+    void statusBarShowsWordAndCharCounts();
+    void statusBarShowsEncodingAndLineEndingForTheCurrentDocument();
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
@@ -815,6 +818,54 @@ void TestMainWindow::customThemeSurvivesASessionReload()
     second.restoreLastSession(/*askFirst=*/false);
 
     QCOMPARE(second.currentTheme().background, QColor(QStringLiteral("#123456")));
+}
+
+void TestMainWindow::statusBarShowsCursorPositionAndSelection()
+{
+    hungryeditor::MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.editor()->setText(QStringLiteral("first\nsecond text\nthird\n"));
+
+    // Scintilla's UpdateUI notification (which drives the status label) is
+    // flushed from the next paint, not synchronously with the caret move.
+    window.editor()->setCursorPosition(1, 0);
+    QTRY_COMPARE(window.statusPositionText(), QStringLiteral("Ln 2, Col 1"));
+
+    window.editor()->setCursorPosition(1, 7); // inside "text"
+    window.editor()->selectNextOccurrence();
+    QCOMPARE(window.editor()->selectedText(), QStringLiteral("text"));
+    const QString expected = QStringLiteral("Ln %1, Col %2 (4 selected)")
+                                 .arg(window.editor()->cursorLine() + 1)
+                                 .arg(window.editor()->cursorColumn() + 1);
+    QTRY_COMPARE(window.statusPositionText(), expected);
+}
+
+void TestMainWindow::statusBarShowsWordAndCharCounts()
+{
+    hungryeditor::MainWindow window;
+    QCOMPARE(window.statusCountsText(), QStringLiteral("0 words, 0 chars"));
+
+    window.editor()->setText(QStringLiteral("one two three\n"));
+    QTRY_VERIFY_WITH_TIMEOUT(window.statusCountsText() == QStringLiteral("3 words, 14 chars"),
+                             2000);
+}
+
+void TestMainWindow::statusBarShowsEncodingAndLineEndingForTheCurrentDocument()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("crlf.md"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("one\r\ntwo\r\n");
+    file.close();
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(path));
+
+    QCOMPARE(window.statusLineEndingText(), QStringLiteral("CRLF"));
+    QCOMPARE(window.statusEncodingText(), QStringLiteral("UTF-8"));
 }
 
 void TestMainWindow::editorTextFlowsIntoThePreview()

@@ -46,6 +46,12 @@ struct FileError
 /// The literal sequence for a line ending.
 QString lineEndingText(LineEnding eol);
 
+/// A short display label for a line ending, e.g. "CRLF". For the status bar.
+QString lineEndingLabel(LineEnding eol);
+
+/// A short display label for an encoding, e.g. "UTF-8 BOM". For the status bar.
+QString encodingLabel(Encoding encoding);
+
 /// Decode raw file bytes: strip a BOM, choose an encoding, detect the
 /// dominant line ending and normalise every newline to "\n".
 TextDocument decodeBytes(const QByteArray& bytes);
