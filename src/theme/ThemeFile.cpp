@@ -57,6 +57,15 @@ Result loadThemeFile(const QString& path)
     theme.codeBackground = colourOr(root, QLatin1String("codeBackground"), base.codeBackground);
     theme.border = colourOr(root, QLatin1String("border"), base.border);
     theme.error = colourOr(root, QLatin1String("error"), base.error);
+    theme.keyword = colourOr(root, QLatin1String("keyword"), base.keyword);
+    theme.type = colourOr(root, QLatin1String("type"), base.type);
+    theme.function = colourOr(root, QLatin1String("function"), base.function);
+    theme.string = colourOr(root, QLatin1String("string"), base.string);
+    theme.comment = colourOr(root, QLatin1String("comment"), base.comment);
+    theme.currentLine = colourOr(root, QLatin1String("currentLine"), base.currentLine);
+    theme.selection = colourOr(root, QLatin1String("selection"), base.selection);
+    theme.findMatch = colourOr(root, QLatin1String("findMatch"), base.findMatch);
+    theme.braceMatch = colourOr(root, QLatin1String("braceMatch"), base.braceMatch);
 
     result.ok = true;
     result.theme = theme;

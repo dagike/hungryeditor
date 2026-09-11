@@ -33,6 +33,8 @@ private slots:
     void ignoresAnInvalidColourAndFallsBack();
     void reportsAMissingFile();
     void reportsMalformedJson();
+    void appliesTheNewSyntaxAndChromeOverrides();
+    void aSparseOldStyleFileStillFallsBackForTheNewFields();
 };
 
 void TestThemeFile::appliesOnlyTheGivenOverrides()
@@ -90,6 +92,46 @@ void TestThemeFile::reportsMalformedJson()
     const Result result = loadThemeFile(path);
     QVERIFY(!result.ok);
     QVERIFY(!result.error.isEmpty());
+}
+
+void TestThemeFile::appliesTheNewSyntaxAndChromeOverrides()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeThemeFile(dir, R"({
+        "keyword": "#111111", "type": "#222222", "function": "#333333",
+        "string": "#444444", "comment": "#555555",
+        "currentLine": "#666666", "selection": "#777777",
+        "findMatch": "#888888", "braceMatch": "#999999"
+    })");
+
+    const Result result = loadThemeFile(path);
+    QVERIFY(result.ok);
+    QCOMPARE(result.theme.keyword.name(), QStringLiteral("#111111"));
+    QCOMPARE(result.theme.type.name(), QStringLiteral("#222222"));
+    QCOMPARE(result.theme.function.name(), QStringLiteral("#333333"));
+    QCOMPARE(result.theme.string.name(), QStringLiteral("#444444"));
+    QCOMPARE(result.theme.comment.name(), QStringLiteral("#555555"));
+    QCOMPARE(result.theme.currentLine.name(), QStringLiteral("#666666"));
+    QCOMPARE(result.theme.selection.name(), QStringLiteral("#777777"));
+    QCOMPARE(result.theme.findMatch.name(), QStringLiteral("#888888"));
+    QCOMPARE(result.theme.braceMatch.name(), QStringLiteral("#999999"));
+}
+
+void TestThemeFile::aSparseOldStyleFileStillFallsBackForTheNewFields()
+{
+    // A theme file written before these fields existed (only the original 9
+    // keys) must still load cleanly, with the new fields defaulting to light.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = writeThemeFile(dir, R"({"background": "#101010"})");
+
+    const Result result = loadThemeFile(path);
+    QVERIFY(result.ok);
+    const Theme light = Theme::builtin();
+    QCOMPARE(result.theme.keyword, light.keyword);
+    QCOMPARE(result.theme.currentLine, light.currentLine);
+    QCOMPARE(result.theme.braceMatch, light.braceMatch);
 }
 
 QTEST_APPLESS_MAIN(TestThemeFile)
