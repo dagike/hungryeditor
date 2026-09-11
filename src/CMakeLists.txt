@@ -63,6 +63,8 @@ add_library(hungryeditor_core STATIC
     highlight/CodeHighlighter.h
     highlight/GrammarRegistry.cpp
     highlight/GrammarRegistry.h
+    highlight/QueryPredicates.cpp
+    highlight/QueryPredicates.h
     highlight/TreeSitterEngine.cpp
     highlight/TreeSitterEngine.h
     highlight/HighlightWorker.cpp

@@ -72,10 +72,13 @@ private:
     void runPendingParse();
     void clearQueries();
     QVector<HighlightSpan> computeSpans(std::string_view source) const;
-    /// Paint every capture of `query` under `root` into `byteStyle`, shifting
-    /// node offsets by `baseOffset` (non-zero for injected sub-trees).
+    /// Paint every capture of every predicate-satisfying match of `query`
+    /// under `root` into `byteStyle`, shifting node offsets by `baseOffset`
+    /// (non-zero for injected sub-trees). `textForPredicates` is the text
+    /// captured nodes' byte offsets are relative to — the injected snippet's
+    /// own text for a sub-tree, not the outer document.
     void paintCaptures(TSQuery* query, const TSNode& root, quint32 baseOffset,
-                       std::vector<qint32>& byteStyle) const;
+                       std::string_view textForPredicates, std::vector<qint32>& byteStyle) const;
     /// Walk the injection query and paint each recognised sub-grammar over the
     /// bytes of its injection.content node. Each sub-grammar's own compiled
     /// query comes from GrammarRegistry's process-wide cache (shared with

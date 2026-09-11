@@ -9,6 +9,7 @@
 
 #include "highlight/CaptureStyles.h"
 #include "highlight/GrammarRegistry.h"
+#include "highlight/QueryPredicates.h"
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
 
 extern "C" const TSLanguage* tree_sitter_markdown_inline(void);
@@ -39,33 +40,6 @@ Grammar injectedGrammar(std::string_view name)
         return {tree_sitter_markdown_inline(), queries::kMarkdownInlineHighlights};
     }
     return grammarForName(name);
-}
-
-/// Value of a `(#set! injection.language "x")` directive on a query pattern,
-/// or empty when the pattern carries no such directive.
-std::string directiveLanguage(const TSQuery* query, uint32_t patternIndex)
-{
-    uint32_t stepCount = 0;
-    const TSQueryPredicateStep* steps =
-        ts_query_predicates_for_pattern(query, patternIndex, &stepCount);
-
-    std::vector<std::string_view> args;
-    for (uint32_t i = 0; i < stepCount; ++i) {
-        const TSQueryPredicateStep& step = steps[i];
-        if (step.type == TSQueryPredicateStepTypeDone) {
-            if (args.size() == 3 && args[0] == "set!" && args[1] == "injection.language") {
-                return std::string(args[2]);
-            }
-            args.clear();
-        } else if (step.type == TSQueryPredicateStepTypeString) {
-            uint32_t len = 0;
-            const char* value = ts_query_string_value_for_id(query, step.value_id, &len);
-            args.emplace_back(value, len);
-        } else {
-            args.emplace_back(); // capture step — keep argument positions aligned
-        }
-    }
-    return {};
 }
 
 } // namespace
@@ -162,7 +136,7 @@ QVector<HighlightSpan> HighlightWorker::computeSpans(std::string_view source) co
     // injected sub-grammars are painted last and override the block layer.
     std::vector<qint32> byteStyle(source.size(), StylePlain);
     if (query_ != nullptr) {
-        paintCaptures(query_, engine_.rootNode(), 0, byteStyle);
+        paintCaptures(query_, engine_.rootNode(), 0, source, byteStyle);
     }
     paintInjections(source, byteStyle);
 
@@ -179,27 +153,36 @@ QVector<HighlightSpan> HighlightWorker::computeSpans(std::string_view source) co
 }
 
 void HighlightWorker::paintCaptures(TSQuery* query, const TSNode& root, quint32 baseOffset,
+                                    std::string_view textForPredicates,
                                     std::vector<qint32>& byteStyle) const
 {
     TSQueryCursor* cursor = ts_query_cursor_new();
     ts_query_cursor_exec(cursor, query, root);
 
+    // Matched (not flattened via next_capture) so a #match?/#eq?/#any-of?
+    // predicate can see every capture of its own match — see
+    // QueryPredicates.h. All of a satisfying match's captures are then
+    // painted together, in the match's own capture order.
     TSQueryMatch match;
-    uint32_t captureIndex = 0;
-    while (ts_query_cursor_next_capture(cursor, &match, &captureIndex)) {
-        const TSQueryCapture& capture = match.captures[captureIndex];
-
-        uint32_t nameLen = 0;
-        const char* name = ts_query_capture_name_for_id(query, capture.index, &nameLen);
-        const int style = styleForCapture(std::string_view(name, nameLen));
-        if (style == StylePlain) {
+    while (ts_query_cursor_next_match(cursor, &match)) {
+        if (!predicates::matchesPredicates(query, match, textForPredicates)) {
             continue;
         }
+        for (uint16_t i = 0; i < match.capture_count; ++i) {
+            const TSQueryCapture& capture = match.captures[i];
 
-        const quint32 start = baseOffset + ts_node_start_byte(capture.node);
-        const quint32 end = baseOffset + ts_node_end_byte(capture.node);
-        for (quint32 i = start; i < end && i < byteStyle.size(); ++i) {
-            byteStyle[i] = style;
+            uint32_t nameLen = 0;
+            const char* name = ts_query_capture_name_for_id(query, capture.index, &nameLen);
+            const int style = styleForCapture(std::string_view(name, nameLen));
+            if (style == StylePlain) {
+                continue;
+            }
+
+            const quint32 start = baseOffset + ts_node_start_byte(capture.node);
+            const quint32 end = baseOffset + ts_node_end_byte(capture.node);
+            for (quint32 j = start; j < end && j < byteStyle.size(); ++j) {
+                byteStyle[j] = style;
+            }
         }
     }
     ts_query_cursor_delete(cursor);
@@ -242,7 +225,7 @@ void HighlightWorker::paintInjections(std::string_view source, std::vector<qint3
             continue;
         }
         if (language.empty()) {
-            language = directiveLanguage(injectionQuery_, match.pattern_index);
+            language = predicates::directiveLanguage(injectionQuery_, match.pattern_index);
         }
 
         const Grammar grammar = injectedGrammar(language);
@@ -270,7 +253,10 @@ void HighlightWorker::paintInjections(std::string_view source, std::vector<qint3
         sub.setLanguage(grammar.language);
         sub.setText(std::string(source.substr(contentStart, contentEnd - contentStart)));
         if (sub.hasTree()) {
-            paintCaptures(subQuery, sub.rootNode(), contentStart, byteStyle);
+            // sub.source() — not the outer `source` — matches the coordinate
+            // space of sub.rootNode()'s byte offsets, which predicate
+            // evaluation needs to resolve capture text correctly.
+            paintCaptures(subQuery, sub.rootNode(), contentStart, sub.source(), byteStyle);
         }
     }
     ts_query_cursor_delete(cursor);

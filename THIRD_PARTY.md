@@ -58,8 +58,12 @@ Each grammar's `LICENSE` is kept alongside its sources.
   `src/tree_sitter/*.h`, and `queries/highlights.scm` are compiled or read;
   a dialect that layers on a base language (C++ on C, TypeScript on
   JavaScript) has the base query concatenated ahead of its own at build time.
-  Predicate directives in the queries (`#match?`, `#eq?`) are not yet
-  evaluated, so a few captures over-fire slightly.
+  Filtering predicate directives in the queries (`#eq?`, `#not-eq?`,
+  `#match?`, `#not-match?`, `#any-of?`, `#not-any-of?`) are evaluated
+  (`src/highlight/QueryPredicates`); the `#is?`/`#is-not?` local-variable
+  scope hints a few grammars carry are not, since that needs a locals.scm
+  scope-tracking pass this highlighter doesn't have, so a handful of
+  identifier captures can still over-fire.
 - **md4c** is compiled from its single `src/md4c.c` (its bundled HTML renderer
   and `entity.c` table are not vendored — `src/markdown/Md4cRenderer` renders
   the parser callbacks directly so it can add `data-src-line` anchors for
