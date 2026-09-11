@@ -232,13 +232,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
-    preview_ = std::make_unique<QtWebEnginePreview>();
-    previewController_ = std::make_unique<PreviewController>(preview_.get());
-    QWidget* previewWidget = preview_->widget();
-    previewWidget->setMinimumWidth(160);
-    splitter_->addWidget(previewWidget);
-    splitter_->setStretchFactor(0, 1);
-    splitter_->setStretchFactor(1, 1);
     editor_->setImagePasteHandler([this](const QImage& image) -> QString {
         const QString ref = assets::writePastedImage(image, currentPath(), stateDir_);
         return ref.isEmpty() ? QString() : QStringLiteral("![](%1)").arg(ref);
@@ -247,19 +240,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(editor_, &Editor::textChanged, this, &MainWindow::refreshPreview);
     connect(editor_, &Editor::textChanged, this, &MainWindow::updateFrontMatterAction);
     connect(editor_, &Editor::viewportScrolled, this, &MainWindow::syncPreviewToEditor);
-    connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
-            &MainWindow::syncEditorToPreview);
-    connect(preview_.get(), &PreviewBackend::clickedSourceLine, this,
-            &MainWindow::jumpEditorToLine);
-    connect(preview_.get(), &PreviewBackend::taskToggled, this,
-            [this](int line, bool checked) { editor_->setTaskChecked(line, checked); });
-    connect(preview_.get(), &PreviewBackend::ready, this, [this] { previewReady_ = true; });
 
     buildMenus();
     buildStatusBar();
     setStateDirectory(defaultStateDirectory());
-    applyViewMode();
+    // Cheap: sets the theme action-group checkmarks and the editor's
+    // colours. Does not touch the preview (see setTheme()), so it stays
+    // synchronous — tests and callers can rely on it having run immediately.
     setTheme(currentTheme_);
+
+    // applyViewMode() is what actually needs the preview to exist (to show
+    // or hide its widget), and building the preview starts a Chromium
+    // subprocess (see ensurePreviewCreated()). Deferring this one call past
+    // construction lets the window paint and take input first. main() shows
+    // the window right after construction, so this runs on the very next
+    // event-loop turn — right after that first paint.
+    QTimer::singleShot(0, this, [this] { applyViewMode(); });
 
     connect(documents_.get(), &DocumentManager::documentAdded, this, &MainWindow::onDocumentAdded);
     connect(documents_.get(), &DocumentManager::documentClosed, this,
@@ -671,11 +667,16 @@ void MainWindow::onCurrentChanged(int index)
     updateWindowTitle();
 
     // A tab switch replaces the buffer wholesale; push it now rather than
-    // leaving the preview a debounce behind the visible document.
-    previewController_->setDocumentPath(currentPath());
-    if (viewMode_ != ViewMode::Editor) {
-        previewController_->setMarkdown(editor_->text());
-        previewController_->flush();
+    // leaving the preview a debounce behind the visible document. A null
+    // previewController_ here (this can run before the deferred preview
+    // creation — see the constructor) is fine: ensurePreviewCreated() syncs
+    // a freshly built preview to the current document itself.
+    if (previewController_) {
+        previewController_->setDocumentPath(currentPath());
+        if (viewMode_ != ViewMode::Editor) {
+            previewController_->setMarkdown(editor_->text());
+            previewController_->flush();
+        }
     }
 
     updateFrontMatterAction();
@@ -976,7 +977,48 @@ void MainWindow::updateFrontMatterAction()
 
 QWidget* MainWindow::previewWidget() const
 {
-    return preview_ != nullptr ? preview_->widget() : nullptr;
+    ensurePreviewCreated();
+    return preview_->widget();
+}
+
+void MainWindow::ensurePreviewCreated() const
+{
+    if (preview_) {
+        return;
+    }
+
+    preview_ = std::make_unique<QtWebEnginePreview>();
+    previewController_ = std::make_unique<PreviewController>(preview_.get());
+    QWidget* previewWidget = preview_->widget();
+    previewWidget->setMinimumWidth(160);
+    splitter_->addWidget(previewWidget);
+    splitter_->setStretchFactor(0, 1);
+    splitter_->setStretchFactor(1, 1);
+
+    connect(preview_.get(), &PreviewBackend::scrolledToSourceLine, this,
+            &MainWindow::syncEditorToPreview);
+    connect(preview_.get(), &PreviewBackend::clickedSourceLine, this,
+            &MainWindow::jumpEditorToLine);
+    connect(preview_.get(), &PreviewBackend::taskToggled, this,
+            [this](int line, bool checked) { editor_->setTaskChecked(line, checked); });
+    connect(preview_.get(), &PreviewBackend::ready, this, [this] { previewReady_ = true; });
+
+    // Bring a freshly created backend up to date immediately: the
+    // constructor's deferred applyViewMode() call would otherwise be the
+    // first thing to show it, but ensurePreviewRendered() (export/print) and
+    // restoreLastSession() can trigger creation earlier, and nothing else
+    // would seed a theme or document for it in that case.
+    if (customThemePath_.isEmpty()) {
+        preview_->setThemeCss(Theme::forBuiltin(currentTheme_).previewCss());
+    } else {
+        preview_->setThemeCss(customTheme_.previewCss() + customThemeCss_);
+    }
+    previewController_->setDocumentPath(currentPath());
+    if (viewMode_ != ViewMode::Editor) {
+        previewController_->setMarkdown(editor_->text());
+        previewController_->flush();
+    }
+    previewWidget->setVisible(viewMode_ != ViewMode::Editor);
 }
 
 void MainWindow::setViewMode(ViewMode mode)
@@ -997,6 +1039,7 @@ void MainWindow::setViewMode(ViewMode mode)
 
 void MainWindow::applyViewMode()
 {
+    ensurePreviewCreated();
     editor_->setVisible(viewMode_ != ViewMode::Preview);
     preview_->widget()->setVisible(viewMode_ != ViewMode::Editor);
 
@@ -1015,7 +1058,11 @@ void MainWindow::setTheme(Theme::Builtin id)
     customThemePath_.clear();
     customThemeCss_.clear();
     const Theme theme = Theme::forBuiltin(id);
-    preview_->setThemeCss(theme.previewCss());
+    // A not-yet-created preview picks up currentTheme_ itself, in
+    // ensurePreviewCreated(), once something actually needs it.
+    if (preview_) {
+        preview_->setThemeCss(theme.previewCss());
+    }
     editor_->setTheme(theme);
 
     if (themeGroup_ != nullptr) {
@@ -1036,7 +1083,9 @@ bool MainWindow::loadCustomTheme(const QString& path)
     customThemePath_ = path;
     customTheme_ = result.theme;
     customThemeCss_ = result.customCss;
-    preview_->setThemeCss(customTheme_.previewCss() + customThemeCss_);
+    if (preview_) {
+        preview_->setThemeCss(customTheme_.previewCss() + customThemeCss_);
+    }
     editor_->setTheme(customTheme_);
 
     if (themeGroup_ != nullptr) {
@@ -1090,14 +1139,14 @@ void MainWindow::preferencesDialog()
 
 void MainWindow::refreshPreview()
 {
-    if (viewMode_ != ViewMode::Editor) {
+    if (previewController_ && viewMode_ != ViewMode::Editor) {
         previewController_->setMarkdown(editor_->text());
     }
 }
 
 void MainWindow::syncPreviewToEditor()
 {
-    if (syncingScroll_ || viewMode_ != ViewMode::Split) {
+    if (!preview_ || syncingScroll_ || viewMode_ != ViewMode::Split) {
         return;
     }
     syncingScroll_ = true;
@@ -1542,6 +1591,11 @@ void MainWindow::restoreLastSession(bool askFirst)
         restoreState(session.windowState);
     }
     if (!session.splitterState.isEmpty()) {
+        // The splitter sizes only make sense once both panes exist —
+        // restoring them against a splitter still holding just the editor
+        // (the preview is otherwise created lazily; see
+        // ensurePreviewCreated()) silently drops the saved split.
+        ensurePreviewCreated();
         splitter_->restoreState(session.splitterState);
     }
     if (!session.theme.isEmpty()) {
@@ -1614,7 +1668,9 @@ bool MainWindow::savePath(const QString& path)
     }
     lastError_.clear();
     recordRecent(document->path());
-    previewController_->setDocumentPath(document->path()); // a Save As re-anchors images
+    if (previewController_) {
+        previewController_->setDocumentPath(document->path()); // a Save As re-anchors images
+    }
     return true;
 }
 
@@ -1823,6 +1879,7 @@ void MainWindow::exportHtmlDialog()
 
 void MainWindow::ensurePreviewRendered()
 {
+    ensurePreviewCreated();
     previewController_->setMarkdown(editor_->text());
     previewController_->flush();
     if (previewReady_) {

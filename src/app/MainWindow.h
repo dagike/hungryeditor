@@ -84,11 +84,21 @@ public:
     /// leaving the current theme unchanged.
     bool loadCustomTheme(const QString& path);
 
-    /// The debounce-and-render controller feeding the preview. Exposed for tests.
-    PreviewController* previewController() const { return previewController_.get(); }
+    /// The debounce-and-render controller feeding the preview. Exposed for
+    /// tests; forces the (otherwise lazily created) preview into existence.
+    PreviewController* previewController() const
+    {
+        ensurePreviewCreated();
+        return previewController_.get();
+    }
 
-    /// The preview rendering backend. Exposed for tests.
-    PreviewBackend* previewBackend() const { return preview_.get(); }
+    /// The preview rendering backend. Exposed for tests; forces the
+    /// (otherwise lazily created) preview into existence.
+    PreviewBackend* previewBackend() const
+    {
+        ensurePreviewCreated();
+        return preview_.get();
+    }
 
     /// The preview pane widget, for tests to check visibility.
     QWidget* previewWidget() const;
@@ -258,8 +268,17 @@ private:
     /// Preferences dialog is accepted.
     void applyPreferences();
 
-    // Live preview: created on construction, fed the editor's text (debounced)
-    // whenever a preview pane is visible.
+    // Live preview: built lazily on first real need rather than during
+    // construction, since it starts a Chromium subprocess (see the
+    // constructor and ensurePreviewCreated()); fed the editor's text
+    // (debounced) whenever a preview pane is visible.
+    //
+    // Const, and preview_/previewController_/previewReady_ are mutable, so
+    // that the const test accessors above can force creation on demand.
+    // Idempotent; also seeds the active theme and current document into a
+    // freshly created backend, since nothing else will if it was created
+    // outside the constructor's normal deferred applyViewMode() call.
+    void ensurePreviewCreated() const;
     void applyViewMode();
     void refreshPreview();
     // Forces a render even in Editor-only view (refreshPreview() skips it
@@ -371,10 +390,12 @@ private:
     std::unique_ptr<PreferencesStore> preferencesStore_;
     Preferences preferences_;
     // previewController_ is declared after preview_ so it is torn down first —
-    // it holds a raw pointer to the backend.
-    std::unique_ptr<PreviewBackend> preview_;
-    std::unique_ptr<PreviewController> previewController_;
-    bool previewReady_ = false; ///< latched true once the preview shell first comes up
+    // it holds a raw pointer to the backend. All three are mutable so
+    // ensurePreviewCreated() can lazily build them from a const context (the
+    // previewController()/previewBackend() test accessors above).
+    mutable std::unique_ptr<PreviewBackend> preview_;
+    mutable std::unique_ptr<PreviewController> previewController_;
+    mutable bool previewReady_ = false; ///< latched true once the preview shell first comes up
     QAction* saveAction_ = nullptr;
     QAction* foldFrontMatterAction_ = nullptr;
     QMenu* recentMenu_ = nullptr;
