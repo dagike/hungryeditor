@@ -18,6 +18,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #elif defined(Q_OS_WIN)
+// Without this, <windows.h> defines max/min macros that mangle the
+// std::min() call in copyToFixedBuffer() below into invalid syntax (MSVC
+// C2589: "illegal token on right side of '::'").
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
