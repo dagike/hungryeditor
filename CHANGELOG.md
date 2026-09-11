@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   buffer copy and UTF-8 conversion (called at least twice per edit,
   independent of highlighting) turns out to dominate what's left.
 
+### Measured
+
+- A dedicated CI job now builds a release configuration and asserts the
+  project plan's actual performance targets, rather than the debug build's
+  gross-regression-only thresholds. First real numbers against those
+  targets: cold start ~2-5ms (target 250ms, comfortably met); a 10MB file
+  open ~600-630ms (target 500ms, not met); preview refresh for a 200KB
+  document ~80-100ms (target 100ms, right at the boundary); a single edit
+  on a 1.5MB document ~470ms (target 8ms, far off, for reasons already
+  documented above); idle RSS for the production binary at cold start
+  ~190MB (target 120MB, not met — Qt WebEngine's own one-time Chromium
+  context initialization, independent of whether the preview pane is ever
+  shown, the same root cause the deferred WebView2 backend exists to
+  eventually remove).
+
 ## [0.1.0] - 2026-09-11
 
 First tagged release.

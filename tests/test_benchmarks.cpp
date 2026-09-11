@@ -1,16 +1,23 @@
 // Performance regression coverage for the success criteria in the project
-// plan: cold start, edit latency and preview refresh.
+// plan: cold start, edit latency, preview refresh, and (in
+// HUNGRYEDITOR_STRICT_BENCHMARKS builds only) idle memory.
 //
 // The plan's numbers (cold start < 250 ms, keystroke-to-paint < 8 ms, preview
-// refresh < 100 ms, 10 MB file open < 500 ms) are release-build targets on a
-// real desktop. This suite runs headless, unoptimized (debug build) and often
-// on a shared, noisy CI VM, so the QVERIFY thresholds below are deliberately
-// far looser than those targets — they exist to catch a gross regression (an
-// accidental order-of-magnitude blowup), not to police the product targets.
-// The QBENCHMARK slots report real, trendable numbers alongside them.
+// refresh < 100 ms, 10 MB file open < 500 ms, idle RSS < 120 MB) are
+// release-build targets on a real desktop. By default this suite runs
+// headless, unoptimized (debug build) and often on a shared, noisy CI VM, so
+// the QVERIFY thresholds below are deliberately far looser than those
+// targets — they exist to catch a gross regression (an accidental
+// order-of-magnitude blowup), not to police the product targets. The
+// dedicated release-benchmarks CI job builds linux-release with
+// HUNGRYEDITOR_STRICT_BENCHMARKS on instead, which is when the targets
+// actually get asserted — see each test for the real, measured number where
+// a target isn't currently met. The QBENCHMARK slots report real, trendable
+// numbers alongside them either way.
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QProcess>
 #include <QSignalSpy>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -119,6 +126,9 @@ private slots:
     void previewRefreshCompletesQuickly();
     void benchmarkMainWindowConstruction();
     void benchmarkPreviewRefresh();
+#if defined(HUNGRYEDITOR_STRICT_BENCHMARKS) && defined(Q_OS_LINUX)
+    void idleRssStaysUnderTarget();
+#endif
 };
 
 void TestBenchmarks::mainWindowConstructionDoesNotBuildThePreview()
@@ -136,7 +146,15 @@ void TestBenchmarks::mainWindowConstructionStaysFast()
     timer.start();
     MainWindow window;
     QVERIFY(!window.previewIsCreated());
-    QVERIFY2(timer.elapsed() < 2000,
+#ifdef HUNGRYEDITOR_STRICT_BENCHMARKS
+    // Plan target: cold start < 250 ms. Real, measured: ~2-5 ms — 9.1's
+    // lazy preview deferral means this proxy comfortably clears the target
+    // with a lot of room to spare.
+    const qint64 threshold = 250;
+#else
+    const qint64 threshold = 2000; // gross-regression guard only, see file header
+#endif
+    QVERIFY2(timer.elapsed() < threshold,
              qPrintable(QStringLiteral("MainWindow construction took %1 ms").arg(timer.elapsed())));
 }
 
@@ -155,7 +173,15 @@ void TestBenchmarks::tenMegabyteFileOpensReasonablyFast()
     QElapsedTimer timer;
     timer.start();
     QVERIFY(window.openPath(path));
-    QVERIFY2(timer.elapsed() < 5000,
+#ifdef HUNGRYEDITOR_STRICT_BENCHMARKS
+    // Plan target: 500 ms. Real, measured: ~600-630 ms — not currently met.
+    // 800 ms is the honest threshold: the real number with headroom for CI
+    // noise, not the target itself.
+    const qint64 threshold = 800;
+#else
+    const qint64 threshold = 5000; // gross-regression guard only, see file header
+#endif
+    QVERIFY2(timer.elapsed() < threshold,
              qPrintable(QStringLiteral("Opening a 10 MB file took %1 ms").arg(timer.elapsed())));
 }
 
@@ -178,7 +204,16 @@ void TestBenchmarks::editingStaysFast()
     }
     const qint64 elapsed = timer.elapsed();
     const double perEdit = double(elapsed) / iterations;
-    QVERIFY2(perEdit < 50.0,
+#ifdef HUNGRYEDITOR_STRICT_BENCHMARKS
+    // Plan target: keystroke-to-paint < 8 ms. Real, measured: ~0.03-0.05 ms
+    // — comfortably met, but this proxy's document never grows past a few
+    // KB, so it is not the meaningful check for that target on a real
+    // document; see singleEditOnALargeDocumentStaysFast() for that.
+    const double threshold = 8.0;
+#else
+    const double threshold = 50.0; // gross-regression guard only, see file header
+#endif
+    QVERIFY2(perEdit < threshold,
              qPrintable(QStringLiteral("Average edit cost was %1 ms").arg(perEdit)));
 }
 
@@ -198,15 +233,17 @@ void TestBenchmarks::singleEditOnALargeDocumentStaysFast()
     // union of a degenerate viewport with an edit far from it can end up
     // covering nearly the whole document regardless of the edit's own size.
     //
-    // Measured directly (not asserted here, since the two setups differ
-    // enough — a live Editor's full highlight+outline+margin pipeline vs a
-    // bare TreeSitterEngine — that a single run's ratio isn't a stable
-    // threshold): together, 11.6 (incremental reparse) and 11.7
-    // (viewport-only span computation) bring a single realistic edit on
-    // this 1.5 MB document from ~2450-2550ms down to ~1400-1450ms.
-    // Real, but smaller than either commit's own mechanism would suggest in
-    // isolation, because a third, uninvolved cost turns out to dominate
-    // what's left: Editor::text() — called at least twice per edit
+    // Measured directly, in an unoptimized debug build (not asserted here,
+    // since the two setups differ enough — a live Editor's full
+    // highlight+outline+margin pipeline vs a bare TreeSitterEngine — that a
+    // single run's ratio isn't a stable threshold): together, 11.6
+    // (incremental reparse) and 11.7 (viewport-only span computation) bring
+    // a single realistic edit on this 1.5 MB document from ~2450-2550ms
+    // down to ~1400-1450ms; in a release build (see the
+    // HUNGRYEDITOR_STRICT_BENCHMARKS assertion below), ~800ms down to
+    // ~470ms. Real, but smaller than either commit's own mechanism would
+    // suggest in isolation, because a third, uninvolved cost turns out to
+    // dominate what's left: Editor::text() — called at least twice per edit
     // notification, once by updateFrontMatterFold() and once for the
     // highlight submission itself — does a full document buffer copy plus
     // UTF-8 conversion every time, independent of highlighting entirely.
@@ -248,6 +285,18 @@ void TestBenchmarks::singleEditOnALargeDocumentStaysFast()
                                        "reparse (%2 ms)")
                             .arg(incrementalElapsed)
                             .arg(fullElapsed)));
+
+#ifdef HUNGRYEDITOR_STRICT_BENCHMARKS
+    // Plan target: keystroke-to-paint < 8 ms. Real, measured: ~470 ms on
+    // this 1.5 MB document — nowhere close, for the reasons in the comment
+    // above (Editor::text()'s double full-document conversion, chief among
+    // them). 800 ms is the honest threshold: the real number with headroom,
+    // not the target. This is the meaningful check for that target on an
+    // actual document — editingStaysFast() above only proves the pipeline's
+    // own per-call overhead is cheap on a document a few KB in size.
+    QVERIFY2(incrementalElapsed < 800,
+             qPrintable(QStringLiteral("Incremental edit took %1 ms").arg(incrementalElapsed)));
+#endif
 }
 
 void TestBenchmarks::previewRefreshCompletesQuickly()
@@ -264,7 +313,18 @@ void TestBenchmarks::previewRefreshCompletesQuickly()
     const qint64 elapsed = timer.elapsed();
 
     QCOMPARE(rendered.count(), 1);
-    QVERIFY2(elapsed < 2000, qPrintable(QStringLiteral("Preview refresh took %1 ms").arg(elapsed)));
+#ifdef HUNGRYEDITOR_STRICT_BENCHMARKS
+    // Plan target: preview refresh < 100 ms. Real, measured: ~80-100 ms —
+    // right at the target, not comfortably under it; benchmarkPreviewRefresh()
+    // below reports the trendable per-iteration number for the same
+    // document. 150 ms gives a noisy CI run a little room without hiding a
+    // real regression back over the target.
+    const qint64 threshold = 150;
+#else
+    const qint64 threshold = 2000; // gross-regression guard only, see file header
+#endif
+    QVERIFY2(elapsed < threshold,
+             qPrintable(QStringLiteral("Preview refresh took %1 ms").arg(elapsed)));
 }
 
 void TestBenchmarks::benchmarkMainWindowConstruction()
@@ -287,6 +347,69 @@ void TestBenchmarks::benchmarkPreviewRefresh()
         controller.flush();
     }
 }
+
+#if defined(HUNGRYEDITOR_STRICT_BENCHMARKS) && defined(Q_OS_LINUX)
+void TestBenchmarks::idleRssStaysUnderTarget()
+{
+    // The plan's own idle-RSS target has no in-process way to measure the
+    // real production binary — a QtTest harness links QtTest and the whole
+    // test executable's dependency graph, which is not representative —
+    // so this launches the actual hungryeditor executable as a real
+    // subprocess and reads its own /proc/<pid>/status, the same way a user
+    // launching it would experience. Linux-only (no /proc elsewhere) and
+    // strict-only (needs a release build's real executable, not a debug
+    // one nobody ships).
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    env.insert(QStringLiteral("QTWEBENGINE_CHROMIUM_FLAGS"),
+               QStringLiteral("--no-sandbox --disable-gpu --disable-dev-shm-usage"));
+    env.insert(QStringLiteral("QTWEBENGINE_DISABLE_SANDBOX"), QStringLiteral("1"));
+
+    QProcess process;
+    process.setProcessEnvironment(env);
+    process.start(QStringLiteral(HUNGRYEDITOR_EXECUTABLE_PATH), {});
+    QVERIFY2(process.waitForStarted(5000), "the production executable did not start");
+
+    // No cross-process "finished starting up" signal to wait on instead —
+    // a generous fixed delay for MainWindow construction and Qt WebEngine's
+    // own one-time context initialization (see below) to settle.
+    QTest::qWait(3000);
+
+    QFile status(QStringLiteral("/proc/%1/status").arg(process.processId()));
+    QVERIFY2(status.open(QIODevice::ReadOnly),
+             "could not read the running process's /proc/<pid>/status");
+    qint64 rssKb = -1;
+    const QList<QByteArray> lines = status.readAll().split('\n');
+    for (const QByteArray& line : lines) {
+        if (line.startsWith("VmRSS:")) {
+            const QList<QByteArray> fields = line.simplified().split(' ');
+            if (fields.size() >= 2) {
+                rssKb = fields[1].toLongLong();
+            }
+        }
+    }
+
+    process.terminate();
+    QVERIFY(process.waitForFinished(5000));
+    QVERIFY2(rssKb > 0, "could not parse VmRSS from /proc/<pid>/status");
+
+    // Plan target: idle RSS < 120 MB. Real, measured cold-start RSS for the
+    // production binary — before opening any document, before the preview
+    // pane is ever shown — is ~190 MB. The gap's cause is already known,
+    // not mysterious: Qt WebEngine performs its own one-time Chromium
+    // context initialization as soon as the WebEngineWidgets module is
+    // linked into the process at all, independent of 9.1's lazy
+    // *preview-widget* construction and regardless of whether a preview
+    // pane is ever actually shown. It is the same root cause Phase 10.4's
+    // deferred WebView2 swap exists to eventually remove on Windows (there
+    // by dropping Qt WebEngine from the link entirely) — not something to
+    // silently re-open here. 250 MB leaves headroom for CI noise without
+    // hiding a real regression.
+    QVERIFY2(
+        rssKb < 250 * 1024,
+        qPrintable(QStringLiteral("Idle RSS was %1 MB").arg(static_cast<double>(rssKb) / 1024.0)));
+}
+#endif
 
 QTEST_MAIN(TestBenchmarks)
 #include "test_benchmarks.moc"

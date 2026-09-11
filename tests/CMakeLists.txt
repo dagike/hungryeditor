@@ -200,6 +200,11 @@ hungryeditor_add_test(test_preview_controller
 hungryeditor_add_test(test_benchmarks
     SOURCES test_benchmarks.cpp
     LIBS hungryeditor::core)
+if(HUNGRYEDITOR_STRICT_BENCHMARKS)
+    target_compile_definitions(test_benchmarks PRIVATE
+        HUNGRYEDITOR_STRICT_BENCHMARKS
+        HUNGRYEDITOR_EXECUTABLE_PATH="$<TARGET_FILE:hungryeditor>")
+endif()
 
 hungryeditor_add_test(test_preview
     SOURCES test_preview.cpp

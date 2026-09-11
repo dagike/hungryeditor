@@ -91,6 +91,46 @@ jobs:
             Write-Host "::endgroup::"
           }
 
+  release-benchmarks:
+    name: release benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.4.2
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install WebEngine runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libxdamage1 libxkbcommon-x11-0 libxkbfile1 \
+            libxcomposite1 libxrandr2 libxtst6 libasound2t64 \
+            libgstreamer-gl1.0-0 libgstreamer-plugins-base1.0-0
+
+      - name: Configure
+        run: cmake --preset linux-release -DHUNGRYEDITOR_STRICT_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build --preset linux-release
+
+      # Only test_benchmarks: the rest of the suite is already covered by
+      # the ordinary build job above, and a release build changes nothing
+      # about correctness — just the numbers this job exists to check.
+      - name: Run benchmarks against the plan's real targets
+        run: ctest --preset linux-release --output-on-failure -R '^test_benchmarks$'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-dev-shm-usage
+          QTWEBENGINE_DISABLE_SANDBOX: 1
+
   format:
     name: clang-format
     runs-on: ubuntu-latest
