@@ -210,6 +210,12 @@ public:
     bool wordWrap() const { return wordWrap_; }
     void setWordWrap(bool wrap);
 
+    /// The palette driving both chrome (caret, selection, line numbers, ...)
+    /// and syntax-token colours. Re-styles immediately, whichever highlight
+    /// tier is currently active.
+    const Theme& theme() const { return theme_; }
+    void setTheme(const Theme& theme);
+
     /// Style byte at a position — for tests to check colouring.
     int styleAt(int position) const;
 

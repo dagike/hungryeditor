@@ -6,8 +6,31 @@
 #include <QSignalSpy>
 #include <QtTest>
 
+#include <SciLexer.h>
+#include <Scintilla.h>
+
 #include "editor/Editor.h"
 #include "highlight/CaptureStyles.h"
+#include "theme/Theme.h"
+
+namespace {
+
+// Mirrors Editor.cpp's private sciColour(): Scintilla packs colours as
+// 0x00BBGGRR integers.
+Scintilla::Colour packColour(const QColor& c)
+{
+    return static_cast<Scintilla::Colour>(c.red() | (c.green() << 8) | (c.blue() << 16));
+}
+
+// Element colours (as opposed to style colours) carry an alpha byte that
+// Scintilla may default to opaque before anything ever sets it explicitly;
+// only the RGB bits reflect what setTheme() actually pushed.
+int rgbOnly(int packed)
+{
+    return packed & 0x00ffffff;
+}
+
+} // namespace
 
 class TestEditor : public QObject
 {
@@ -50,6 +73,8 @@ private slots:
     void changingFontReappliesStyling();
     void setTabWidthChangesScintillaTabWidth();
     void setWordWrapTogglesScintillaWrapMode();
+    void setThemeRecolorsChromeAndSyntaxStyles();
+    void setThemeRecolorsChromeWhileInTheLexillaTier();
     void headingsAndCodeGetSyntaxStyles();
     void plainParagraphStaysUnstyled();
     void inlineEmphasisInProseGetsStyled();
@@ -614,6 +639,55 @@ void TestEditor::setWordWrapTogglesScintillaWrapMode()
     editor.setWordWrap(true);
     QVERIFY(editor.wordWrap());
     QCOMPARE(editor.call().WrapMode(), Scintilla::Wrap::Word);
+}
+
+void TestEditor::setThemeRecolorsChromeAndSyntaxStyles()
+{
+    hungryeditor::Editor editor;
+    const hungryeditor::Theme dark =
+        hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark);
+
+    editor.setTheme(dark);
+
+    QCOMPARE(editor.theme().background, dark.background);
+    QCOMPARE(editor.call().StyleGetFore(STYLE_DEFAULT), packColour(dark.text));
+    QCOMPARE(editor.call().StyleGetBack(STYLE_DEFAULT), packColour(dark.background));
+    QCOMPARE(editor.call().StyleGetFore(STYLE_LINENUMBER), packColour(dark.muted));
+    QCOMPARE(editor.call().StyleGetFore(static_cast<int>(hungryeditor::StyleKeyword)),
+             packColour(dark.keyword));
+    QCOMPARE(editor.call().StyleGetFore(static_cast<int>(hungryeditor::StyleComment)),
+             packColour(dark.comment));
+    QCOMPARE(rgbOnly(editor.call().ElementColour(Scintilla::Element::Caret)),
+             rgbOnly(packColour(dark.text)));
+    QCOMPARE(rgbOnly(editor.call().ElementColour(Scintilla::Element::SelectionBack)),
+             rgbOnly(packColour(dark.selection)));
+    QCOMPARE(editor.call().CaretLineBack(), packColour(dark.currentLine));
+    QCOMPARE(editor.call().StyleGetBack(STYLE_BRACELIGHT), packColour(dark.braceMatch));
+    QCOMPARE(editor.call().StyleGetFore(STYLE_BRACEBAD), packColour(dark.error));
+}
+
+void TestEditor::setThemeRecolorsChromeWhileInTheLexillaTier()
+{
+    hungryeditor::Editor editor;
+    editor.setFallbackByteLimits(80, 200);
+    editor.setText(QStringLiteral("# Heading\n\n") + QString(120, QLatin1Char('x')) +
+                   QStringLiteral("\n"));
+    QCOMPARE(editor.highlightTier(), hungryeditor::Editor::HighlightTier::Lexilla);
+
+    const hungryeditor::Theme dark =
+        hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark);
+    editor.setTheme(dark);
+
+    // Lexilla-lexer-owned styles pick up the new theme.
+    QCOMPARE(editor.call().StyleGetFore(SCE_MARKDOWN_HEADER1), packColour(dark.heading));
+    QCOMPARE(editor.call().StyleGetFore(SCE_MARKDOWN_LINK), packColour(dark.link));
+    QCOMPARE(editor.call().StyleGetFore(STYLE_LINENUMBER), packColour(dark.muted));
+
+    // So do the chrome settings shared with the tree-sitter tier.
+    QCOMPARE(rgbOnly(editor.call().ElementColour(Scintilla::Element::Caret)),
+             rgbOnly(packColour(dark.text)));
+    QCOMPARE(editor.call().CaretLineBack(), packColour(dark.currentLine));
+    QCOMPARE(editor.call().StyleGetBack(STYLE_BRACELIGHT), packColour(dark.braceMatch));
 }
 
 void TestEditor::headingsAndCodeGetSyntaxStyles()

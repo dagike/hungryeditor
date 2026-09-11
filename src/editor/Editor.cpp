@@ -89,6 +89,31 @@ constexpr int kMinLineDigits = 3;
 constexpr int kFindIndicator = 20; // in the user range (8..31)
 constexpr int kFoldMarginWidth = 14;
 
+/// The chrome colours that vary with the theme: line-number margin, caret,
+/// selection, current-line highlight, brace matching, find-bar outline. Set
+/// on both highlight tiers so re-theming while a huge file has fallen back to
+/// Lexilla still recolours everything but the syntax tokens themselves.
+void applyChromeColours(Scintilla::ScintillaCall& call, const Palette& palette)
+{
+    call.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
+    call.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
+
+    call.SetElementColour(Scintilla::Element::Caret, sciColour(palette.caret));
+    call.SetSelBack(true, sciColour(palette.selection));
+    call.SetCaretLineBack(sciColour(palette.currentLine));
+
+    call.StyleSetBack(STYLE_BRACELIGHT, sciColour(palette.braceMatch));
+    call.StyleSetBold(STYLE_BRACELIGHT, true);
+    call.StyleSetFore(STYLE_BRACEBAD, sciColour(palette.braceBad));
+    call.StyleSetBold(STYLE_BRACEBAD, true);
+
+    call.SetAdditionalCaretFore(sciColour(palette.caret));
+    call.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
+                          sciColour(palette.selection));
+
+    call.IndicSetFore(kFindIndicator, sciColour(palette.findMatch));
+}
+
 /// Build a Scintilla fold level: `SC_FOLDLEVELBASE + number`, with the header
 /// flag when `header` is set. The enum has no `operator|`.
 Scintilla::FoldLevel foldLevel(int number, bool header)
@@ -1225,6 +1250,20 @@ void Editor::setWordWrap(bool wrap)
     call_.SetWrapMode(wrap ? Scintilla::Wrap::Word : Scintilla::Wrap::None);
 }
 
+void Editor::setTheme(const Theme& theme)
+{
+    theme_ = theme;
+    // applyVisualDefaults() re-declares tree-sitter's semantic style ids,
+    // which numerically overlap Lexilla's SCE_MARKDOWN_* ids — calling it
+    // while that lexer is attached would corrupt its colouring, so each tier
+    // re-styles through whichever function normally owns it.
+    if (tier_ == HighlightTier::Lexilla) {
+        applyLexillaMarkdownStyles();
+    } else {
+        applyVisualDefaults();
+    }
+}
+
 void Editor::attachDocument(Document* document)
 {
     document_ = document;
@@ -1257,21 +1296,10 @@ void Editor::applyVisualDefaults()
     call_.StyleSetFore(STYLE_DEFAULT, sciColour(palette.foreground));
     call_.StyleSetBack(STYLE_DEFAULT, sciColour(palette.background));
     call_.StyleClearAll();
-
-    call_.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
-    call_.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
-
-    call_.SetElementColour(Scintilla::Element::Caret, sciColour(palette.caret));
-    call_.SetSelBack(true, sciColour(palette.selection));
+    applyChromeColours(call_, palette);
     call_.SetCaretLineVisible(true);
-    call_.SetCaretLineBack(sciColour(palette.currentLine));
     call_.SetCaretWidth(2);
     call_.SetCaretPeriod(500);
-
-    call_.StyleSetBack(STYLE_BRACELIGHT, sciColour(palette.braceMatch));
-    call_.StyleSetBold(STYLE_BRACELIGHT, true);
-    call_.StyleSetFore(STYLE_BRACEBAD, sciColour(palette.braceBad));
-    call_.StyleSetBold(STYLE_BRACEBAD, true);
 
     call_.SetEOLMode(Scintilla::EndOfLine::Lf);
     call_.SetTabWidth(tabWidth_);
@@ -1292,13 +1320,9 @@ void Editor::applyVisualDefaults()
     call_.SetRectangularSelectionModifier(static_cast<int>(Scintilla::KeyMod::Alt));
     call_.SetMouseSelectionRectangularSwitch(true);
     call_.SetAdditionalCaretsBlink(true);
-    call_.SetAdditionalCaretFore(sciColour(palette.caret));
-    call_.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
-                           sciColour(palette.selection));
 
     // Find bar: outline every match while the bar is open.
     call_.IndicSetStyle(kFindIndicator, Scintilla::IndicatorStyle::StraightBox);
-    call_.IndicSetFore(kFindIndicator, sciColour(palette.findMatch));
     call_.IndicSetAlpha(kFindIndicator, static_cast<Scintilla::Alpha>(70));
     call_.IndicSetOutlineAlpha(kFindIndicator, static_cast<Scintilla::Alpha>(160));
 
@@ -1382,8 +1406,7 @@ void Editor::applyLexillaMarkdownStyles()
     call_.StyleSetFore(SCE_MARKDOWN_CODE2, code);
     call_.StyleSetFore(SCE_MARKDOWN_CODEBK, code);
 
-    call_.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
-    call_.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
+    applyChromeColours(call_, palette);
 }
 
 void Editor::updateHighlightTier(bool force)
