@@ -127,6 +127,10 @@ hungryeditor_add_test(test_code_highlighter
     SOURCES test_code_highlighter.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_capture_styles
+    SOURCES test_capture_styles.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_front_matter
     SOURCES test_front_matter.cpp
     LIBS hungryeditor::core)

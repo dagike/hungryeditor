@@ -6,6 +6,8 @@
 
 #include <QColor>
 
+#include "theme/Theme.h"
+
 namespace hungryeditor {
 
 /// A Scintilla style used by the container-lexing highlighter. Style 0 is
@@ -48,6 +50,10 @@ enum Style : int
 
 /// Every semantic style with its colour and font flags, in `id` order.
 const std::vector<StyleDef>& styleTable();
+
+/// styleTable(), with every colour remapped from `theme` (font flags and key
+/// names are theme-independent, so those come through unchanged).
+std::vector<StyleDef> themedStyleTable(const Theme& theme);
 
 /// Resolve a tree-sitter capture name (e.g. "keyword.control", "text.title")
 /// to a style id, falling back through dotted prefixes. Returns StylePlain

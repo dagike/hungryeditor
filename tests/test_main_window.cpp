@@ -747,6 +747,10 @@ void TestMainWindow::themeActionsSwitchThePreviewPalette()
              hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark).background);
     QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeDark"))->isChecked());
     QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+
+    // The editor pane picks up the same theme, not just the preview.
+    QCOMPARE(window.editor()->theme().background,
+             hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark).background);
 }
 
 void TestMainWindow::themeSurvivesASessionReload()
@@ -781,6 +785,7 @@ void TestMainWindow::loadCustomThemeAppliesOverridesAndCustomCss()
 
     QCOMPARE(window.currentTheme().background, QColor(QStringLiteral("#123456")));
     QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+    QCOMPARE(window.editor()->theme().background, QColor(QStringLiteral("#123456")));
 }
 
 void TestMainWindow::pickingABuiltinThemeClearsAnActiveCustomTheme()

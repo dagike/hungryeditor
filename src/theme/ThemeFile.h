@@ -17,9 +17,10 @@ struct Result
 
 /// Reads a JSON theme file: an object with any of the Theme field names
 /// (background, text, muted, heading, link, codeText, codeBackground, border,
-/// error) as hex-colour strings, each optional and defaulting to the light
-/// theme's value when absent or invalid, plus an optional "css" string
-/// appended after the generated preview CSS.
+/// error, keyword, type, function, string, comment, currentLine, selection,
+/// findMatch, braceMatch) as hex-colour strings, each optional and defaulting
+/// to the light theme's value when absent or invalid, plus an optional "css"
+/// string appended after the generated preview CSS.
 Result loadThemeFile(const QString& path);
 
 } // namespace hungryeditor::themefile

@@ -6,21 +6,9 @@ namespace hungryeditor {
 
 namespace {
 
-Theme make(const char* background, const char* text, const char* muted, const char* heading,
-           const char* link, const char* codeText, const char* codeBackground, const char* border,
-           const char* error)
+QColor c(const char* hex)
 {
-    Theme t;
-    t.background = QColor(QString::fromLatin1(background));
-    t.text = QColor(QString::fromLatin1(text));
-    t.muted = QColor(QString::fromLatin1(muted));
-    t.heading = QColor(QString::fromLatin1(heading));
-    t.link = QColor(QString::fromLatin1(link));
-    t.codeText = QColor(QString::fromLatin1(codeText));
-    t.codeBackground = QColor(QString::fromLatin1(codeBackground));
-    t.border = QColor(QString::fromLatin1(border));
-    t.error = QColor(QString::fromLatin1(error));
-    return t;
+    return QColor(QString::fromLatin1(hex));
 }
 
 } // namespace
@@ -34,18 +22,90 @@ Theme Theme::forBuiltin(Builtin id)
 {
     switch (id) {
     case Builtin::Dark:
-        return make("#1e1e1e", "#d4d4d4", "#9aa0a6", "#4fc1ff", "#3794ff", "#ce9178", "#2d2d2d",
-                    "#3c3c3c", "#f14c4c");
+        return Theme{
+            .background = c("#1e1e1e"),
+            .text = c("#d4d4d4"),
+            .muted = c("#9aa0a6"),
+            .heading = c("#4fc1ff"),
+            .link = c("#3794ff"),
+            .codeText = c("#ce9178"),
+            .codeBackground = c("#2d2d2d"),
+            .border = c("#3c3c3c"),
+            .error = c("#f14c4c"),
+            .keyword = c("#f14c4c"),
+            .type = c("#4ec9b0"),
+            .function = c("#c586c0"),
+            .string = c("#d19a66"),
+            .comment = c("#6a9955"),
+            .currentLine = c("#2a2d2e"),
+            .selection = c("#264f78"),
+            .findMatch = c("#d7ba7d"),
+            .braceMatch = c("#3a5f3a"),
+        };
     case Builtin::HighContrast:
-        return make("#000000", "#ffffff", "#d0d0d0", "#ffff00", "#ffff00", "#00ffff", "#1a1a1a",
-                    "#ffffff", "#ff6060");
+        return Theme{
+            .background = c("#000000"),
+            .text = c("#ffffff"),
+            .muted = c("#d0d0d0"),
+            .heading = c("#ffff00"),
+            .link = c("#ffff00"),
+            .codeText = c("#00ffff"),
+            .codeBackground = c("#1a1a1a"),
+            .border = c("#ffffff"),
+            .error = c("#ff6060"),
+            .keyword = c("#ff6060"),
+            .type = c("#00ffff"),
+            .function = c("#ffff00"),
+            .string = c("#00ff00"),
+            .comment = c("#d0d0d0"),
+            .currentLine = c("#262626"),
+            .selection = c("#444444"),
+            .findMatch = c("#ff9900"),
+            .braceMatch = c("#004400"),
+        };
     case Builtin::Sepia:
-        return make("#f4ecd8", "#5b4636", "#8a7860", "#7a4a2b", "#956a3c", "#7a4a2b", "#ece0c6",
-                    "#d8c9a3", "#b5432f");
+        return Theme{
+            .background = c("#f4ecd8"),
+            .text = c("#5b4636"),
+            .muted = c("#8a7860"),
+            .heading = c("#7a4a2b"),
+            .link = c("#956a3c"),
+            .codeText = c("#7a4a2b"),
+            .codeBackground = c("#ece0c6"),
+            .border = c("#d8c9a3"),
+            .error = c("#b5432f"),
+            .keyword = c("#b5432f"),
+            .type = c("#6b7d3d"),
+            .function = c("#4a6b7a"),
+            .string = c("#7d6b3d"),
+            .comment = c("#8a7860"),
+            .currentLine = c("#efe6d0"),
+            .selection = c("#ddd0ab"),
+            .findMatch = c("#d4a017"),
+            .braceMatch = c("#c9d9b0"),
+        };
     case Builtin::Light:
     default:
-        return make("#ffffff", "#1e1e1e", "#57606a", "#0550ae", "#0969da", "#6e40c9", "#f6f8fa",
-                    "#d0d7de", "#cf222e");
+        return Theme{
+            .background = c("#ffffff"),
+            .text = c("#1e1e1e"),
+            .muted = c("#57606a"),
+            .heading = c("#0550ae"),
+            .link = c("#0969da"),
+            .codeText = c("#6e40c9"),
+            .codeBackground = c("#f6f8fa"),
+            .border = c("#d0d7de"),
+            .error = c("#cf222e"),
+            .keyword = c("#cf222e"),
+            .type = c("#953800"),
+            .function = c("#6639ba"),
+            .string = c("#0a3069"),
+            .comment = c("#6e7781"),
+            .currentLine = c("#f2f6fc"),
+            .selection = c("#cfe3ff"),
+            .findMatch = c("#f0b429"),
+            .braceMatch = c("#bfe3c6"),
+        };
     }
 }
 
@@ -195,7 +255,7 @@ QString Theme::codeTokenCss() const
     // Fenced-code colouring: the same token palette the editor paints with, so
     // a `rust fence looks identical in both panes.
     QString css;
-    for (const StyleDef& style : styleTable()) {
+    for (const StyleDef& style : themedStyleTable(*this)) {
         const std::string cssClass = styleCssClass(style.id);
         if (cssClass.empty()) {
             continue;
