@@ -56,7 +56,7 @@ Either package registers hungryeditor as a handler for `.md` files. See
 
 Fenced code blocks get real syntax highlighting from the actual language
 grammar (Bash, C, C++, C#, CSS, Go, HTML, Java, JavaScript/JSX, JSON, PHP,
-Python, Ruby, Rust, TOML, TypeScript/TSX, YAML) — not generic monospace.
+Python, Ruby, Rust, SQL, TOML, TypeScript/TSX, YAML) — not generic monospace.
 
 ## Keybindings
 

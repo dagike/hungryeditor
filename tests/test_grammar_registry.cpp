@@ -9,9 +9,9 @@
 
 namespace {
 // A registered name for every vendored grammar.
-constexpr std::array<std::string_view, 18> kAllGrammars{
-    "bash", "c",   "cpp",    "csharp", "css",  "go",   "html",       "java", "javascript",
-    "json", "php", "python", "ruby",   "rust", "toml", "typescript", "tsx",  "yaml"};
+constexpr std::array<std::string_view, 19> kAllGrammars{
+    "bash", "c",      "cpp",  "csharp", "css", "go",   "html",       "java", "javascript", "json",
+    "php",  "python", "ruby", "rust",   "sql", "toml", "typescript", "tsx",  "yaml"};
 } // namespace
 
 class TestGrammarRegistry : public QObject
@@ -45,6 +45,12 @@ void TestGrammarRegistry::resolvesAliasesCaseInsensitively()
              hungryeditor::grammarForName("python").language);
     QCOMPARE(hungryeditor::grammarForName("C++").language,
              hungryeditor::grammarForName("cpp").language);
+
+    const auto sql = hungryeditor::grammarForName("sql");
+    QVERIFY(sql.language != nullptr);
+    QCOMPARE(hungryeditor::grammarForName("PostgreSQL").language, sql.language);
+    QCOMPARE(hungryeditor::grammarForName("psql").language, sql.language);
+    QCOMPARE(hungryeditor::grammarForName("MySQL").language, sql.language);
 }
 
 void TestGrammarRegistry::unknownNamesReturnEmpty()

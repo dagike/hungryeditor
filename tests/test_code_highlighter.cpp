@@ -19,6 +19,7 @@ private slots:
     void tokensTileTheWholeInput();
     void unknownOrEmptyLanguageYieldsNothing();
     void predicatesNarrowConstantAndConstructorCaptures();
+    void highlightsSql();
 };
 
 void TestCodeHighlighter::highlightsAKnownLanguage()
@@ -81,6 +82,28 @@ void TestCodeHighlighter::predicatesNarrowConstantAndConstructorCaptures()
     QCOMPARE(styleAt(0, 4), static_cast<int>(hungryeditor::StyleVariable));  // demo
     QCOMPARE(styleAt(9, 6), static_cast<int>(hungryeditor::StyleType));      // Widget: constructor
     QCOMPARE(styleAt(20, 8), static_cast<int>(hungryeditor::StyleConstant)); // MAX_SIZE: constant
+}
+
+void TestCodeHighlighter::highlightsSql()
+{
+    const std::string_view code = "SELECT id FROM users;";
+    const std::vector<CodeToken> tokens = highlightCode("sql", code);
+    QVERIFY(!tokens.empty());
+
+    const auto styleAt = [&](int start, int length) -> int {
+        for (const CodeToken& token : tokens) {
+            if (token.start == start && token.length == length) {
+                return token.style;
+            }
+        }
+        return -1;
+    };
+
+    QCOMPARE(styleAt(0, 6), static_cast<int>(hungryeditor::StyleKeyword));  // SELECT
+    QCOMPARE(styleAt(10, 4), static_cast<int>(hungryeditor::StyleKeyword)); // FROM
+
+    // Aliases resolve to the same grammar.
+    QVERIFY(!highlightCode("postgresql", code).empty());
 }
 
 QTEST_APPLESS_MAIN(TestCodeHighlighter)

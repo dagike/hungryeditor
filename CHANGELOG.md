@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SQL grammar for fenced code blocks (plus `postgresql`/`psql`/`mysql`
+  aliases).
+
+### Fixed
+
+- Highlight-query predicates (`#match?`, `#eq?`, `#any-of?`, and their
+  negations) are now evaluated instead of ignored, so captures gated on them
+  no longer over-fire — for example, a lowercase Python identifier no longer
+  gets styled as a constant just because a later, unconditional-looking rule
+  in the query file happened to come last.
+
 ## [0.1.0] - 2026-09-11
 
 First tagged release.

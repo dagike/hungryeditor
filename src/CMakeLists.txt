@@ -30,6 +30,7 @@ hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueri
     "kLangPython|${_gr}/python/queries/highlights.scm"
     "kLangRuby|${_gr}/ruby/queries/highlights.scm"
     "kLangRust|${_gr}/rust/queries/highlights.scm"
+    "kLangSql|${_gr}/sql/queries/highlights.scm"
     "kLangToml|${_gr}/toml/queries/highlights.scm"
     "kLangTypeScript|${_gr}/javascript/queries/highlights.scm|${_gr}/typescript/queries/highlights.scm"
     "kLangYaml|${_gr}/yaml/queries/highlights.scm")
