@@ -50,20 +50,37 @@ Scintilla::Colour sciColour(const QColor& c)
     return c.red() | (c.green() << 8) | (c.blue() << 16);
 }
 
-/// Minimal light palette. The real, theme-driven palette arrives in Phase 3.
+/// The editor's own chrome colours, derived from the active Theme so the
+/// editor and preview panes always agree.
 struct Palette
 {
-    QColor background{QStringLiteral("#ffffff")};
-    QColor foreground{QStringLiteral("#1e1e1e")};
-    QColor lineNumberText{QStringLiteral("#9aa0a6")};
-    QColor lineNumberBackground{QStringLiteral("#f6f8fa")};
-    QColor currentLine{QStringLiteral("#f2f6fc")};
-    QColor selection{QStringLiteral("#cfe3ff")};
-    QColor caret{QStringLiteral("#1e1e1e")};
-    QColor findMatch{QStringLiteral("#f0b429")};
-    QColor braceMatch{QStringLiteral("#bfe3c6")};
-    QColor braceBad{QStringLiteral("#cf222e")};
+    QColor background;
+    QColor foreground;
+    QColor lineNumberText;
+    QColor lineNumberBackground;
+    QColor currentLine;
+    QColor selection;
+    QColor caret;
+    QColor findMatch;
+    QColor braceMatch;
+    QColor braceBad;
 };
+
+Palette paletteFromTheme(const Theme& theme)
+{
+    return Palette{
+        .background = theme.background,
+        .foreground = theme.text,
+        .lineNumberText = theme.muted,
+        .lineNumberBackground = theme.codeBackground,
+        .currentLine = theme.currentLine,
+        .selection = theme.selection,
+        .caret = theme.text,
+        .findMatch = theme.findMatch,
+        .braceMatch = theme.braceMatch,
+        .braceBad = theme.error,
+    };
+}
 
 constexpr int kLineNumberMargin = 0;
 constexpr int kSymbolMargin = 1;
@@ -71,6 +88,31 @@ constexpr int kFoldMargin = 2;
 constexpr int kMinLineDigits = 3;
 constexpr int kFindIndicator = 20; // in the user range (8..31)
 constexpr int kFoldMarginWidth = 14;
+
+/// The chrome colours that vary with the theme: line-number margin, caret,
+/// selection, current-line highlight, brace matching, find-bar outline. Set
+/// on both highlight tiers so re-theming while a huge file has fallen back to
+/// Lexilla still recolours everything but the syntax tokens themselves.
+void applyChromeColours(Scintilla::ScintillaCall& call, const Palette& palette)
+{
+    call.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
+    call.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
+
+    call.SetElementColour(Scintilla::Element::Caret, sciColour(palette.caret));
+    call.SetSelBack(true, sciColour(palette.selection));
+    call.SetCaretLineBack(sciColour(palette.currentLine));
+
+    call.StyleSetBack(STYLE_BRACELIGHT, sciColour(palette.braceMatch));
+    call.StyleSetBold(STYLE_BRACELIGHT, true);
+    call.StyleSetFore(STYLE_BRACEBAD, sciColour(palette.braceBad));
+    call.StyleSetBold(STYLE_BRACEBAD, true);
+
+    call.SetAdditionalCaretFore(sciColour(palette.caret));
+    call.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
+                          sciColour(palette.selection));
+
+    call.IndicSetFore(kFindIndicator, sciColour(palette.findMatch));
+}
 
 /// Build a Scintilla fold level: `SC_FOLDLEVELBASE + number`, with the header
 /// flag when `header` is set. The enum has no `operator|`.
@@ -1208,6 +1250,20 @@ void Editor::setWordWrap(bool wrap)
     call_.SetWrapMode(wrap ? Scintilla::Wrap::Word : Scintilla::Wrap::None);
 }
 
+void Editor::setTheme(const Theme& theme)
+{
+    theme_ = theme;
+    // applyVisualDefaults() re-declares tree-sitter's semantic style ids,
+    // which numerically overlap Lexilla's SCE_MARKDOWN_* ids — calling it
+    // while that lexer is attached would corrupt its colouring, so each tier
+    // re-styles through whichever function normally owns it.
+    if (tier_ == HighlightTier::Lexilla) {
+        applyLexillaMarkdownStyles();
+    } else {
+        applyVisualDefaults();
+    }
+}
+
 void Editor::attachDocument(Document* document)
 {
     document_ = document;
@@ -1230,7 +1286,7 @@ void Editor::attachDocument(Document* document)
 
 void Editor::applyVisualDefaults()
 {
-    const Palette palette;
+    const Palette palette = paletteFromTheme(theme_);
     const QByteArray family = font_.family().toUtf8();
     const int pointSize = std::max(font_.pointSize(), 6);
 
@@ -1240,21 +1296,10 @@ void Editor::applyVisualDefaults()
     call_.StyleSetFore(STYLE_DEFAULT, sciColour(palette.foreground));
     call_.StyleSetBack(STYLE_DEFAULT, sciColour(palette.background));
     call_.StyleClearAll();
-
-    call_.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
-    call_.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
-
-    call_.SetElementColour(Scintilla::Element::Caret, sciColour(palette.caret));
-    call_.SetSelBack(true, sciColour(palette.selection));
+    applyChromeColours(call_, palette);
     call_.SetCaretLineVisible(true);
-    call_.SetCaretLineBack(sciColour(palette.currentLine));
     call_.SetCaretWidth(2);
     call_.SetCaretPeriod(500);
-
-    call_.StyleSetBack(STYLE_BRACELIGHT, sciColour(palette.braceMatch));
-    call_.StyleSetBold(STYLE_BRACELIGHT, true);
-    call_.StyleSetFore(STYLE_BRACEBAD, sciColour(palette.braceBad));
-    call_.StyleSetBold(STYLE_BRACEBAD, true);
 
     call_.SetEOLMode(Scintilla::EndOfLine::Lf);
     call_.SetTabWidth(tabWidth_);
@@ -1275,13 +1320,9 @@ void Editor::applyVisualDefaults()
     call_.SetRectangularSelectionModifier(static_cast<int>(Scintilla::KeyMod::Alt));
     call_.SetMouseSelectionRectangularSwitch(true);
     call_.SetAdditionalCaretsBlink(true);
-    call_.SetAdditionalCaretFore(sciColour(palette.caret));
-    call_.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
-                           sciColour(palette.selection));
 
     // Find bar: outline every match while the bar is open.
     call_.IndicSetStyle(kFindIndicator, Scintilla::IndicatorStyle::StraightBox);
-    call_.IndicSetFore(kFindIndicator, sciColour(palette.findMatch));
     call_.IndicSetAlpha(kFindIndicator, static_cast<Scintilla::Alpha>(70));
     call_.IndicSetOutlineAlpha(kFindIndicator, static_cast<Scintilla::Alpha>(160));
 
@@ -1324,7 +1365,7 @@ void Editor::applyVisualDefaults()
 void Editor::applySyntaxStyles()
 {
     // Must run after StyleClearAll(), which resets every style to the default.
-    for (const StyleDef& def : styleTable()) {
+    for (const StyleDef& def : themedStyleTable(theme_)) {
         if (def.id == StylePlain) {
             continue;
         }
@@ -1340,10 +1381,10 @@ void Editor::applyLexillaMarkdownStyles()
     // Lexilla's Markdown lexer owns style ids 0..21 (SCE_MARKDOWN_*), which
     // overlap the semantic ids used in tree-sitter mode — so the styles are
     // re-declared on every switch into and out of this tier.
-    const Palette palette;
-    const auto heading = sciColour(QColor(QStringLiteral("#0550ae")));
-    const auto code = sciColour(QColor(QStringLiteral("#6e40c9")));
-    const auto marker = sciColour(QColor(QStringLiteral("#57606a")));
+    const Palette palette = paletteFromTheme(theme_);
+    const auto heading = sciColour(theme_.heading);
+    const auto code = sciColour(theme_.codeText);
+    const auto marker = sciColour(theme_.muted);
 
     call_.StyleClearAll();
     for (int header = SCE_MARKDOWN_HEADER1; header <= SCE_MARKDOWN_HEADER6; ++header) {
@@ -1360,13 +1401,12 @@ void Editor::applyLexillaMarkdownStyles()
     call_.StyleSetFore(SCE_MARKDOWN_OLIST_ITEM, marker);
     call_.StyleSetFore(SCE_MARKDOWN_BLOCKQUOTE, marker);
     call_.StyleSetFore(SCE_MARKDOWN_HRULE, marker);
-    call_.StyleSetFore(SCE_MARKDOWN_LINK, sciColour(QColor(QStringLiteral("#0969da"))));
+    call_.StyleSetFore(SCE_MARKDOWN_LINK, sciColour(theme_.link));
     call_.StyleSetFore(SCE_MARKDOWN_CODE, code);
     call_.StyleSetFore(SCE_MARKDOWN_CODE2, code);
     call_.StyleSetFore(SCE_MARKDOWN_CODEBK, code);
 
-    call_.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
-    call_.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
+    applyChromeColours(call_, palette);
 }
 
 void Editor::updateHighlightTier(bool force)

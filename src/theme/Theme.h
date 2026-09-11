@@ -5,21 +5,34 @@
 
 namespace hungryeditor {
 
-/// The colours that drive the preview pane. Four built-ins exist today; a
-/// later Phase 8 commit adds user-supplied theme files. Unifying the editor's
-/// own (still separately hard-coded) palette with this one remains future
-/// work.
+/// The colours that drive both the preview pane and the editor's own chrome
+/// and syntax highlighting, so the two panes and every bundled or
+/// user-supplied theme stay in sync.
 struct Theme
 {
-    QColor background;     ///< page background
-    QColor text;           ///< body text
-    QColor muted;          ///< de-emphasised text (rules, list markers)
-    QColor heading;        ///< h1-h6
+    QColor background;     ///< page background; also the editor's background
+    QColor text;           ///< body text; also the editor's foreground and caret
+    QColor muted;          ///< de-emphasised text (rules, list markers); also line numbers
+    QColor heading;        ///< h1-h6; also several "accent" syntax tokens (see codeTokenCss())
     QColor link;           ///< anchors
     QColor codeText;       ///< inline and block code text
-    QColor codeBackground; ///< inline and block code background
+    QColor codeBackground; ///< inline and block code background; also the line-number margin
     QColor border;         ///< blockquote bar, table cell borders
-    QColor error;          ///< failed mermaid / katex render surfaces
+    QColor error;          ///< failed mermaid / katex render surfaces; also brace-match errors
+
+    // Syntax tokens with no equivalent above (the rest reuse a field already
+    // listed, matching what the built-in palettes' hex values coincided on).
+    QColor keyword;  ///< keywords and operators
+    QColor type;     ///< type and constructor names
+    QColor function; ///< function and method names
+    QColor string;   ///< string and character literals
+    QColor comment;  ///< comments
+
+    // Editor-only chrome with no preview equivalent.
+    QColor currentLine; ///< subtle highlight behind the caret's line
+    QColor selection;   ///< selection background
+    QColor findMatch;   ///< find-bar match outline
+    QColor braceMatch;  ///< matching-brace highlight background
 
     /// One of the bundled preview palettes.
     enum class Builtin

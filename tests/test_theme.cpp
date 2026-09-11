@@ -16,6 +16,8 @@ private slots:
     void eachBuiltinHasADistinctPaletteAndName();
     void builtinKeyRoundTripsThroughFromKey();
     void fromKeyFallsBackOnAnUnknownKey();
+    void everyBuiltinDefinesTheSyntaxAndChromeColours();
+    void codeTokenCssReflectsTheActiveThemeNotJustLight();
 };
 
 void TestTheme::builtinPaletteLinesUpWithTheEditor()
@@ -103,6 +105,42 @@ void TestTheme::fromKeyFallsBackOnAnUnknownKey()
     QCOMPARE(Theme::builtinFromKey(QStringLiteral("nonsense"), Theme::Builtin::Sepia),
              Theme::Builtin::Sepia);
     QCOMPARE(Theme::builtinFromKey(QString()), Theme::Builtin::Light);
+}
+
+void TestTheme::everyBuiltinDefinesTheSyntaxAndChromeColours()
+{
+    for (const Theme::Builtin id : {Theme::Builtin::Light, Theme::Builtin::Dark,
+                                    Theme::Builtin::HighContrast, Theme::Builtin::Sepia}) {
+        const Theme theme = Theme::forBuiltin(id);
+        for (const QColor& colour :
+             {theme.keyword, theme.type, theme.function, theme.string, theme.comment,
+              theme.currentLine, theme.selection, theme.findMatch, theme.braceMatch}) {
+            QVERIFY(colour.isValid());
+        }
+    }
+
+    // Light keeps today's exact hex values (zero visual change from before
+    // these fields existed).
+    const Theme light = Theme::forBuiltin(Theme::Builtin::Light);
+    QCOMPARE(light.keyword.name(), QStringLiteral("#cf222e"));
+    QCOMPARE(light.type.name(), QStringLiteral("#953800"));
+    QCOMPARE(light.function.name(), QStringLiteral("#6639ba"));
+    QCOMPARE(light.string.name(), QStringLiteral("#0a3069"));
+    QCOMPARE(light.comment.name(), QStringLiteral("#6e7781"));
+    QCOMPARE(light.currentLine.name(), QStringLiteral("#f2f6fc"));
+    QCOMPARE(light.selection.name(), QStringLiteral("#cfe3ff"));
+    QCOMPARE(light.findMatch.name(), QStringLiteral("#f0b429"));
+    QCOMPARE(light.braceMatch.name(), QStringLiteral("#bfe3c6"));
+}
+
+void TestTheme::codeTokenCssReflectsTheActiveThemeNotJustLight()
+{
+    const Theme dark = Theme::forBuiltin(Theme::Builtin::Dark);
+    const QString css = dark.codeTokenCss();
+
+    QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: %1").arg(dark.keyword.name())));
+    QVERIFY(css.contains(QStringLiteral(".tok-comment { color: %1").arg(dark.comment.name())));
+    QVERIFY(!css.contains(QStringLiteral(".tok-keyword { color: #cf222e"))); // not light's colour
 }
 
 QTEST_APPLESS_MAIN(TestTheme)

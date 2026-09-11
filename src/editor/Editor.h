@@ -6,6 +6,8 @@
 #include <QString>
 #include <QStringList>
 
+#include "theme/Theme.h"
+
 // Scintilla's headers are not self-contained and must be included in this
 // order: ScintillaCall.h uses types from ScintillaTypes.h without including it.
 // clang-format off
@@ -208,6 +210,12 @@ public:
     bool wordWrap() const { return wordWrap_; }
     void setWordWrap(bool wrap);
 
+    /// The palette driving both chrome (caret, selection, line numbers, ...)
+    /// and syntax-token colours. Re-styles immediately, whichever highlight
+    /// tier is currently active.
+    const Theme& theme() const { return theme_; }
+    void setTheme(const Theme& theme);
+
     /// Style byte at a position — for tests to check colouring.
     int styleAt(int position) const;
 
@@ -290,6 +298,7 @@ private:
     QFont font_;
     int tabWidth_ = 4;
     bool wordWrap_ = false;
+    Theme theme_ = Theme::builtin();
     bool modified_ = false;
     int lineDigits_ = 0;
     int frontMatterLastLine_ = -1; ///< closing `---` line, or -1 when absent

@@ -1014,7 +1014,9 @@ void MainWindow::setTheme(Theme::Builtin id)
     currentTheme_ = id;
     customThemePath_.clear();
     customThemeCss_.clear();
-    preview_->setThemeCss(Theme::forBuiltin(id).previewCss());
+    const Theme theme = Theme::forBuiltin(id);
+    preview_->setThemeCss(theme.previewCss());
+    editor_->setTheme(theme);
 
     if (themeGroup_ != nullptr) {
         for (QAction* action : themeGroup_->actions()) {
@@ -1035,6 +1037,7 @@ bool MainWindow::loadCustomTheme(const QString& path)
     customTheme_ = result.theme;
     customThemeCss_ = result.customCss;
     preview_->setThemeCss(customTheme_.previewCss() + customThemeCss_);
+    editor_->setTheme(customTheme_);
 
     if (themeGroup_ != nullptr) {
         for (QAction* action : themeGroup_->actions()) {
