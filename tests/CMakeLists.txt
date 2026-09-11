@@ -163,6 +163,13 @@ hungryeditor_add_test(test_md4c_renderer
     SOURCES test_md4c_renderer.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_md4c_fuzz
+    SOURCES test_md4c_fuzz.cpp
+    LIBS hungryeditor::core)
+# A generous, explicit backstop: a real hang (not just a slow run) fails this
+# job within a minute instead of blocking CI indefinitely.
+set_tests_properties(test_md4c_fuzz PROPERTIES TIMEOUT 60)
+
 hungryeditor_add_test(test_preview_controller
     SOURCES test_preview_controller.cpp
     LIBS hungryeditor::core)
