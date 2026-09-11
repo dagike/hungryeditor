@@ -88,10 +88,10 @@ elseif(WIN32)
                 \"\${CMAKE_INSTALL_PREFIX}/hungryeditor.exe\")
         ")
     else()
-        message(WARNING
-            "windeployqt not found: the installed hungryeditor.exe will be "
-            "missing its Qt DLLs. Packaging will still produce an archive, "
-            "just not a runnable one.")
+        message(FATAL_ERROR
+            "windeployqt not found: the installed hungryeditor.exe would be "
+            "missing its Qt DLLs, producing an installable but unrunnable "
+            "package.")
     endif()
 
     set(CPACK_GENERATOR "WIX;ZIP")
