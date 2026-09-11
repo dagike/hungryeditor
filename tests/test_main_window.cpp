@@ -35,6 +35,7 @@
 #include "io/SessionStore.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
+#include "theme/Theme.h"
 #include "ui/CommandPalette.h"
 #include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
@@ -77,6 +78,8 @@ private slots:
     void newAndSwitchActionsChangeCurrentDocument();
     void defaultsToSplitViewWithBothPanes();
     void viewModeActionsTogglePaneVisibility();
+    void themeActionsSwitchThePreviewPalette();
+    void themeSurvivesASessionReload();
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
@@ -653,6 +656,10 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("print") << QStringLiteral("action.print");
     QTest::newRow("exportPdf") << QStringLiteral("action.exportPdf");
     QTest::newRow("copyAsRichText") << QStringLiteral("action.copyAsRichText");
+    QTest::newRow("themeLight") << QStringLiteral("action.themeLight");
+    QTest::newRow("themeDark") << QStringLiteral("action.themeDark");
+    QTest::newRow("themeHighContrast") << QStringLiteral("action.themeHighContrast");
+    QTest::newRow("themeSepia") << QStringLiteral("action.themeSepia");
 }
 
 void TestMainWindow::hasNamedActions()
@@ -713,6 +720,41 @@ void TestMainWindow::viewModeActionsTogglePaneVisibility()
     QCOMPARE(window.viewMode(), hungryeditor::MainWindow::ViewMode::Editor);
     QVERIFY(window.editor()->isVisible());
     QVERIFY(!window.previewWidget()->isVisible());
+}
+
+void TestMainWindow::themeActionsSwitchThePreviewPalette()
+{
+    hungryeditor::MainWindow window;
+    QCOMPARE(window.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Light);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+
+    window.findChild<QAction*>(QStringLiteral("action.themeDark"))->trigger();
+
+    QCOMPARE(window.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Dark);
+    QCOMPARE(window.currentTheme().background,
+             hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark).background);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeDark"))->isChecked());
+    QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+}
+
+void TestMainWindow::themeSurvivesASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        first.setTheme(hungryeditor::Theme::Builtin::Sepia);
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+
+    QCOMPARE(second.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Sepia);
+    QVERIFY(second.findChild<QAction*>(QStringLiteral("action.themeSepia"))->isChecked());
 }
 
 void TestMainWindow::editorTextFlowsIntoThePreview()

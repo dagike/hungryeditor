@@ -213,7 +213,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     preview_ = std::make_unique<QtWebEnginePreview>();
     previewController_ = std::make_unique<PreviewController>(preview_.get());
-    preview_->setThemeCss(Theme::builtin().previewCss());
     QWidget* previewWidget = preview_->widget();
     previewWidget->setMinimumWidth(160);
     splitter_->addWidget(previewWidget);
@@ -238,6 +237,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     buildMenus();
     setStateDirectory(defaultStateDirectory());
     applyViewMode();
+    setTheme(currentTheme_);
 
     connect(documents_.get(), &DocumentManager::documentAdded, this, &MainWindow::onDocumentAdded);
     connect(documents_.get(), &DocumentManager::documentClosed, this,
@@ -533,6 +533,21 @@ void MainWindow::buildMenus()
                 QKeySequence(Qt::CTRL | Qt::Key_2));
     addViewMode(tr("&Preview Only"), QStringLiteral("action.viewPreview"), ViewMode::Preview,
                 QKeySequence(Qt::CTRL | Qt::Key_3));
+
+    QMenu* themeMenu = viewMenu->addMenu(tr("&Theme"));
+    themeGroup_ = new QActionGroup(this);
+    const auto addTheme = [&](const QString& objectName, Theme::Builtin id) {
+        QAction* action =
+            themeMenu->addAction(Theme::builtinName(id), this, [this, id] { setTheme(id); });
+        action->setCheckable(true);
+        action->setObjectName(objectName);
+        action->setData(static_cast<int>(id));
+        themeGroup_->addAction(action);
+    };
+    addTheme(QStringLiteral("action.themeLight"), Theme::Builtin::Light);
+    addTheme(QStringLiteral("action.themeDark"), Theme::Builtin::Dark);
+    addTheme(QStringLiteral("action.themeHighContrast"), Theme::Builtin::HighContrast);
+    addTheme(QStringLiteral("action.themeSepia"), Theme::Builtin::Sepia);
 
     viewMenu->addSeparator();
     foldFrontMatterAction_ = viewMenu->addAction(tr("Fold &Front Matter"));
@@ -894,6 +909,20 @@ void MainWindow::applyViewMode()
     if (viewModeGroup_ != nullptr) {
         for (QAction* action : viewModeGroup_->actions()) {
             if (action->data().toInt() == static_cast<int>(viewMode_)) {
+                action->setChecked(true);
+            }
+        }
+    }
+}
+
+void MainWindow::setTheme(Theme::Builtin id)
+{
+    currentTheme_ = id;
+    preview_->setThemeCss(Theme::forBuiltin(id).previewCss());
+
+    if (themeGroup_ != nullptr) {
+        for (QAction* action : themeGroup_->actions()) {
+            if (action->data().toInt() == static_cast<int>(id)) {
                 action->setChecked(true);
             }
         }
@@ -1351,6 +1380,9 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (!session.splitterState.isEmpty()) {
         splitter_->restoreState(session.splitterState);
     }
+    if (!session.theme.isEmpty()) {
+        setTheme(Theme::builtinFromKey(session.theme, currentTheme_));
+    }
     documents_->restoreSession(session, documents_->pendingDrafts());
     dropInitialBlankBuffer();
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
@@ -1377,6 +1409,7 @@ void MainWindow::saveSession()
     session.windowState = saveState();
     session.splitterState = splitter_->saveState();
     session.workspaceFolder = workspaceRoot_;
+    session.theme = Theme::builtinKey(currentTheme_);
     saveWorkspaceViewState();
     sessionStore_->save(session);
 }

@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include "editor/CaretHistory.h"
+#include "theme/Theme.h"
 
 class QAction;
 class QActionGroup;
@@ -60,6 +61,13 @@ public:
 
     ViewMode viewMode() const { return viewMode_; }
     void setViewMode(ViewMode mode);
+
+    /// The active bundled preview palette.
+    Theme::Builtin currentBuiltinTheme() const { return currentTheme_; }
+    /// The active palette's colours.
+    Theme currentTheme() const { return Theme::forBuiltin(currentTheme_); }
+    /// Switch the preview (and the persisted session) to `id`.
+    void setTheme(Theme::Builtin id);
 
     /// The debounce-and-render controller feeding the preview. Exposed for tests.
     PreviewController* previewController() const { return previewController_.get(); }
@@ -322,6 +330,8 @@ private:
     QMenu* recentMenu_ = nullptr;
     QActionGroup* viewModeGroup_ = nullptr;
     ViewMode viewMode_ = ViewMode::Split;
+    QActionGroup* themeGroup_ = nullptr;
+    Theme::Builtin currentTheme_ = Theme::Builtin::Light;
     QString lastError_;
     QString stateDir_;
     bool syncingTabs_ = false;

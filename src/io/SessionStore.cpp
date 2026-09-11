@@ -37,6 +37,7 @@ Session SessionStore::load() const
         QByteArray::fromBase64(root.value(QStringLiteral("splitterState")).toString().toLatin1());
     session.currentIndex = root.value(QStringLiteral("current")).toInt();
     session.workspaceFolder = root.value(QStringLiteral("workspaceFolder")).toString();
+    session.theme = root.value(QStringLiteral("theme")).toString();
     const QJsonArray documents = root.value(QStringLiteral("documents")).toArray();
     for (const auto& value : documents) {
         const QJsonObject entry = value.toObject();
@@ -73,6 +74,7 @@ bool SessionStore::save(const Session& session) const
                 QString::fromLatin1(session.splitterState.toBase64()));
     root.insert(QStringLiteral("current"), session.currentIndex);
     root.insert(QStringLiteral("workspaceFolder"), session.workspaceFolder);
+    root.insert(QStringLiteral("theme"), session.theme);
     root.insert(QStringLiteral("documents"), documents);
 
     QDir().mkpath(QFileInfo(filePath_).absolutePath());

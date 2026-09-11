@@ -40,6 +40,7 @@ void TestSessionStore::saveThenLoadRoundTrips()
     session.windowState = QByteArray::fromHex("0102030405");
     session.splitterState = QByteArray::fromHex("aabbcc");
     session.currentIndex = 1;
+    session.theme = QStringLiteral("dark");
     session.documents.append({QStringLiteral("/tmp/a.md"), QString(), 3, 7, 2});
     session.documents.append({QString(), QStringLiteral("draft-9"), 0, 0, 0});
     QVERIFY(store.save(session));
@@ -50,6 +51,7 @@ void TestSessionStore::saveThenLoadRoundTrips()
     QCOMPARE(loaded.windowState, session.windowState);
     QCOMPARE(loaded.splitterState, session.splitterState);
     QCOMPARE(loaded.currentIndex, 1);
+    QCOMPARE(loaded.theme, QStringLiteral("dark"));
     QCOMPARE(loaded.documents.size(), 2);
     QCOMPARE(loaded.documents.at(0).path, QStringLiteral("/tmp/a.md"));
     QCOMPARE(loaded.documents.at(0).caretLine, 3);
