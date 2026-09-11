@@ -163,3 +163,7 @@ hungryeditor_test_needs_webengine(test_preview)
 hungryeditor_add_test(test_html_document
     SOURCES test_html_document.cpp
     LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_theme_file
+    SOURCES test_theme_file.cpp
+    LIBS hungryeditor::core)

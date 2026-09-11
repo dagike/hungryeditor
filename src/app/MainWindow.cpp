@@ -47,6 +47,7 @@
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
+#include "theme/ThemeFile.h"
 #include "ui/CommandPalette.h"
 #include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
@@ -549,6 +550,11 @@ void MainWindow::buildMenus()
     addTheme(QStringLiteral("action.themeHighContrast"), Theme::Builtin::HighContrast);
     addTheme(QStringLiteral("action.themeSepia"), Theme::Builtin::Sepia);
 
+    themeMenu->addSeparator();
+    QAction* loadCustomThemeAction =
+        themeMenu->addAction(tr("Load Custom Theme…"), this, &MainWindow::loadCustomThemeDialog);
+    loadCustomThemeAction->setObjectName(QStringLiteral("action.loadCustomTheme"));
+
     viewMenu->addSeparator();
     foldFrontMatterAction_ = viewMenu->addAction(tr("Fold &Front Matter"));
     foldFrontMatterAction_->setCheckable(true);
@@ -918,14 +924,47 @@ void MainWindow::applyViewMode()
 void MainWindow::setTheme(Theme::Builtin id)
 {
     currentTheme_ = id;
+    customThemePath_.clear();
+    customThemeCss_.clear();
     preview_->setThemeCss(Theme::forBuiltin(id).previewCss());
 
     if (themeGroup_ != nullptr) {
         for (QAction* action : themeGroup_->actions()) {
-            if (action->data().toInt() == static_cast<int>(id)) {
-                action->setChecked(true);
-            }
+            action->setChecked(action->data().toInt() == static_cast<int>(id));
         }
+    }
+}
+
+bool MainWindow::loadCustomTheme(const QString& path)
+{
+    const themefile::Result result = themefile::loadThemeFile(path);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+
+    customThemePath_ = path;
+    customTheme_ = result.theme;
+    customThemeCss_ = result.customCss;
+    preview_->setThemeCss(customTheme_.previewCss() + customThemeCss_);
+
+    if (themeGroup_ != nullptr) {
+        for (QAction* action : themeGroup_->actions()) {
+            action->setChecked(false);
+        }
+    }
+    return true;
+}
+
+void MainWindow::loadCustomThemeDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load Custom Theme"), QString(),
+                                                      tr("Theme Files (*.json)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!loadCustomTheme(path)) {
+        QMessageBox::warning(this, tr("Load Theme Failed"), lastError_);
     }
 }
 
@@ -1383,6 +1422,9 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (!session.theme.isEmpty()) {
         setTheme(Theme::builtinFromKey(session.theme, currentTheme_));
     }
+    if (!session.customThemePath.isEmpty()) {
+        loadCustomTheme(session.customThemePath); // silently keeps the builtin above on failure
+    }
     documents_->restoreSession(session, documents_->pendingDrafts());
     dropInitialBlankBuffer();
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
@@ -1410,6 +1452,7 @@ void MainWindow::saveSession()
     session.splitterState = splitter_->saveState();
     session.workspaceFolder = workspaceRoot_;
     session.theme = Theme::builtinKey(currentTheme_);
+    session.customThemePath = customThemePath_;
     saveWorkspaceViewState();
     sessionStore_->save(session);
 }
@@ -1615,7 +1658,8 @@ QString MainWindow::buildHtmlExport() const
 {
     const QString current = currentPath();
     const htmlexport::Options options{
-        exportTitle(), current.isEmpty() ? QString() : QFileInfo(current).absolutePath()};
+        exportTitle(), current.isEmpty() ? QString() : QFileInfo(current).absolutePath(),
+        currentTheme()};
     return htmlexport::build(editor_->text(), options);
 }
 
@@ -1715,7 +1759,7 @@ void MainWindow::copyAsRichText()
     const QString dir = current.isEmpty() ? QString() : QFileInfo(current).absolutePath();
 
     auto* mime = new QMimeData();
-    mime->setHtml(htmlexport::buildClipboardFragment(source, dir));
+    mime->setHtml(htmlexport::buildClipboardFragment(source, dir, currentTheme()));
     mime->setText(source);
     QApplication::clipboard()->setMimeData(mime);
 }

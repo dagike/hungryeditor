@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QColor>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -80,6 +81,9 @@ private slots:
     void viewModeActionsTogglePaneVisibility();
     void themeActionsSwitchThePreviewPalette();
     void themeSurvivesASessionReload();
+    void loadCustomThemeAppliesOverridesAndCustomCss();
+    void pickingABuiltinThemeClearsAnActiveCustomTheme();
+    void customThemeSurvivesASessionReload();
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
@@ -660,6 +664,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("themeDark") << QStringLiteral("action.themeDark");
     QTest::newRow("themeHighContrast") << QStringLiteral("action.themeHighContrast");
     QTest::newRow("themeSepia") << QStringLiteral("action.themeSepia");
+    QTest::newRow("loadCustomTheme") << QStringLiteral("action.loadCustomTheme");
 }
 
 void TestMainWindow::hasNamedActions()
@@ -755,6 +760,61 @@ void TestMainWindow::themeSurvivesASessionReload()
 
     QCOMPARE(second.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Sepia);
     QVERIFY(second.findChild<QAction*>(QStringLiteral("action.themeSepia"))->isChecked());
+}
+
+void TestMainWindow::loadCustomThemeAppliesOverridesAndCustomCss()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString themePath = writeText(dir.filePath(QStringLiteral("theme.json")),
+                                        R"({"background": "#123456", "css": "* { margin: 0; }"})");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.loadCustomTheme(themePath));
+
+    QCOMPARE(window.currentTheme().background, QColor(QStringLiteral("#123456")));
+    QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+}
+
+void TestMainWindow::pickingABuiltinThemeClearsAnActiveCustomTheme()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString themePath =
+        writeText(dir.filePath(QStringLiteral("theme.json")), R"({"background": "#123456"})");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.loadCustomTheme(themePath));
+
+    window.findChild<QAction*>(QStringLiteral("action.themeDark"))->trigger();
+
+    QCOMPARE(window.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Dark);
+    QCOMPARE(window.currentTheme().background,
+             hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark).background);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeDark"))->isChecked());
+}
+
+void TestMainWindow::customThemeSurvivesASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString themePath =
+        writeText(dir.filePath(QStringLiteral("theme.json")), R"({"background": "#123456"})");
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        QVERIFY(first.loadCustomTheme(themePath));
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+
+    QCOMPARE(second.currentTheme().background, QColor(QStringLiteral("#123456")));
 }
 
 void TestMainWindow::editorTextFlowsIntoThePreview()

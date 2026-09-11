@@ -92,6 +92,8 @@ add_library(hungryeditor_core STATIC
     preview/QtWebEnginePreview.h
     theme/Theme.cpp
     theme/Theme.h
+    theme/ThemeFile.cpp
+    theme/ThemeFile.h
     ui/CommandPalette.cpp
     ui/CommandPalette.h
     ui/FileTreePanel.cpp

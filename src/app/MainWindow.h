@@ -62,12 +62,24 @@ public:
     ViewMode viewMode() const { return viewMode_; }
     void setViewMode(ViewMode mode);
 
-    /// The active bundled preview palette.
+    /// The bundled palette last explicitly picked (kept as a fallback while a
+    /// custom theme is active; see currentTheme()).
     Theme::Builtin currentBuiltinTheme() const { return currentTheme_; }
-    /// The active palette's colours.
-    Theme currentTheme() const { return Theme::forBuiltin(currentTheme_); }
-    /// Switch the preview (and the persisted session) to `id`.
+    /// The colours actually in effect: a loaded custom theme's, if any,
+    /// otherwise the selected builtin's.
+    Theme currentTheme() const
+    {
+        return customThemePath_.isEmpty() ? Theme::forBuiltin(currentTheme_) : customTheme_;
+    }
+    /// Switch the preview (and the persisted session) to the builtin `id`,
+    /// clearing any active custom theme.
     void setTheme(Theme::Builtin id);
+
+    /// Load a JSON theme file (see theme/ThemeFile.h) and apply it to the
+    /// preview, superseding the builtin selection until a builtin is chosen
+    /// again. Returns false on a read/parse failure (see lastError()),
+    /// leaving the current theme unchanged.
+    bool loadCustomTheme(const QString& path);
 
     /// The debounce-and-render controller feeding the preview. Exposed for tests.
     PreviewController* previewController() const { return previewController_.get(); }
@@ -209,6 +221,7 @@ private slots:
     void printDialog();
     void exportPdfDialog();
     void copyAsRichText();
+    void loadCustomThemeDialog();
 
 private:
     void buildMenus();
@@ -332,6 +345,9 @@ private:
     ViewMode viewMode_ = ViewMode::Split;
     QActionGroup* themeGroup_ = nullptr;
     Theme::Builtin currentTheme_ = Theme::Builtin::Light;
+    QString customThemePath_; ///< empty when no custom theme is active
+    Theme customTheme_;
+    QString customThemeCss_;
     QString lastError_;
     QString stateDir_;
     bool syncingTabs_ = false;
