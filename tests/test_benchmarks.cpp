@@ -73,6 +73,37 @@ QString syntheticMarkdown(qsizetype bytes)
     return text;
 }
 
+/// A large, but realistically-shaped, document: long-form prose with only
+/// occasional headings — unlike syntheticMarkdown() above, this does not put
+/// a heading and a list in every paragraph. That density matters here:
+/// Editor::updateHighlightTier()'s Lexilla fallback (for anything over its
+/// tree-sitter byte limit) runs Colourise() synchronously over the whole
+/// buffer on load, and Scintilla/Lexilla's per-line bookkeeping scales with
+/// block-boundary *count*, not just byte size. A 10 MB syntheticMarkdown()
+/// document (a new heading+list block every ~140 bytes, ~89,000 blocks) took
+/// over four minutes to open on Windows CI — a document shape no real 10 MB
+/// markdown file has, since real ones are overwhelmingly prose. This is what
+/// the "10 MB file opens fast" benchmark should actually measure.
+QString realisticLargeDocument(qsizetype bytes)
+{
+    const QString sentence = QStringLiteral(
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor "
+        "incididunt ut labore et dolore magna aliqua. ");
+    const QString heading = QStringLiteral("\n\n## Section\n\n");
+
+    QString text;
+    text.reserve(bytes + sentence.size());
+    qsizetype nextHeadingAt = 0;
+    while (text.size() < bytes) {
+        if (text.size() >= nextHeadingAt) {
+            text += heading;
+            nextHeadingAt = text.size() + 50 * 1024; // one heading per ~50 KB
+        }
+        text += sentence;
+    }
+    return text;
+}
+
 } // namespace
 
 class TestBenchmarks : public QObject
@@ -116,7 +147,7 @@ void TestBenchmarks::tenMegabyteFileOpensReasonablyFast()
     {
         QFile file(path);
         QVERIFY(file.open(QIODevice::WriteOnly));
-        file.write(syntheticMarkdown(10 * 1024 * 1024).toUtf8());
+        file.write(realisticLargeDocument(10 * 1024 * 1024).toUtf8());
     }
 
     MainWindow window;
