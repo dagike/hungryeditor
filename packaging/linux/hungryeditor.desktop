@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=hungryeditor
+GenericName=Markdown Editor
+Comment=A fast native Markdown editor
+Exec=hungryeditor %F
+Icon=hungryeditor
+Terminal=false
+StartupNotify=true
+Categories=Utility;TextEditor;Development;
+MimeType=text/markdown;text/x-markdown;
