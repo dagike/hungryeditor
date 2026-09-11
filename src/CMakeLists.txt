@@ -182,7 +182,7 @@ hungryeditor_set_warnings(hungryeditor_core)
 add_executable(hungryeditor app/main.cpp)
 
 set_target_properties(hungryeditor PROPERTIES
-    WIN32_EXECUTABLE OFF
+    WIN32_EXECUTABLE ON
     MACOSX_BUNDLE OFF)
 
 target_compile_definitions(hungryeditor PRIVATE
