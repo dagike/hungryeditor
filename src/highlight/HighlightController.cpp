@@ -15,6 +15,7 @@ HighlightController::HighlightController(QObject* parent) : QObject(parent)
     // resolves Q_ARG's argument type by looking up exactly the name it was
     // given — see the const TSLanguage* line just above for the same fix.
     qRegisterMetaType<PendingEdit>("PendingEdit");
+    qRegisterMetaType<HighlightRange>("HighlightRange");
 
     thread_ = new QThread(this);
     thread_->setObjectName(QStringLiteral("highlight-worker"));
@@ -41,14 +42,16 @@ void HighlightController::configure(const TSLanguage* language, const QString& h
                               Q_ARG(QString, injectionQuery));
 }
 
-quint64 HighlightController::submit(const QString& text, PendingEdit edit)
+quint64 HighlightController::submit(const QString& text, PendingEdit edit, HighlightRange range,
+                                    bool textChanged)
 {
     if (!enabled_) {
         return revision_;
     }
     const quint64 revision = ++revision_;
     QMetaObject::invokeMethod(worker_, "submit", Qt::QueuedConnection, Q_ARG(QString, text),
-                              Q_ARG(quint64, revision), Q_ARG(PendingEdit, edit));
+                              Q_ARG(quint64, revision), Q_ARG(PendingEdit, edit),
+                              Q_ARG(HighlightRange, range), Q_ARG(bool, textChanged));
     return revision;
 }
 

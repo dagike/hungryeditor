@@ -30,6 +30,19 @@ int rgbOnly(int packed)
     return packed & 0x00ffffff;
 }
 
+// A large, plain-prose document — big enough that its own viewport (a few
+// dozen lines) plus margin covers only a small fraction of it — for
+// exercising viewport-scoped highlighting. No headings or emphasis of its
+// own; a test inserts those where it needs them.
+QString largePlainDocument(int lines)
+{
+    QString doc;
+    for (int i = 0; i < lines; ++i) {
+        doc += QStringLiteral("line %1 of ordinary prose in a long document\n").arg(i);
+    }
+    return doc;
+}
+
 } // namespace
 
 class TestEditor : public QObject
@@ -80,6 +93,9 @@ private slots:
     void inlineEmphasisInProseGetsStyled();
     void fencedRustBlockGetsLanguageColours();
     void largeDocumentsFallBackFromTreeSitter();
+    void viewportScopedEditLeavesDistantStylingUntouched();
+    void offScreenEditStillGetsCorrectColour();
+    void scrollingIntoUnstyledTerritoryEventuallyColoursIt();
 };
 
 void TestEditor::textRoundTrips()
@@ -789,6 +805,97 @@ void TestEditor::largeDocumentsFallBackFromTreeSitter()
     QVERIFY(again.wait(2000));
     QCOMPARE(editor.highlightTier(), hungryeditor::Editor::HighlightTier::TreeSitter);
     QCOMPARE(editor.styleAt(headingAt), static_cast<int>(hungryeditor::StyleHeading));
+}
+
+void TestEditor::viewportScopedEditLeavesDistantStylingUntouched()
+{
+    // A document big enough that the viewport (plus margin) is a small
+    // fraction of it, already fully coloured by its one initial setText().
+    hungryeditor::Editor editor;
+    editor.resize(800, 600);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    const QString doc = largePlainDocument(20000);
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+    editor.setText(doc);
+    QVERIFY(spy.wait(8000));
+    const auto docLength = editor.call().TextLength();
+    QCOMPARE(editor.call().EndStyled(), docLength); // the initial load covers everything
+
+    // A small, real edit near the top, where the viewport still is.
+    spy.clear();
+    editor.call().InsertText(0, "x");
+    QVERIFY(spy.wait(8000));
+
+    // The whole point: this pass covered only the edit and what's on
+    // screen, not the whole (now one byte longer) document again.
+    QVERIFY(editor.call().EndStyled() < docLength);
+}
+
+void TestEditor::offScreenEditStillGetsCorrectColour()
+{
+    // The viewport starts at the top; an edit deep in the document, far
+    // past what a small window's viewport-plus-margin would reach, is the
+    // "off-screen edit" case viewportByteRangeWithMargin's union with the
+    // edit's own extent exists for — a multi-cursor edit, find/replace-all,
+    // or a preview checkbox toggle can all land somewhere the user isn't
+    // currently looking, and it must still come out correctly coloured,
+    // not just plain.
+    hungryeditor::Editor editor;
+    editor.resize(800, 600);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    const QString doc = largePlainDocument(20000);
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+    editor.setText(doc);
+    QVERIFY(spy.wait(8000));
+
+    const int farPosition = static_cast<int>(editor.call().PositionFromLine(15000));
+    spy.clear();
+    editor.call().InsertText(farPosition, "# New Heading\n");
+    QVERIFY(spy.wait(8000));
+
+    const int headingTextAt = farPosition + 2; // just past "# "
+    QCOMPARE(editor.styleAt(headingTextAt), static_cast<int>(hungryeditor::StyleHeading));
+}
+
+void TestEditor::scrollingIntoUnstyledTerritoryEventuallyColoursIt()
+{
+    // Nothing yet has touched the tail of this document (a fresh, small
+    // document — the initial full load is the only thing that ever ran),
+    // so scrolling straight there lands in genuinely never-styled
+    // territory: Notification::StyleNeeded's own gap-fill placeholder
+    // covers it with StylePlain immediately, but the async request
+    // onNotify() also issues there must be what actually gives it its
+    // real colour — nothing else will.
+    hungryeditor::Editor editor;
+    editor.resize(800, 600);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
+
+    QString doc = largePlainDocument(20000);
+    const int headingAt = static_cast<int>(doc.size());
+    doc += QStringLiteral("# Tail Heading\n");
+    QSignalSpy spy(&editor, &hungryeditor::Editor::highlightingApplied);
+    editor.setText(doc);
+    QVERIFY(spy.wait(8000));
+
+    // The initial load already covers the whole document (see
+    // viewportScopedEditLeavesDistantStylingUntouched) — force the tail
+    // back to genuinely unstyled, the way an edit near the top would, by
+    // making one there and letting its own narrow pass leave the tail
+    // behind.
+    spy.clear();
+    editor.call().InsertText(0, "x");
+    QVERIFY(spy.wait(8000));
+    QVERIFY(editor.styleAt(headingAt + 1) != static_cast<int>(hungryeditor::StyleHeading));
+
+    spy.clear();
+    editor.setFirstVisibleLine(editor.lineCount() - 3);
+    QVERIFY(spy.wait(8000));
+    QCOMPARE(editor.styleAt(headingAt + 3), static_cast<int>(hungryeditor::StyleHeading));
 }
 
 QTEST_MAIN(TestEditor)

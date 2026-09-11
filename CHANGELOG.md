@@ -27,8 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Measured effect for `tree-sitter-markdown` specifically is modest
   (~10-15%, not a dramatic speedup) — its external scanner tracks nested
   block/indentation state that limits how much of the tree can be reused
-  across an edit. Whole-document span computation, the larger remaining
-  per-keystroke cost, is unchanged by this entry.
+  across an edit.
+- Highlight spans are computed for the edited range and the visible
+  viewport (plus a margin), not the whole document, on every parse;
+  Scintilla's own `StyleNeeded` notification asks for more, lazily, the
+  moment a scroll reaches territory that was never covered. Together with
+  incremental reparsing above, a single realistic edit on a 1.5 MB document
+  drops from ~2450-2550ms to ~1400-1450ms — real, but smaller than either
+  change alone would suggest, because `Editor::text()`'s full-document
+  buffer copy and UTF-8 conversion (called at least twice per edit,
+  independent of highlighting) turns out to dominate what's left.
 
 ## [0.1.0] - 2026-09-11
 

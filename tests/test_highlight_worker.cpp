@@ -80,6 +80,9 @@ private slots:
     void disabledControllerIgnoresSubmissions();
     void incrementalSubmitMatchesFullReparse();
     void multipleQueuedEditsProduceOneCorrectResult();
+    void boundedRangeYieldsSpansCoveringJustThatRange();
+    void unchangedTextSkipsReparseAndReusesTheExistingTree();
+    void rangeExtensionCoalescedWithAnEditStaysCorrect();
 };
 
 void TestHighlightWorker::parsesOnASeparateThread()
@@ -337,6 +340,96 @@ void TestHighlightWorker::multipleQueuedEditsProduceOneCorrectResult()
         QCOMPARE(result.spans[i].length, fullResult.spans[i].length);
         QCOMPARE(result.spans[i].style, fullResult.spans[i].style);
     }
+}
+
+void TestHighlightWorker::boundedRangeYieldsSpansCoveringJustThatRange()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    const QString doc = QStringLiteral("# Heading\n\n```rust\nfn demo() {}\n```\n\nmore text\n");
+    controller.submit(doc);
+    QVERIFY(spy.wait(2000));
+    spy.clear();
+
+    // A bounded range covering only the heading and the fence, not the rest
+    // of the document.
+    const QByteArray bytes = doc.toUtf8();
+    const auto rangeStart = static_cast<quint32>(0);
+    const auto rangeEnd = static_cast<quint32>(bytes.indexOf("more text"));
+    controller.submit(doc, {}, hungryeditor::HighlightRange{rangeStart, rangeEnd});
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+
+    QCOMPARE(result.rangeStart, rangeStart);
+    QCOMPARE(result.rangeEnd, rangeEnd);
+    QVERIFY(!result.spans.isEmpty());
+    quint32 covered = rangeStart;
+    for (const auto& span : result.spans) {
+        QCOMPARE(span.start, covered); // contiguous, starting at rangeStart — not byte 0
+        covered += span.length;
+    }
+    QCOMPARE(covered, rangeEnd); // and stopping exactly at rangeEnd
+}
+
+void TestHighlightWorker::unchangedTextSkipsReparseAndReusesTheExistingTree()
+{
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    const QString doc = QStringLiteral("# Real Heading\n\ntext\n");
+    controller.submit(doc);
+    QVERIFY(spy.wait(2000));
+    spy.clear();
+
+    // Asserts nothing changed, but with text that (if actually reparsed)
+    // would produce completely different spans — proving the worker really
+    // does skip reparsing and trusts the existing tree, not this
+    // submission's own (deliberately wrong) text.
+    const QString wrongText = QStringLiteral("totally different content, no heading at all");
+    controller.submit(wrongText, {}, hungryeditor::HighlightRange{}, /*textChanged=*/false);
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+    QCOMPARE(result.rootType, QStringLiteral("document")); // the ORIGINAL tree, untouched
+
+    const QByteArray bytes = doc.toUtf8(); // spans must key against the ORIGINAL doc's offsets
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("Real Heading"))),
+             static_cast<qint32>(hungryeditor::StyleHeading));
+}
+
+void TestHighlightWorker::rangeExtensionCoalescedWithAnEditStaysCorrect()
+{
+    // A real edit immediately followed, within the same debounce window, by
+    // a pure range-extension request — the shape Editor::onNotify() produces
+    // when an edit and a Notification::StyleNeeded scroll-refresh land close
+    // together. The range-extension call must not cause the edit to be
+    // dropped from the batch (a real bug this once was, in
+    // HighlightWorker::submit()'s pendingEditsAllPresent_ bookkeeping).
+    hungryeditor::HighlightController controller;
+    controller.configure(tree_sitter_markdown(), kMarkdownQuery, kMarkdownInjections);
+
+    QSignalSpy spy(&controller, &hungryeditor::HighlightController::highlighted);
+    const QString doc0 = QStringLiteral("# Heading\n\ntext\n");
+    controller.submit(doc0);
+    QVERIFY(spy.wait(2000));
+    spy.clear();
+
+    const QString doc1 = doc0 + QStringLiteral("\n```rust\nfn demo() {}\n```\n");
+    controller.submit(doc1, appendEdit(doc0, doc1));
+    controller.submit(doc1, {},
+                      hungryeditor::HighlightRange{0, static_cast<quint32>(doc1.toUtf8().size())},
+                      /*textChanged=*/false);
+    QVERIFY(spy.wait(2000));
+    const auto result = spy.first().at(0).value<hungryeditor::HighlightResult>();
+    QVERIFY(result.ok);
+
+    const QByteArray bytes = doc1.toUtf8();
+    QCOMPARE(styleAtByte(result, static_cast<int>(bytes.indexOf("fn "))),
+             static_cast<qint32>(hungryeditor::StyleKeyword));
 }
 
 QTEST_MAIN(TestHighlightWorker)

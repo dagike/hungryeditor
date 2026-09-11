@@ -184,29 +184,40 @@ void TestBenchmarks::editingStaysFast()
 
 void TestBenchmarks::singleEditOnALargeDocumentStaysFast()
 {
-    // A real, single-character edit on a large, already-parsed
-    // tree-sitter-tier document, compared directly against an
-    // equivalent-cost full-buffer replace (the only option before 11.6).
+    // A real, single-character edit where the user is actually looking — a
+    // shown, sized widget, edited near the top of its (still default)
+    // viewport, the ordinary case of typing where the caret already is —
+    // on a large, already-parsed tree-sitter-tier document. Compared
+    // directly against an equivalent-cost full-buffer replace (the only
+    // option before 11.6, and still what an edit whose own extent or
+    // whose viewport can't be pinned down falls back to).
+    //
+    // The widget must actually be shown and sized: an unshown Editor's
+    // "viewport" is degenerate (no real FirstVisibleLine()/LinesOnScreen()),
+    // which silently defeats viewport-only span computation (11.7) — the
+    // union of a degenerate viewport with an edit far from it can end up
+    // covering nearly the whole document regardless of the edit's own size.
     //
     // Measured directly (not asserted here, since the two setups differ
     // enough — a live Editor's full highlight+outline+margin pipeline vs a
     // bare TreeSitterEngine — that a single run's ratio isn't a stable
-    // threshold): tree-sitter's own incremental reparse of this 1.5 MB
-    // document is only ~1.1-1.15x faster than a full reparse, regardless of
-    // whether the edit lands at the start, middle or end. That is real, but
-    // far short of the dramatic near-O(1) speedup incremental reparsing
-    // gives most grammars — tree-sitter-markdown's external scanner tracks
-    // nested block/indentation state that limits how much of the tree can
-    // be reused across an edit. The other, larger cost this test does NOT
-    // yet fix is computeSpans() repainting and run-length-encoding every
-    // byte of the document on every parse, regardless of what changed —
-    // that is 11.7 (viewport-only span computation), not this commit.
-    //
-    // So this test only checks two things: a single edit does not crash or
-    // hang, and it is not slower than an equivalent full-document
-    // reparse — a floor, not the target this pair of commits is working
-    // toward together.
+    // threshold): together, 11.6 (incremental reparse) and 11.7
+    // (viewport-only span computation) bring a single realistic edit on
+    // this 1.5 MB document from ~2450-2550ms down to ~1400-1450ms.
+    // Real, but smaller than either commit's own mechanism would suggest in
+    // isolation, because a third, uninvolved cost turns out to dominate
+    // what's left: Editor::text() — called at least twice per edit
+    // notification, once by updateFrontMatterFold() and once for the
+    // highlight submission itself — does a full document buffer copy plus
+    // UTF-8 conversion every time, independent of highlighting entirely.
+    // Not this commit's to fix (11.7 is span computation specifically), but
+    // worth recording plainly rather than letting an optimistic guess stand
+    // in its place: the two fixes here are real and correctly scoped, they
+    // just aren't the last remaining O(document) cost on this path.
     Editor editor;
+    editor.resize(800, 600);
+    editor.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&editor));
     const QString big = realisticLargeDocument(1536 * 1024); // 1.5 MB, tree-sitter tier
 
     QSignalSpy spy(&editor, &Editor::highlightingApplied);
@@ -216,7 +227,7 @@ void TestBenchmarks::singleEditOnALargeDocumentStaysFast()
 
     QElapsedTimer incrementalTimer;
     incrementalTimer.start();
-    editor.call().InsertText(editor.call().Length(), "x");
+    editor.call().InsertText(0, "x"); // where the viewport already is
     QVERIFY2(spy.wait(5000), "a single edit's reparse did not complete in time");
     const qint64 incrementalElapsed = incrementalTimer.elapsed();
 

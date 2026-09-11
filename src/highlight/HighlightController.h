@@ -31,10 +31,17 @@ public:
     /// Submit the current document text. `edit` describes the single-range
     /// change it reflects relative to the previous submission, when the
     /// caller has one (see PendingEdit) — omit it for a plain full reparse.
-    /// Returns the revision assigned to this submission; results for
-    /// superseded revisions are discarded. A no-op (returns the current
-    /// revision) while disabled.
-    quint64 submit(const QString& text, PendingEdit edit = {});
+    /// `range` bounds what actually gets computed and returned (see
+    /// HighlightRange) — omit it for the whole document. `textChanged`
+    /// false asserts the document is byte-identical to what's already
+    /// parsed (a pure "show me more of what's already there" request, e.g.
+    /// scrolling into unstyled territory) — omit it (default true) for
+    /// anything that might have actually changed the text. Returns the
+    /// revision assigned to this submission; results for superseded
+    /// revisions are discarded. A no-op (returns the current revision)
+    /// while disabled.
+    quint64 submit(const QString& text, PendingEdit edit = {}, HighlightRange range = {},
+                   bool textChanged = true);
 
     /// Enable or disable parsing. Disabled by the editor's large-file
     /// fallback: submissions are ignored and no results are emitted until

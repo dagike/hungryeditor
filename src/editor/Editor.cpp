@@ -1466,19 +1466,30 @@ void Editor::applyHighlight(const HighlightResult& result)
         return;
     }
     const auto docLength = static_cast<quint32>(call_.TextLength());
+    const quint32 rangeEnd = std::min(result.rangeEnd, docLength);
+    if (result.rangeStart >= rangeEnd) {
+        emit highlightingApplied();
+        return;
+    }
 
-    call_.StartStyling(0, 0);
-    quint32 styled = 0;
+    // Only [rangeStart, rangeEnd) is touched — a viewport-scoped result
+    // paints just what's on screen (plus margin), not the whole document.
+    // Everything outside it keeps whatever styling it already has, which
+    // for never-visited territory is the StylePlain placeholder
+    // Notification::StyleNeeded left there, replaced the moment it's
+    // actually scrolled to (see onNotify()).
+    call_.StartStyling(result.rangeStart, 0);
+    quint32 styled = result.rangeStart;
     for (const HighlightSpan& span : result.spans) {
-        if (span.start != styled || styled >= docLength) {
+        if (span.start != styled || styled >= rangeEnd) {
             break; // document changed under us; the next parse will catch up
         }
-        const quint32 length = std::min(span.length, docLength - styled);
+        const quint32 length = std::min(span.length, rangeEnd - styled);
         call_.SetStyling(length, span.style);
         styled += length;
     }
-    if (styled < docLength) {
-        call_.SetStyling(docLength - styled, StylePlain);
+    if (styled < rangeEnd) {
+        call_.SetStyling(rangeEnd - styled, StylePlain);
     }
     emit highlightingApplied();
 }
@@ -1581,6 +1592,30 @@ TSInputEdit editFromNotification(Scintilla::ScintillaCall& call,
                        startPoint, changedEndPoint,   startPoint};
 }
 
+/// The document byte range currently on screen, expanded by one screenful
+/// above and below as a scroll margin, so a small scroll doesn't need a new
+/// async highlight round trip. What "on screen" means for deciding how much
+/// to (re)compute on an edit, and — unioned with the gap Scintilla actually
+/// asked about — on a pure scroll into unstyled territory too.
+hungryeditor::HighlightRange viewportByteRangeWithMargin(Scintilla::ScintillaCall& call)
+{
+    const auto firstVisible = static_cast<int>(call.FirstVisibleLine());
+    const auto linesOnScreen = std::max(static_cast<int>(call.LinesOnScreen()), 1);
+    const auto lastLine = static_cast<int>(call.LineCount()) - 1;
+
+    const int marginLines = linesOnScreen; // one extra screenful above and below
+    const int fromLine = std::max(firstVisible - marginLines, 0);
+    const int toLine = std::min(firstVisible + linesOnScreen + marginLines, lastLine);
+
+    const auto start =
+        static_cast<quint32>(call.PositionFromLine(static_cast<Scintilla::Line>(fromLine)));
+    const auto end =
+        toLine < lastLine
+            ? static_cast<quint32>(call.PositionFromLine(static_cast<Scintilla::Line>(toLine + 1)))
+            : static_cast<quint32>(call.TextLength());
+    return hungryeditor::HighlightRange{start, end};
+}
+
 } // namespace
 
 void Editor::onNotify(Scintilla::NotificationData* notification)
@@ -1600,7 +1635,19 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
             }
             updateHighlightTier();
             updateFrontMatterFold();
-            highlight_->submit(text(), PendingEdit{/*present=*/true, edit});
+            // What must come out styled: the edit itself (so an off-screen
+            // programmatic edit — multi-cursor, find/replace-all, a preview
+            // checkbox toggle — never leaves genuinely wrong colours behind,
+            // only possibly-stale ones outside the viewport) unioned with
+            // what's currently visible (so typing is always styled, not
+            // just correct). Everything else keeps whatever it already has.
+            const hungryeditor::HighlightRange viewport = viewportByteRangeWithMargin(call_);
+            const quint32 editEnd = std::max(edit.old_end_byte, edit.new_end_byte);
+            const hungryeditor::HighlightRange range{
+                std::min(edit.start_byte, viewport.start),
+                std::max(editEnd, viewport.end),
+            };
+            highlight_->submit(text(), PendingEdit{/*present=*/true, edit}, range);
             emit textChanged();
         }
         break;
@@ -1631,13 +1678,29 @@ void Editor::onNotify(Scintilla::NotificationData* notification)
 
     case Notification::StyleNeeded: {
         // Container-lexing contract: fill the gap Scintilla asks about so it
-        // stops requesting. The real colours arrive from applyHighlight()
-        // once the background parse for this revision finishes.
+        // stops requesting. The real colours land once the async request
+        // below completes — or, before viewport-scoped highlighting, once
+        // whatever edit-triggered applyHighlight() next happened to reach
+        // this far; now that a parse only covers what actually needs it,
+        // scrolling into never-visited territory needs its own request or
+        // this placeholder would never be replaced.
         const Scintilla::Position from = call_.EndStyled();
         const Scintilla::Position to = notification->position;
         if (to > from) {
             call_.StartStyling(from, 0);
             call_.SetStyling(to - from, StylePlain);
+        }
+        if (tier_ == HighlightTier::TreeSitter && to > from) {
+            // Nothing changed — this is purely "style more of what's
+            // already parsed" — so it never reparses, just recomputes spans
+            // over the gap unioned with the current viewport (so a little
+            // more scrolling doesn't immediately need another round trip).
+            const hungryeditor::HighlightRange viewport = viewportByteRangeWithMargin(call_);
+            const hungryeditor::HighlightRange range{
+                std::min(static_cast<quint32>(from), viewport.start),
+                std::max(static_cast<quint32>(to), viewport.end),
+            };
+            highlight_->submit(text(), PendingEdit{}, range, /*textChanged=*/false);
         }
         break;
     }
