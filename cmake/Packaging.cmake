@@ -11,6 +11,7 @@ set(CPACK_PACKAGE_NAME "hungryeditor")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "hungryeditor")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 
 if(UNIX AND NOT APPLE)
     install(TARGETS hungryeditor
@@ -54,6 +55,7 @@ libqt6printsupport6, libqt6network6, libqt6positioning6, libqt6opengl6")
         "qt6-qtbase-gui, qt6-qt5compat, qt6-qtwebengine, qt6-qtwebchannel")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Editors")
     set(CPACK_RPM_PACKAGE_URL "https://github.com/dagike/hungryeditor")
+    set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 
     include(CPack)
 elseif(WIN32)
