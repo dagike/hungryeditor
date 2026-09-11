@@ -7,6 +7,7 @@
 #include "export/HtmlDocument.h"
 
 using hungryeditor::htmlexport::build;
+using hungryeditor::htmlexport::buildClipboardFragment;
 using hungryeditor::htmlexport::Options;
 
 namespace {
@@ -28,6 +29,9 @@ private slots:
     void bundlesKatexOnlyWhenMathIsPresent();
     void bundlesMermaidOnlyWhenAFenceIsPresent();
     void inlinesALocalImage();
+    void clipboardFragmentHasNoDocumentWrapper();
+    void clipboardFragmentCarriesThemeCss();
+    void clipboardFragmentLeavesMathAndMermaidAsSourceText();
 };
 
 void TestHtmlDocument::wrapsTheFragmentInAFullDocument()
@@ -95,6 +99,35 @@ void TestHtmlDocument::inlinesALocalImage()
 
     QVERIFY(html.contains(QLatin1String("data:image/png;base64,")));
     QVERIFY(!html.contains(QLatin1String("src=\"pic.png\"")));
+}
+
+void TestHtmlDocument::clipboardFragmentHasNoDocumentWrapper()
+{
+    const QString fragment = buildClipboardFragment(QStringLiteral("# Hi\n\nText.\n"), QString());
+
+    QVERIFY(!fragment.contains(QLatin1String("<!doctype")));
+    QVERIFY(!fragment.contains(QLatin1String("<html")));
+    QVERIFY(!fragment.contains(QLatin1String("<script")));
+    QVERIFY(fragment.contains(QLatin1String("<h1")));
+    QVERIFY(fragment.contains(QLatin1String("Text.")));
+}
+
+void TestHtmlDocument::clipboardFragmentCarriesThemeCss()
+{
+    const QString fragment = buildClipboardFragment(QStringLiteral("text"), QString());
+    QVERIFY(fragment.contains(QLatin1String("<style>")));
+    QVERIFY(fragment.contains(QLatin1String("--he-bg")));
+}
+
+void TestHtmlDocument::clipboardFragmentLeavesMathAndMermaidAsSourceText()
+{
+    const QString fragment = buildClipboardFragment(
+        QStringLiteral("Energy: $E=mc^2$\n\n```mermaid\ngraph TD;\n```\n"), QString());
+
+    QVERIFY(!fragment.contains(QLatin1String("katex")));
+    QVERIFY(!fragment.contains(QLatin1String("mermaid.min")));
+    QVERIFY(fragment.contains(QLatin1String("E=mc^2")));
+    QVERIFY(fragment.contains(QLatin1String("graph TD;")));
 }
 
 QTEST_APPLESS_MAIN(TestHtmlDocument)

@@ -22,4 +22,12 @@ struct Options
 /// result opens correctly in any browser with no other files alongside it.
 QString build(const QString& markdown, const Options& options);
 
+/// Render `markdown` into an HTML fragment meant for the clipboard: theme CSS
+/// inlined and local images resolved, but no `<html>` wrapper and no
+/// KaTeX/Mermaid — paste targets (Word, Gmail, Slack, Docs) never run the
+/// page's JavaScript, so math and diagrams paste as their raw source text
+/// rather than silently rendering nothing.
+QString buildClipboardFragment(const QString& markdown, const QString& documentDir,
+                               const Theme& theme = Theme::builtin());
+
 } // namespace hungryeditor::htmlexport

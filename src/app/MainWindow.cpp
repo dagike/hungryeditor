@@ -6,6 +6,7 @@
 
 #include <QActionGroup>
 #include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDockWidget>
 #include <QDragEnterEvent>
@@ -395,6 +396,13 @@ void MainWindow::buildMenus()
         editMenu->addAction(tr("Find in &Files…"), this, &MainWindow::findInFiles);
     findInFilesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     findInFilesAction->setObjectName(QStringLiteral("action.findInFiles"));
+
+    editMenu->addSeparator();
+
+    QAction* copyRichAction =
+        editMenu->addAction(tr("Copy as &Rich Text"), this, &MainWindow::copyAsRichText);
+    copyRichAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C));
+    copyRichAction->setObjectName(QStringLiteral("action.copyAsRichText"));
 
     editMenu->addSeparator();
 
@@ -1664,6 +1672,19 @@ void MainWindow::exportPdfDialog()
     if (!exportPdfTo(path)) {
         QMessageBox::warning(this, tr("Export Failed"), lastError_);
     }
+}
+
+void MainWindow::copyAsRichText()
+{
+    const QString selected = editor_->selectedText();
+    const QString source = selected.isEmpty() ? editor_->text() : selected;
+    const QString current = currentPath();
+    const QString dir = current.isEmpty() ? QString() : QFileInfo(current).absolutePath();
+
+    auto* mime = new QMimeData();
+    mime->setHtml(htmlexport::buildClipboardFragment(source, dir));
+    mime->setText(source);
+    QApplication::clipboard()->setMimeData(mime);
 }
 
 void MainWindow::closeCurrentDocument()

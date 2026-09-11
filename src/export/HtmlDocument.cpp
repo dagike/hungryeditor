@@ -215,4 +215,21 @@ QString build(const QString& markdown, const Options& options)
     return html;
 }
 
+QString buildClipboardFragment(const QString& markdown, const QString& documentDir,
+                               const Theme& theme)
+{
+    const QString fragment =
+        images::inlineLocalImages(Md4cRenderer().toHtml(markdown), documentDir);
+
+    QString html;
+    html += QLatin1String("<style>\n");
+    html += QString::fromLatin1(kBaseCss);
+    html += theme.previewCss();
+    html += QLatin1String("\n</style>\n");
+    html += QLatin1String("<div class=\"markdown-body\">\n");
+    html += fragment;
+    html += QLatin1String("\n</div>\n");
+    return html;
+}
+
 } // namespace hungryeditor::htmlexport

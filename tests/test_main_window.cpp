@@ -1,6 +1,8 @@
 // Smoke coverage for the application window.
 
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -57,6 +59,7 @@ private slots:
     void savePathWritesBufferPreservingLineEnding();
     void exportHtmlWritesAStandaloneFile();
     void exportPdfWritesAFileEvenFromEditorOnlyView();
+    void copyAsRichTextPutsHtmlAndPlainTextOnTheClipboard();
     void openPathReportsMissingFile();
     void openFilesOpensEachActivatingTheFirst();
     void openFilesReportsFailuresAndOpensTheRest();
@@ -246,6 +249,29 @@ void TestMainWindow::exportPdfWritesAFileEvenFromEditorOnlyView()
     const QString target = dir.filePath(QStringLiteral("note.pdf"));
     QVERIFY(window.exportPdfTo(target));
     QVERIFY(QFileInfo(target).size() > 0);
+}
+
+void TestMainWindow::copyAsRichTextPutsHtmlAndPlainTextOnTheClipboard()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("# Title\n\nSome *text* here.\n"));
+
+    window.findChild<QAction*>(QStringLiteral("action.copyAsRichText"))->trigger();
+    const QMimeData* mime = QApplication::clipboard()->mimeData();
+    QVERIFY(mime->hasHtml());
+    QVERIFY(mime->html().contains(QLatin1String("<h1")));
+    QVERIFY(mime->html().contains(QLatin1String("Some <em>text</em>")));
+    QCOMPARE(mime->text(), window.editor()->text());
+
+    // With a selection, only the selection is copied.
+    window.editor()->setCursorPosition(2, 6); // inside "text"
+    window.editor()->selectNextOccurrence();
+    QCOMPARE(window.editor()->selectedText(), QStringLiteral("text"));
+
+    window.findChild<QAction*>(QStringLiteral("action.copyAsRichText"))->trigger();
+    const QMimeData* selectionMime = QApplication::clipboard()->mimeData();
+    QCOMPARE(selectionMime->text(), QStringLiteral("text"));
+    QVERIFY(!selectionMime->html().contains(QLatin1String("<h1")));
 }
 
 void TestMainWindow::openPathReportsMissingFile()
@@ -626,6 +652,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("exportHtml") << QStringLiteral("action.exportHtml");
     QTest::newRow("print") << QStringLiteral("action.print");
     QTest::newRow("exportPdf") << QStringLiteral("action.exportPdf");
+    QTest::newRow("copyAsRichText") << QStringLiteral("action.copyAsRichText");
 }
 
 void TestMainWindow::hasNamedActions()

@@ -200,6 +200,7 @@ private slots:
     void exportHtmlDialog();
     void printDialog();
     void exportPdfDialog();
+    void copyAsRichText();
 
 private:
     void buildMenus();
