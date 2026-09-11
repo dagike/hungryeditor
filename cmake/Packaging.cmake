@@ -27,6 +27,9 @@ if(UNIX AND NOT APPLE)
     install(FILES "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.svg"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps")
 
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY.md"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/doc/hungryeditor")
+
     # text/markdown is already a standard freedesktop.org shared-mime-info
     # type (registered for .md/.markdown/.mkd/.mdown) on any desktop new
     # enough to matter here, so there is no custom MIME XML to install —

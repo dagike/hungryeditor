@@ -1973,7 +1973,10 @@ void MainWindow::showAbout()
 {
     QMessageBox::about(this, tr("About hungryeditor"),
                        tr("<h3>hungryeditor %1</h3>"
-                          "<p>A fast, native Markdown editor.</p>")
+                          "<p>A fast, native Markdown editor.</p>"
+                          "<p>Copyright &copy; 2026 dagike. Released under the MIT license.</p>"
+                          "<p>Built on Qt, Scintilla, tree-sitter, md4c, mermaid and KaTeX — "
+                          "see THIRD_PARTY.md for their licenses.</p>")
                            .arg(QStringLiteral(HUNGRYEDITOR_VERSION)));
 }
 
