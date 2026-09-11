@@ -6,6 +6,8 @@
 #include <QString>
 #include <QStringList>
 
+#include "theme/Theme.h"
+
 // Scintilla's headers are not self-contained and must be included in this
 // order: ScintillaCall.h uses types from ScintillaTypes.h without including it.
 // clang-format off
@@ -290,6 +292,7 @@ private:
     QFont font_;
     int tabWidth_ = 4;
     bool wordWrap_ = false;
+    Theme theme_ = Theme::builtin();
     bool modified_ = false;
     int lineDigits_ = 0;
     int frontMatterLastLine_ = -1; ///< closing `---` line, or -1 when absent

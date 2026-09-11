@@ -7,7 +7,9 @@ namespace hungryeditor {
 
 namespace {
 
-// GitHub-light-ish token colours. Replaced by the theme system in Phase 3.
+// GitHub-light-ish token colours: the structural defaults styleTable()
+// returns. themedStyleTable() below remaps the colours per the active theme;
+// the key names and font flags set here are theme-independent.
 StyleDef make(int id, const char* key, const char* hex, bool bold = false, bool italic = false,
               bool underline = false)
 {
@@ -38,6 +40,56 @@ const std::vector<StyleDef>& styleTable()
         make(StyleLink, "link", "#0969da", /*bold=*/false, /*italic=*/false, /*underline=*/true),
         make(StyleCodeLiteral, "code", "#6e40c9"),
     };
+    return table;
+}
+
+std::vector<StyleDef> themedStyleTable(const Theme& theme)
+{
+    std::vector<StyleDef> table = styleTable();
+    for (StyleDef& def : table) {
+        switch (def.id) {
+        case StylePlain:
+        case StyleVariable:
+        case StyleEmphasis:
+        case StyleStrong:
+            def.foreground = theme.text;
+            break;
+        case StyleKeyword:
+        case StyleOperator:
+            def.foreground = theme.keyword;
+            break;
+        case StyleType:
+            def.foreground = theme.type;
+            break;
+        case StyleFunction:
+            def.foreground = theme.function;
+            break;
+        case StyleProperty:
+        case StyleNumber:
+        case StyleConstant:
+        case StyleStringEscape:
+        case StyleHeading:
+            def.foreground = theme.heading;
+            break;
+        case StyleString:
+            def.foreground = theme.string;
+            break;
+        case StyleComment:
+            def.foreground = theme.comment;
+            break;
+        case StylePunctuation:
+            def.foreground = theme.muted;
+            break;
+        case StyleLink:
+            def.foreground = theme.link;
+            break;
+        case StyleCodeLiteral:
+            def.foreground = theme.codeText;
+            break;
+        default:
+            break;
+        }
+    }
     return table;
 }
 

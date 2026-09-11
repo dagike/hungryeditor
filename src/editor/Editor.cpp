@@ -1324,7 +1324,7 @@ void Editor::applyVisualDefaults()
 void Editor::applySyntaxStyles()
 {
     // Must run after StyleClearAll(), which resets every style to the default.
-    for (const StyleDef& def : styleTable()) {
+    for (const StyleDef& def : themedStyleTable(theme_)) {
         if (def.id == StylePlain) {
             continue;
         }

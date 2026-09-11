@@ -17,6 +17,7 @@ private slots:
     void builtinKeyRoundTripsThroughFromKey();
     void fromKeyFallsBackOnAnUnknownKey();
     void everyBuiltinDefinesTheSyntaxAndChromeColours();
+    void codeTokenCssReflectsTheActiveThemeNotJustLight();
 };
 
 void TestTheme::builtinPaletteLinesUpWithTheEditor()
@@ -130,6 +131,16 @@ void TestTheme::everyBuiltinDefinesTheSyntaxAndChromeColours()
     QCOMPARE(light.selection.name(), QStringLiteral("#cfe3ff"));
     QCOMPARE(light.findMatch.name(), QStringLiteral("#f0b429"));
     QCOMPARE(light.braceMatch.name(), QStringLiteral("#bfe3c6"));
+}
+
+void TestTheme::codeTokenCssReflectsTheActiveThemeNotJustLight()
+{
+    const Theme dark = Theme::forBuiltin(Theme::Builtin::Dark);
+    const QString css = dark.codeTokenCss();
+
+    QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: %1").arg(dark.keyword.name())));
+    QVERIFY(css.contains(QStringLiteral(".tok-comment { color: %1").arg(dark.comment.name())));
+    QVERIFY(!css.contains(QStringLiteral(".tok-keyword { color: #cf222e"))); // not light's colour
 }
 
 QTEST_APPLESS_MAIN(TestTheme)

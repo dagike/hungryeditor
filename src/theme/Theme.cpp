@@ -255,7 +255,7 @@ QString Theme::codeTokenCss() const
     // Fenced-code colouring: the same token palette the editor paints with, so
     // a `rust fence looks identical in both panes.
     QString css;
-    for (const StyleDef& style : styleTable()) {
+    for (const StyleDef& style : themedStyleTable(*this)) {
         const std::string cssClass = styleCssClass(style.id);
         if (cssClass.empty()) {
             continue;
