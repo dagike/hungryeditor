@@ -50,20 +50,37 @@ Scintilla::Colour sciColour(const QColor& c)
     return c.red() | (c.green() << 8) | (c.blue() << 16);
 }
 
-/// Minimal light palette. The real, theme-driven palette arrives in Phase 3.
+/// The editor's own chrome colours, derived from the active Theme so the
+/// editor and preview panes always agree.
 struct Palette
 {
-    QColor background{QStringLiteral("#ffffff")};
-    QColor foreground{QStringLiteral("#1e1e1e")};
-    QColor lineNumberText{QStringLiteral("#9aa0a6")};
-    QColor lineNumberBackground{QStringLiteral("#f6f8fa")};
-    QColor currentLine{QStringLiteral("#f2f6fc")};
-    QColor selection{QStringLiteral("#cfe3ff")};
-    QColor caret{QStringLiteral("#1e1e1e")};
-    QColor findMatch{QStringLiteral("#f0b429")};
-    QColor braceMatch{QStringLiteral("#bfe3c6")};
-    QColor braceBad{QStringLiteral("#cf222e")};
+    QColor background;
+    QColor foreground;
+    QColor lineNumberText;
+    QColor lineNumberBackground;
+    QColor currentLine;
+    QColor selection;
+    QColor caret;
+    QColor findMatch;
+    QColor braceMatch;
+    QColor braceBad;
 };
+
+Palette paletteFromTheme(const Theme& theme)
+{
+    return Palette{
+        .background = theme.background,
+        .foreground = theme.text,
+        .lineNumberText = theme.muted,
+        .lineNumberBackground = theme.codeBackground,
+        .currentLine = theme.currentLine,
+        .selection = theme.selection,
+        .caret = theme.text,
+        .findMatch = theme.findMatch,
+        .braceMatch = theme.braceMatch,
+        .braceBad = theme.error,
+    };
+}
 
 constexpr int kLineNumberMargin = 0;
 constexpr int kSymbolMargin = 1;
@@ -1230,7 +1247,7 @@ void Editor::attachDocument(Document* document)
 
 void Editor::applyVisualDefaults()
 {
-    const Palette palette;
+    const Palette palette = paletteFromTheme(theme_);
     const QByteArray family = font_.family().toUtf8();
     const int pointSize = std::max(font_.pointSize(), 6);
 
@@ -1340,10 +1357,10 @@ void Editor::applyLexillaMarkdownStyles()
     // Lexilla's Markdown lexer owns style ids 0..21 (SCE_MARKDOWN_*), which
     // overlap the semantic ids used in tree-sitter mode — so the styles are
     // re-declared on every switch into and out of this tier.
-    const Palette palette;
-    const auto heading = sciColour(QColor(QStringLiteral("#0550ae")));
-    const auto code = sciColour(QColor(QStringLiteral("#6e40c9")));
-    const auto marker = sciColour(QColor(QStringLiteral("#57606a")));
+    const Palette palette = paletteFromTheme(theme_);
+    const auto heading = sciColour(theme_.heading);
+    const auto code = sciColour(theme_.codeText);
+    const auto marker = sciColour(theme_.muted);
 
     call_.StyleClearAll();
     for (int header = SCE_MARKDOWN_HEADER1; header <= SCE_MARKDOWN_HEADER6; ++header) {
@@ -1360,7 +1377,7 @@ void Editor::applyLexillaMarkdownStyles()
     call_.StyleSetFore(SCE_MARKDOWN_OLIST_ITEM, marker);
     call_.StyleSetFore(SCE_MARKDOWN_BLOCKQUOTE, marker);
     call_.StyleSetFore(SCE_MARKDOWN_HRULE, marker);
-    call_.StyleSetFore(SCE_MARKDOWN_LINK, sciColour(QColor(QStringLiteral("#0969da"))));
+    call_.StyleSetFore(SCE_MARKDOWN_LINK, sciColour(theme_.link));
     call_.StyleSetFore(SCE_MARKDOWN_CODE, code);
     call_.StyleSetFore(SCE_MARKDOWN_CODE2, code);
     call_.StyleSetFore(SCE_MARKDOWN_CODEBK, code);
