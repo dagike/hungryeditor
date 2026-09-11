@@ -24,6 +24,8 @@ public:
     void setThemeCss(const QString&) override {}
     void runJavaScript(const QString&, const std::function<void(const QVariant&)>&) override {}
     void scrollToSourceLine(int) override {}
+    bool print(QPrinter*) override { return false; }
+    bool printToPdf(const QString&) override { return false; }
 
     QStringList pushes;
 };

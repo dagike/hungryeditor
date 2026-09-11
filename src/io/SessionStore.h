@@ -28,6 +28,8 @@ struct Session
     QByteArray splitterState; ///< QSplitter::saveState — the editor/preview split
     int currentIndex = 0;
     QString workspaceFolder; ///< explicitly opened folder, empty for none
+    QString theme;           ///< Theme::builtinKey() of the active palette, empty for the default
+    QString customThemePath; ///< a loaded custom theme file, empty when none is active
     QList<SessionDocument> documents;
 };
 

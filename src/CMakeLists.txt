@@ -3,7 +3,7 @@
 # Application logic lives in the `hungryeditor_core` static library so that it
 # can be exercised by the test tree; `hungryeditor` is a thin entry point.
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent PrintSupport)
 
 qt_standard_project_setup()
 
@@ -51,6 +51,8 @@ add_library(hungryeditor_core STATIC
     editor/Editor.h
     editor/MarkdownTable.cpp
     editor/MarkdownTable.h
+    export/HtmlDocument.cpp
+    export/HtmlDocument.h
     highlight/CaptureStyles.cpp
     highlight/CaptureStyles.h
     highlight/CodeHighlighter.cpp
@@ -67,6 +69,8 @@ add_library(hungryeditor_core STATIC
     io/AssetWriter.h
     io/DraftStore.cpp
     io/DraftStore.h
+    io/Preferences.cpp
+    io/Preferences.h
     io/RecentFiles.cpp
     io/RecentFiles.h
     io/SessionStore.cpp
@@ -90,6 +94,8 @@ add_library(hungryeditor_core STATIC
     preview/QtWebEnginePreview.h
     theme/Theme.cpp
     theme/Theme.h
+    theme/ThemeFile.cpp
+    theme/ThemeFile.h
     ui/CommandPalette.cpp
     ui/CommandPalette.h
     ui/FileTreePanel.cpp
@@ -100,6 +106,8 @@ add_library(hungryeditor_core STATIC
     ui/FuzzyMatch.h
     ui/OutlinePanel.cpp
     ui/OutlinePanel.h
+    ui/PreferencesDialog.cpp
+    ui/PreferencesDialog.h
     ui/SearchResultsPanel.cpp
     ui/SearchResultsPanel.h
     ui/TabSwitcher.cpp
@@ -157,6 +165,7 @@ target_link_libraries(hungryeditor_core PRIVATE
     Qt6::WebEngineWidgets
     Qt6::WebChannel
     Qt6::Concurrent
+    Qt6::PrintSupport
     hungryeditor::md4c
 )
 

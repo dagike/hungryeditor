@@ -9,12 +9,15 @@
 #include <QStringList>
 
 #include "editor/CaretHistory.h"
+#include "io/Preferences.h"
+#include "theme/Theme.h"
 
 class QAction;
 class QActionGroup;
 class QDockWidget;
 class QDragEnterEvent;
 class QDropEvent;
+class QLabel;
 class QMenu;
 class QSplitter;
 class QTimer;
@@ -29,6 +32,7 @@ class FileIndex;
 class FileTreePanel;
 class FindReplaceBar;
 class OutlinePanel;
+class PreferencesStore;
 class PreviewBackend;
 class PreviewController;
 class RecentFiles;
@@ -61,6 +65,25 @@ public:
     ViewMode viewMode() const { return viewMode_; }
     void setViewMode(ViewMode mode);
 
+    /// The bundled palette last explicitly picked (kept as a fallback while a
+    /// custom theme is active; see currentTheme()).
+    Theme::Builtin currentBuiltinTheme() const { return currentTheme_; }
+    /// The colours actually in effect: a loaded custom theme's, if any,
+    /// otherwise the selected builtin's.
+    Theme currentTheme() const
+    {
+        return customThemePath_.isEmpty() ? Theme::forBuiltin(currentTheme_) : customTheme_;
+    }
+    /// Switch the preview (and the persisted session) to the builtin `id`,
+    /// clearing any active custom theme.
+    void setTheme(Theme::Builtin id);
+
+    /// Load a JSON theme file (see theme/ThemeFile.h) and apply it to the
+    /// preview, superseding the builtin selection until a builtin is chosen
+    /// again. Returns false on a read/parse failure (see lastError()),
+    /// leaving the current theme unchanged.
+    bool loadCustomTheme(const QString& path);
+
     /// The debounce-and-render controller feeding the preview. Exposed for tests.
     PreviewController* previewController() const { return previewController_.get(); }
 
@@ -81,6 +104,22 @@ public:
 
     /// The "Open Recent" submenu. Exposed for tests.
     QMenu* recentFilesMenu() const { return recentMenu_; }
+
+    /// The active editor preferences. Exposed for tests.
+    Preferences preferences() const { return preferences_; }
+    /// Apply and persist `preferences` as if accepted from the dialog.
+    /// Exposed for tests.
+    void setPreferences(const Preferences& preferences);
+
+    /// The status bar's segments, e.g. "Ln 3, Col 1" and "12 selected".
+    /// Exposed for tests.
+    QString statusPositionText() const;
+    /// e.g. "128 words, 743 chars".
+    QString statusCountsText() const;
+    /// e.g. "LF".
+    QString statusLineEndingText() const;
+    /// e.g. "UTF-8".
+    QString statusEncodingText() const;
 
     /// Repopulate the "Open Recent" submenu from the stored list. Normally run
     /// from the menu's aboutToShow; exposed for tests.
@@ -165,6 +204,24 @@ public:
     /// from the aboutToQuit hook; exposed for tests.
     void saveSession();
 
+    /// Title an export of the current buffer should carry: its first heading,
+    /// else its display name (without extension), else "Untitled". Exposed
+    /// for tests.
+    QString exportTitle() const;
+
+    /// The current buffer rendered as a standalone HTML document, per
+    /// htmlexport::build(). Exposed for tests.
+    QString buildHtmlExport() const;
+
+    /// Write buildHtmlExport() to `path`. Returns false on an I/O error (see
+    /// lastError()).
+    bool exportHtmlTo(const QString& path);
+
+    /// Render the current buffer's preview to a standalone PDF at `path`.
+    /// Forces a preview render first, even in Editor-only view. Returns
+    /// false on failure (see lastError()).
+    bool exportPdfTo(const QString& path);
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -179,15 +236,35 @@ private slots:
     void closeCurrentDocument();
     void nextDocument();
     void previousDocument();
+    void exportHtmlDialog();
+    void printDialog();
+    void exportPdfDialog();
+    void copyAsRichText();
+    void loadCustomThemeDialog();
+    void preferencesDialog();
 
 private:
     void buildMenus();
     void updateWindowTitle();
 
+    // Status bar: cursor position updates immediately (cheap); word/char
+    // counts are debounced off outlineTimer_ (a full-document scan); encoding
+    // and line ending only change on a document switch.
+    void buildStatusBar();
+    void updateCursorStatus(int line, int column);
+    void updateDocumentStatus();
+
+    /// Re-apply preferences_ to the editor. Run on load and whenever the
+    /// Preferences dialog is accepted.
+    void applyPreferences();
+
     // Live preview: created on construction, fed the editor's text (debounced)
     // whenever a preview pane is visible.
     void applyViewMode();
     void refreshPreview();
+    // Forces a render even in Editor-only view (refreshPreview() skips it
+    // there) and blocks until the preview shell is up, for Print/PDF export.
+    void ensurePreviewRendered();
 
     // Scroll sync. Each direction guards against the echo the other would cause.
     void syncPreviewToEditor();
@@ -281,21 +358,33 @@ private:
     QDockWidget* searchDock_ = nullptr;
     OutlinePanel* outline_ = nullptr;
     QDockWidget* outlineDock_ = nullptr;
+    QLabel* statusPosition_ = nullptr;
+    QLabel* statusCounts_ = nullptr;
+    QLabel* statusLineEnding_ = nullptr;
+    QLabel* statusEncoding_ = nullptr;
     QTimer* outlineTimer_ = nullptr;
     QSplitter* splitter_ = nullptr;
     std::unique_ptr<DocumentManager> documents_;
     std::unique_ptr<SessionStore> sessionStore_;
     std::unique_ptr<WorkspaceStore> workspaceStore_;
     std::unique_ptr<RecentFiles> recentFiles_;
+    std::unique_ptr<PreferencesStore> preferencesStore_;
+    Preferences preferences_;
     // previewController_ is declared after preview_ so it is torn down first —
     // it holds a raw pointer to the backend.
     std::unique_ptr<PreviewBackend> preview_;
     std::unique_ptr<PreviewController> previewController_;
+    bool previewReady_ = false; ///< latched true once the preview shell first comes up
     QAction* saveAction_ = nullptr;
     QAction* foldFrontMatterAction_ = nullptr;
     QMenu* recentMenu_ = nullptr;
     QActionGroup* viewModeGroup_ = nullptr;
     ViewMode viewMode_ = ViewMode::Split;
+    QActionGroup* themeGroup_ = nullptr;
+    Theme::Builtin currentTheme_ = Theme::Builtin::Light;
+    QString customThemePath_; ///< empty when no custom theme is active
+    Theme customTheme_;
+    QString customThemeCss_;
     QString lastError_;
     QString stateDir_;
     bool syncingTabs_ = false;

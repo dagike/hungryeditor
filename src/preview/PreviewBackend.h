@@ -7,6 +7,7 @@
 #include <QUrl>
 #include <QVariant>
 
+class QPrinter;
 class QWidget;
 
 namespace hungryeditor {
@@ -49,6 +50,15 @@ public:
     /// Scroll the preview so the block that came from source line `line` (or the
     /// next one after it) sits at the top of the viewport.
     virtual void scrollToSourceLine(int line) = 0;
+
+    /// Render the current page onto `printer` — a physical printer, or one
+    /// pointed at a file (QPrinter::PdfFormat). Blocks until the render
+    /// engine finishes; returns whether it succeeded.
+    virtual bool print(QPrinter* printer) = 0;
+
+    /// Render the current page to a standalone PDF at `filePath`. Blocks
+    /// until the render engine finishes; returns whether it succeeded.
+    virtual bool printToPdf(const QString& filePath) = 0;
 
 signals:
     /// Emitted once a setHtml() load settles; `ok` is false on a load error.

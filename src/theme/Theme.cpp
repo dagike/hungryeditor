@@ -4,19 +4,96 @@
 
 namespace hungryeditor {
 
-Theme Theme::builtin()
+namespace {
+
+Theme make(const char* background, const char* text, const char* muted, const char* heading,
+           const char* link, const char* codeText, const char* codeBackground, const char* border,
+           const char* error)
 {
     Theme t;
-    t.background = QColor(QStringLiteral("#ffffff"));
-    t.text = QColor(QStringLiteral("#1e1e1e"));
-    t.muted = QColor(QStringLiteral("#57606a"));
-    t.heading = QColor(QStringLiteral("#0550ae"));
-    t.link = QColor(QStringLiteral("#0969da"));
-    t.codeText = QColor(QStringLiteral("#6e40c9"));
-    t.codeBackground = QColor(QStringLiteral("#f6f8fa"));
-    t.border = QColor(QStringLiteral("#d0d7de"));
-    t.error = QColor(QStringLiteral("#cf222e"));
+    t.background = QColor(QString::fromLatin1(background));
+    t.text = QColor(QString::fromLatin1(text));
+    t.muted = QColor(QString::fromLatin1(muted));
+    t.heading = QColor(QString::fromLatin1(heading));
+    t.link = QColor(QString::fromLatin1(link));
+    t.codeText = QColor(QString::fromLatin1(codeText));
+    t.codeBackground = QColor(QString::fromLatin1(codeBackground));
+    t.border = QColor(QString::fromLatin1(border));
+    t.error = QColor(QString::fromLatin1(error));
     return t;
+}
+
+} // namespace
+
+Theme Theme::builtin()
+{
+    return forBuiltin(Builtin::Light);
+}
+
+Theme Theme::forBuiltin(Builtin id)
+{
+    switch (id) {
+    case Builtin::Dark:
+        return make("#1e1e1e", "#d4d4d4", "#9aa0a6", "#4fc1ff", "#3794ff", "#ce9178", "#2d2d2d",
+                    "#3c3c3c", "#f14c4c");
+    case Builtin::HighContrast:
+        return make("#000000", "#ffffff", "#d0d0d0", "#ffff00", "#ffff00", "#00ffff", "#1a1a1a",
+                    "#ffffff", "#ff6060");
+    case Builtin::Sepia:
+        return make("#f4ecd8", "#5b4636", "#8a7860", "#7a4a2b", "#956a3c", "#7a4a2b", "#ece0c6",
+                    "#d8c9a3", "#b5432f");
+    case Builtin::Light:
+    default:
+        return make("#ffffff", "#1e1e1e", "#57606a", "#0550ae", "#0969da", "#6e40c9", "#f6f8fa",
+                    "#d0d7de", "#cf222e");
+    }
+}
+
+QString Theme::builtinName(Builtin id)
+{
+    switch (id) {
+    case Builtin::Dark:
+        return QStringLiteral("Dark");
+    case Builtin::HighContrast:
+        return QStringLiteral("High Contrast");
+    case Builtin::Sepia:
+        return QStringLiteral("Sepia");
+    case Builtin::Light:
+    default:
+        return QStringLiteral("Light");
+    }
+}
+
+QString Theme::builtinKey(Builtin id)
+{
+    switch (id) {
+    case Builtin::Dark:
+        return QStringLiteral("dark");
+    case Builtin::HighContrast:
+        return QStringLiteral("high-contrast");
+    case Builtin::Sepia:
+        return QStringLiteral("sepia");
+    case Builtin::Light:
+    default:
+        return QStringLiteral("light");
+    }
+}
+
+Theme::Builtin Theme::builtinFromKey(const QString& key, Builtin fallback)
+{
+    if (key == QLatin1String("dark")) {
+        return Builtin::Dark;
+    }
+    if (key == QLatin1String("high-contrast")) {
+        return Builtin::HighContrast;
+    }
+    if (key == QLatin1String("sepia")) {
+        return Builtin::Sepia;
+    }
+    if (key == QLatin1String("light")) {
+        return Builtin::Light;
+    }
+    return fallback;
 }
 
 QString Theme::previewCss() const

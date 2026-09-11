@@ -6,22 +6,33 @@
 
 #include <QActionGroup>
 #include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDockWidget>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontDatabase>
 #include <QImage>
 #include <QInputDialog>
+#include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPrintDialog>
+#include <QPrinter>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardPaths>
+#include <QStatusBar>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -32,19 +43,24 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "export/HtmlDocument.h"
 #include "io/AssetWriter.h"
 #include "io/DraftStore.h"
+#include "io/Preferences.h"
 #include "io/RecentFiles.h"
 #include "io/SessionStore.h"
+#include "io/TextFile.h"
 #include "markdown/Outline.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
 #include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
+#include "theme/ThemeFile.h"
 #include "ui/CommandPalette.h"
 #include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
 #include "ui/OutlinePanel.h"
+#include "ui/PreferencesDialog.h"
 #include "ui/SearchResultsPanel.h"
 #include "ui/TabSwitcher.h"
 #include "workspace/FileIndex.h"
@@ -87,6 +103,15 @@ QString defaultStateDirectory()
         base = QDir::tempPath() + QLatin1String("/hungryeditor");
     }
     return base;
+}
+
+/// A whitespace-delimited word count of the raw buffer (markdown syntax
+/// counted along with prose, same as most text editors' status bars).
+int wordCount(const QString& text)
+{
+    static const QRegularExpression whitespace(QStringLiteral("\\s+"));
+    const QString trimmed = text.trimmed();
+    return trimmed.isEmpty() ? 0 : static_cast<int>(trimmed.split(whitespace).count());
 }
 } // namespace
 
@@ -198,16 +223,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     outlineTimer_->setSingleShot(true);
     outlineTimer_->setInterval(150);
     connect(outlineTimer_, &QTimer::timeout, this, &MainWindow::rebuildOutline);
+    connect(outlineTimer_, &QTimer::timeout, this, &MainWindow::updateDocumentStatus);
     connect(editor_, &Editor::textChanged, this, [this] { outlineTimer_->start(); });
     connect(editor_, &Editor::cursorPositionChanged, this,
             [this](int line, int /*column*/) { outline_->highlightLine(line); });
+    connect(editor_, &Editor::cursorPositionChanged, this, &MainWindow::updateCursorStatus);
 
     documents_ = std::make_unique<DocumentManager>(editor_);
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
     preview_ = std::make_unique<QtWebEnginePreview>();
     previewController_ = std::make_unique<PreviewController>(preview_.get());
-    preview_->setThemeCss(Theme::builtin().previewCss());
     QWidget* previewWidget = preview_->widget();
     previewWidget->setMinimumWidth(160);
     splitter_->addWidget(previewWidget);
@@ -227,10 +253,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             &MainWindow::jumpEditorToLine);
     connect(preview_.get(), &PreviewBackend::taskToggled, this,
             [this](int line, bool checked) { editor_->setTaskChecked(line, checked); });
+    connect(preview_.get(), &PreviewBackend::ready, this, [this] { previewReady_ = true; });
 
     buildMenus();
+    buildStatusBar();
     setStateDirectory(defaultStateDirectory());
     applyViewMode();
+    setTheme(currentTheme_);
 
     connect(documents_.get(), &DocumentManager::documentAdded, this, &MainWindow::onDocumentAdded);
     connect(documents_.get(), &DocumentManager::documentClosed, this,
@@ -345,6 +374,20 @@ void MainWindow::buildMenus()
 
     fileMenu->addSeparator();
 
+    QMenu* exportMenu = fileMenu->addMenu(tr("&Export"));
+    QAction* exportHtmlAction =
+        exportMenu->addAction(tr("As &HTML…"), this, &MainWindow::exportHtmlDialog);
+    exportHtmlAction->setObjectName(QStringLiteral("action.exportHtml"));
+
+    QAction* printAction = exportMenu->addAction(tr("&Print…"), this, &MainWindow::printDialog);
+    printAction->setObjectName(QStringLiteral("action.print"));
+
+    QAction* exportPdfAction =
+        exportMenu->addAction(tr("Export as &PDF…"), this, &MainWindow::exportPdfDialog);
+    exportPdfAction->setObjectName(QStringLiteral("action.exportPdf"));
+
+    fileMenu->addSeparator();
+
     QAction* quitAction = fileMenu->addAction(tr("&Quit"), qApp, &QApplication::quit);
     quitAction->setShortcut(QKeySequence::Quit);
     quitAction->setMenuRole(QAction::QuitRole);
@@ -375,6 +418,13 @@ void MainWindow::buildMenus()
         editMenu->addAction(tr("Find in &Files…"), this, &MainWindow::findInFiles);
     findInFilesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     findInFilesAction->setObjectName(QStringLiteral("action.findInFiles"));
+
+    editMenu->addSeparator();
+
+    QAction* copyRichAction =
+        editMenu->addAction(tr("Copy as &Rich Text"), this, &MainWindow::copyAsRichText);
+    copyRichAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C));
+    copyRichAction->setObjectName(QStringLiteral("action.copyAsRichText"));
 
     editMenu->addSeparator();
 
@@ -433,6 +483,12 @@ void MainWindow::buildMenus()
                   QKeySequence(Qt::CTRL | Qt::Key_J), &Editor::joinLines);
     addLineAction(tr("Toggle &Comment"), QStringLiteral("action.toggleComment"),
                   QKeySequence(Qt::CTRL | Qt::Key_Slash), &Editor::toggleLineComment);
+
+    editMenu->addSeparator();
+    QAction* preferencesAction =
+        editMenu->addAction(tr("&Preferences…"), this, &MainWindow::preferencesDialog);
+    preferencesAction->setMenuRole(QAction::PreferencesRole);
+    preferencesAction->setObjectName(QStringLiteral("action.preferences"));
 
     QMenu* formatMenu = menuBar()->addMenu(tr("F&ormat"));
 
@@ -505,6 +561,26 @@ void MainWindow::buildMenus()
                 QKeySequence(Qt::CTRL | Qt::Key_2));
     addViewMode(tr("&Preview Only"), QStringLiteral("action.viewPreview"), ViewMode::Preview,
                 QKeySequence(Qt::CTRL | Qt::Key_3));
+
+    QMenu* themeMenu = viewMenu->addMenu(tr("&Theme"));
+    themeGroup_ = new QActionGroup(this);
+    const auto addTheme = [&](const QString& objectName, Theme::Builtin id) {
+        QAction* action =
+            themeMenu->addAction(Theme::builtinName(id), this, [this, id] { setTheme(id); });
+        action->setCheckable(true);
+        action->setObjectName(objectName);
+        action->setData(static_cast<int>(id));
+        themeGroup_->addAction(action);
+    };
+    addTheme(QStringLiteral("action.themeLight"), Theme::Builtin::Light);
+    addTheme(QStringLiteral("action.themeDark"), Theme::Builtin::Dark);
+    addTheme(QStringLiteral("action.themeHighContrast"), Theme::Builtin::HighContrast);
+    addTheme(QStringLiteral("action.themeSepia"), Theme::Builtin::Sepia);
+
+    themeMenu->addSeparator();
+    QAction* loadCustomThemeAction =
+        themeMenu->addAction(tr("Load Custom Theme…"), this, &MainWindow::loadCustomThemeDialog);
+    loadCustomThemeAction->setObjectName(QStringLiteral("action.loadCustomTheme"));
 
     viewMenu->addSeparator();
     foldFrontMatterAction_ = viewMenu->addAction(tr("Fold &Front Matter"));
@@ -605,6 +681,8 @@ void MainWindow::onCurrentChanged(int index)
     updateFrontMatterAction();
     rebuildOutline();
     updateWorkspaceRoot();
+    updateCursorStatus(editor_->cursorLine(), editor_->cursorColumn());
+    updateDocumentStatus();
 }
 
 void MainWindow::updateWorkspaceRoot()
@@ -826,6 +904,65 @@ void MainWindow::rebuildOutline()
     outline_->highlightLine(editor_->cursorLine());
 }
 
+void MainWindow::buildStatusBar()
+{
+    statusPosition_ = new QLabel(this);
+    statusCounts_ = new QLabel(this);
+    statusLineEnding_ = new QLabel(this);
+    statusEncoding_ = new QLabel(this);
+    for (QLabel* label : {statusPosition_, statusCounts_, statusLineEnding_, statusEncoding_}) {
+        label->setContentsMargins(6, 0, 6, 0);
+        statusBar()->addPermanentWidget(label);
+    }
+    updateCursorStatus(editor_->cursorLine(), editor_->cursorColumn());
+    updateDocumentStatus();
+}
+
+void MainWindow::updateCursorStatus(int line, int column)
+{
+    const int selected = static_cast<int>(editor_->selectedText().size());
+    statusPosition_->setText(selected > 0 ? tr("Ln %1, Col %2 (%3 selected)")
+                                                .arg(line + 1)
+                                                .arg(column + 1)
+                                                .arg(QLocale().toString(selected))
+                                          : tr("Ln %1, Col %2").arg(line + 1).arg(column + 1));
+}
+
+void MainWindow::updateDocumentStatus()
+{
+    const QLocale locale;
+    const QString text = editor_->text();
+    statusCounts_->setText(
+        tr("%1 words, %2 chars")
+            .arg(locale.toString(wordCount(text)), locale.toString(static_cast<int>(text.size()))));
+
+    const Document* current = documents_ ? documents_->current() : nullptr;
+    statusLineEnding_->setText(
+        lineEndingLabel(current != nullptr ? current->lineEnding() : LineEnding::Lf));
+    statusEncoding_->setText(
+        encodingLabel(current != nullptr ? current->encoding() : Encoding::Utf8));
+}
+
+QString MainWindow::statusPositionText() const
+{
+    return statusPosition_ != nullptr ? statusPosition_->text() : QString();
+}
+
+QString MainWindow::statusCountsText() const
+{
+    return statusCounts_ != nullptr ? statusCounts_->text() : QString();
+}
+
+QString MainWindow::statusLineEndingText() const
+{
+    return statusLineEnding_ != nullptr ? statusLineEnding_->text() : QString();
+}
+
+QString MainWindow::statusEncodingText() const
+{
+    return statusEncoding_ != nullptr ? statusEncoding_->text() : QString();
+}
+
 void MainWindow::updateFrontMatterAction()
 {
     if (foldFrontMatterAction_ == nullptr) {
@@ -869,6 +1006,82 @@ void MainWindow::applyViewMode()
                 action->setChecked(true);
             }
         }
+    }
+}
+
+void MainWindow::setTheme(Theme::Builtin id)
+{
+    currentTheme_ = id;
+    customThemePath_.clear();
+    customThemeCss_.clear();
+    preview_->setThemeCss(Theme::forBuiltin(id).previewCss());
+
+    if (themeGroup_ != nullptr) {
+        for (QAction* action : themeGroup_->actions()) {
+            action->setChecked(action->data().toInt() == static_cast<int>(id));
+        }
+    }
+}
+
+bool MainWindow::loadCustomTheme(const QString& path)
+{
+    const themefile::Result result = themefile::loadThemeFile(path);
+    if (!result.ok) {
+        lastError_ = result.error;
+        return false;
+    }
+
+    customThemePath_ = path;
+    customTheme_ = result.theme;
+    customThemeCss_ = result.customCss;
+    preview_->setThemeCss(customTheme_.previewCss() + customThemeCss_);
+
+    if (themeGroup_ != nullptr) {
+        for (QAction* action : themeGroup_->actions()) {
+            action->setChecked(false);
+        }
+    }
+    return true;
+}
+
+void MainWindow::loadCustomThemeDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load Custom Theme"), QString(),
+                                                      tr("Theme Files (*.json)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!loadCustomTheme(path)) {
+        QMessageBox::warning(this, tr("Load Theme Failed"), lastError_);
+    }
+}
+
+void MainWindow::applyPreferences()
+{
+    QFont font = preferences_.fontFamily.isEmpty()
+                     ? QFontDatabase::systemFont(QFontDatabase::FixedFont)
+                     : QFont(preferences_.fontFamily);
+    font.setPointSize(preferences_.fontSize);
+    editor_->setEditorFont(font);
+    editor_->setTabWidth(preferences_.tabWidth);
+    editor_->setWordWrap(preferences_.wordWrap);
+}
+
+void MainWindow::setPreferences(const Preferences& preferences)
+{
+    preferences_ = preferences;
+    applyPreferences();
+    if (preferencesStore_) {
+        preferencesStore_->save(preferences_);
+    }
+}
+
+void MainWindow::preferencesDialog()
+{
+    PreferencesDialog dialog(this);
+    dialog.setPreferences(preferences_);
+    if (dialog.exec() == QDialog::Accepted) {
+        setPreferences(dialog.preferences());
     }
 }
 
@@ -1229,6 +1442,11 @@ void MainWindow::setStateDirectory(const QString& directory)
         std::make_unique<WorkspaceStore>(directory + QLatin1String("/workspaces.json"));
     recentFiles_ = std::make_unique<RecentFiles>(directory + QLatin1String("/recent.json"));
     refreshRecentFilesMenu();
+
+    preferencesStore_ =
+        std::make_unique<PreferencesStore>(directory + QLatin1String("/preferences.json"));
+    preferences_ = preferencesStore_->load();
+    applyPreferences();
 }
 
 void MainWindow::refreshRecentFilesMenu()
@@ -1323,6 +1541,12 @@ void MainWindow::restoreLastSession(bool askFirst)
     if (!session.splitterState.isEmpty()) {
         splitter_->restoreState(session.splitterState);
     }
+    if (!session.theme.isEmpty()) {
+        setTheme(Theme::builtinFromKey(session.theme, currentTheme_));
+    }
+    if (!session.customThemePath.isEmpty()) {
+        loadCustomTheme(session.customThemePath); // silently keeps the builtin above on failure
+    }
     documents_->restoreSession(session, documents_->pendingDrafts());
     dropInitialBlankBuffer();
     if (session.currentIndex >= 0 && session.currentIndex < documents_->count()) {
@@ -1349,6 +1573,8 @@ void MainWindow::saveSession()
     session.windowState = saveState();
     session.splitterState = splitter_->saveState();
     session.workspaceFolder = workspaceRoot_;
+    session.theme = Theme::builtinKey(currentTheme_);
+    session.customThemePath = customThemePath_;
     saveWorkspaceViewState();
     sessionStore_->save(session);
 }
@@ -1535,6 +1761,129 @@ void MainWindow::saveAsDialog()
     if (!savePath(path)) {
         QMessageBox::warning(this, tr("Save Failed"), lastError_);
     }
+}
+
+QString MainWindow::exportTitle() const
+{
+    const QVector<outline::Heading> headings = outline::parse(editor_->text());
+    if (!headings.isEmpty()) {
+        return headings.first().text;
+    }
+    const Document* document = documents_->current();
+    if (document == nullptr || document->isUntitled()) {
+        return tr("Untitled");
+    }
+    return QFileInfo(document->displayName()).completeBaseName();
+}
+
+QString MainWindow::buildHtmlExport() const
+{
+    const QString current = currentPath();
+    const htmlexport::Options options{
+        exportTitle(), current.isEmpty() ? QString() : QFileInfo(current).absolutePath(),
+        currentTheme()};
+    return htmlexport::build(editor_->text(), options);
+}
+
+bool MainWindow::exportHtmlTo(const QString& path)
+{
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        lastError_ = file.errorString();
+        return false;
+    }
+    file.write(buildHtmlExport().toUtf8());
+    if (!file.commit()) {
+        lastError_ = file.errorString();
+        return false;
+    }
+    lastError_.clear();
+    return true;
+}
+
+void MainWindow::exportHtmlDialog()
+{
+    const QFileInfo current(currentPath());
+    const QString dir = current.exists() ? current.absolutePath() : QDir::homePath();
+    const QString suggested =
+        QDir(dir).filePath(exportTitle().isEmpty() ? QStringLiteral("export") : exportTitle()) +
+        QStringLiteral(".html");
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export as HTML"), suggested,
+                                                      tr("HTML files (*.html)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!exportHtmlTo(path)) {
+        QMessageBox::warning(this, tr("Export Failed"), lastError_);
+    }
+}
+
+void MainWindow::ensurePreviewRendered()
+{
+    previewController_->setMarkdown(editor_->text());
+    previewController_->flush();
+    if (previewReady_) {
+        return;
+    }
+    QEventLoop loop;
+    const QMetaObject::Connection connection =
+        connect(preview_.get(), &PreviewBackend::ready, &loop, &QEventLoop::quit);
+    loop.exec();
+    QObject::disconnect(connection);
+}
+
+bool MainWindow::exportPdfTo(const QString& path)
+{
+    ensurePreviewRendered();
+    if (!preview_->printToPdf(path)) {
+        lastError_ = tr("Could not write PDF.");
+        return false;
+    }
+    lastError_.clear();
+    return true;
+}
+
+void MainWindow::printDialog()
+{
+    ensurePreviewRendered();
+    QPrinter printer(QPrinter::HighResolution);
+    QPrintDialog dialog(&printer, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    if (!preview_->print(&printer)) {
+        QMessageBox::warning(this, tr("Print Failed"), tr("The document could not be printed."));
+    }
+}
+
+void MainWindow::exportPdfDialog()
+{
+    const QFileInfo current(currentPath());
+    const QString dir = current.exists() ? current.absolutePath() : QDir::homePath();
+    const QString suggested =
+        QDir(dir).filePath(exportTitle().isEmpty() ? QStringLiteral("export") : exportTitle()) +
+        QStringLiteral(".pdf");
+    const QString path =
+        QFileDialog::getSaveFileName(this, tr("Export as PDF"), suggested, tr("PDF files (*.pdf)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!exportPdfTo(path)) {
+        QMessageBox::warning(this, tr("Export Failed"), lastError_);
+    }
+}
+
+void MainWindow::copyAsRichText()
+{
+    const QString selected = editor_->selectedText();
+    const QString source = selected.isEmpty() ? editor_->text() : selected;
+    const QString current = currentPath();
+    const QString dir = current.isEmpty() ? QString() : QFileInfo(current).absolutePath();
+
+    auto* mime = new QMimeData();
+    mime->setHtml(htmlexport::buildClipboardFragment(source, dir, currentTheme()));
+    mime->setText(source);
+    QApplication::clipboard()->setMimeData(mime);
 }
 
 void MainWindow::closeCurrentDocument()

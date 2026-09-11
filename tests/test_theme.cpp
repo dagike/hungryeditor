@@ -13,6 +13,9 @@ class TestTheme : public QObject
 private slots:
     void builtinPaletteLinesUpWithTheEditor();
     void previewCssDefinesTokensAndBaseRules();
+    void eachBuiltinHasADistinctPaletteAndName();
+    void builtinKeyRoundTripsThroughFromKey();
+    void fromKeyFallsBackOnAnUnknownKey();
 };
 
 void TestTheme::builtinPaletteLinesUpWithTheEditor()
@@ -60,6 +63,46 @@ void TestTheme::previewCssDefinesTokensAndBaseRules()
     QVERIFY(css.contains(QStringLiteral(".tok-keyword { color: #cf222e")));
     QVERIFY(css.contains(QStringLiteral(".tok-comment { color: #6e7781; font-style: italic;")));
     QVERIFY(css.contains(QStringLiteral(".tok-string-escape {")));
+}
+
+void TestTheme::eachBuiltinHasADistinctPaletteAndName()
+{
+    const Theme light = Theme::forBuiltin(Theme::Builtin::Light);
+    const Theme dark = Theme::forBuiltin(Theme::Builtin::Dark);
+    const Theme highContrast = Theme::forBuiltin(Theme::Builtin::HighContrast);
+    const Theme sepia = Theme::forBuiltin(Theme::Builtin::Sepia);
+
+    QCOMPARE(light.background.name(), QStringLiteral("#ffffff"));
+    QVERIFY(dark.background != light.background);
+    QVERIFY(highContrast.background != light.background);
+    QVERIFY(sepia.background != light.background);
+    QVERIFY(dark.background != highContrast.background);
+    QVERIFY(dark.background != sepia.background);
+    QVERIFY(highContrast.background != sepia.background);
+
+    QCOMPARE(Theme::builtinName(Theme::Builtin::Light), QStringLiteral("Light"));
+    QCOMPARE(Theme::builtinName(Theme::Builtin::Dark), QStringLiteral("Dark"));
+    QCOMPARE(Theme::builtinName(Theme::Builtin::HighContrast), QStringLiteral("High Contrast"));
+    QCOMPARE(Theme::builtinName(Theme::Builtin::Sepia), QStringLiteral("Sepia"));
+
+    QCOMPARE(Theme::builtin().background, light.background);
+}
+
+void TestTheme::builtinKeyRoundTripsThroughFromKey()
+{
+    for (const Theme::Builtin id : {Theme::Builtin::Light, Theme::Builtin::Dark,
+                                    Theme::Builtin::HighContrast, Theme::Builtin::Sepia}) {
+        const QString key = Theme::builtinKey(id);
+        QVERIFY(!key.isEmpty());
+        QCOMPARE(Theme::builtinFromKey(key), id);
+    }
+}
+
+void TestTheme::fromKeyFallsBackOnAnUnknownKey()
+{
+    QCOMPARE(Theme::builtinFromKey(QStringLiteral("nonsense"), Theme::Builtin::Sepia),
+             Theme::Builtin::Sepia);
+    QCOMPARE(Theme::builtinFromKey(QString()), Theme::Builtin::Light);
 }
 
 QTEST_APPLESS_MAIN(TestTheme)

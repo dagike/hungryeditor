@@ -1,5 +1,6 @@
 #include "preview/QtWebEnginePreview.h"
 
+#include <QEventLoop>
 #include <QWebChannel>
 #include <QWebEnginePage>
 #include <QWebEngineView>
@@ -294,6 +295,36 @@ void QtWebEnginePreview::setThemeCss(const QString& css)
 void QtWebEnginePreview::scrollToSourceLine(int line)
 {
     bridge_->requestScrollToLine(line);
+}
+
+bool QtWebEnginePreview::print(QPrinter* printer)
+{
+    QEventLoop loop;
+    bool result = false;
+    const QMetaObject::Connection connection =
+        connect(view_.get(), &QWebEngineView::printFinished, &loop, [&](bool ok) {
+            result = ok;
+            loop.quit();
+        });
+    view_->print(printer);
+    loop.exec();
+    QObject::disconnect(connection);
+    return result;
+}
+
+bool QtWebEnginePreview::printToPdf(const QString& filePath)
+{
+    QEventLoop loop;
+    bool result = false;
+    const QMetaObject::Connection connection = connect(
+        view_.get(), &QWebEngineView::pdfPrintingFinished, &loop, [&](const QString&, bool ok) {
+            result = ok;
+            loop.quit();
+        });
+    view_->printToPdf(filePath);
+    loop.exec();
+    QObject::disconnect(connection);
+    return result;
 }
 
 } // namespace hungryeditor

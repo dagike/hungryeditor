@@ -3,7 +3,7 @@
 # Every test runs headless: hungryeditor_add_test() forces the "offscreen"
 # QPA platform so the suite needs no display on CI or over SSH.
 
-find_package(Qt6 REQUIRED COMPONENTS Test Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Test Widgets PrintSupport)
 
 # hungryeditor_add_test(<name> SOURCES <files...> [LIBS <targets...>])
 function(hungryeditor_add_test name)
@@ -64,6 +64,14 @@ hungryeditor_add_test(test_session_store
 
 hungryeditor_add_test(test_recent_files
     SOURCES test_recent_files.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_preferences
+    SOURCES test_preferences.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_preferences_dialog
+    SOURCES test_preferences_dialog.cpp
     LIBS hungryeditor::core)
 
 hungryeditor_add_test(test_asset_writer
@@ -157,5 +165,13 @@ hungryeditor_add_test(test_preview_controller
 
 hungryeditor_add_test(test_preview
     SOURCES test_preview.cpp
-    LIBS hungryeditor::core)
+    LIBS hungryeditor::core Qt6::PrintSupport)
 hungryeditor_test_needs_webengine(test_preview)
+
+hungryeditor_add_test(test_html_document
+    SOURCES test_html_document.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_theme_file
+    SOURCES test_theme_file.cpp
+    LIBS hungryeditor::core)

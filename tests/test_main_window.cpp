@@ -1,11 +1,16 @@
 // Smoke coverage for the application window.
 
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QColor>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
+#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QListWidget>
@@ -32,6 +37,7 @@
 #include "io/SessionStore.h"
 #include "preview/PreviewBackend.h"
 #include "preview/PreviewController.h"
+#include "theme/Theme.h"
 #include "ui/CommandPalette.h"
 #include "ui/FileTreePanel.h"
 #include "ui/FindReplaceBar.h"
@@ -54,6 +60,9 @@ private slots:
     void saveActionFollowsDirtyState();
     void openPathLoadsFileAndClearsDirty();
     void savePathWritesBufferPreservingLineEnding();
+    void exportHtmlWritesAStandaloneFile();
+    void exportPdfWritesAFileEvenFromEditorOnlyView();
+    void copyAsRichTextPutsHtmlAndPlainTextOnTheClipboard();
     void openPathReportsMissingFile();
     void openFilesOpensEachActivatingTheFirst();
     void openFilesReportsFailuresAndOpensTheRest();
@@ -71,6 +80,16 @@ private slots:
     void newAndSwitchActionsChangeCurrentDocument();
     void defaultsToSplitViewWithBothPanes();
     void viewModeActionsTogglePaneVisibility();
+    void themeActionsSwitchThePreviewPalette();
+    void themeSurvivesASessionReload();
+    void loadCustomThemeAppliesOverridesAndCustomCss();
+    void pickingABuiltinThemeClearsAnActiveCustomTheme();
+    void customThemeSurvivesASessionReload();
+    void statusBarShowsCursorPositionAndSelection();
+    void statusBarShowsWordAndCharCounts();
+    void statusBarShowsEncodingAndLineEndingForTheCurrentDocument();
+    void setPreferencesAppliesFontTabWidthAndWordWrap();
+    void preferencesSurviveASessionReload();
     void editorTextFlowsIntoThePreview();
     void switchingDocumentsRefreshesThePreview();
     void scrollSyncsBothWays();
@@ -195,6 +214,77 @@ void TestMainWindow::savePathWritesBufferPreservingLineEnding()
     QFile written(target);
     QVERIFY(written.open(QIODevice::ReadOnly));
     QCOMPARE(written.readAll(), QByteArray("one\r\ntwo\r\nthree\r\n"));
+}
+
+void TestMainWindow::exportHtmlWritesAStandaloneFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString source = dir.filePath(QStringLiteral("note.md"));
+    {
+        QFile file(source);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Note\n\nSome *text*.\n");
+    }
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(source));
+    QCOMPARE(window.exportTitle(), QStringLiteral("Note"));
+
+    const QString target = dir.filePath(QStringLiteral("note.html"));
+    QVERIFY(window.exportHtmlTo(target));
+
+    QFile written(target);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QString html = QString::fromUtf8(written.readAll());
+    QVERIFY(html.startsWith(QLatin1String("<!doctype html>")));
+    QVERIFY(html.contains(QLatin1String("<title>Note</title>")));
+    QVERIFY(html.contains(QLatin1String("Some <em>text</em>")));
+}
+
+void TestMainWindow::exportPdfWritesAFileEvenFromEditorOnlyView()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString source = dir.filePath(QStringLiteral("note.md"));
+    {
+        QFile file(source);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Note\n\nSome text.\n");
+    }
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(source));
+    // Editor-only view never feeds the preview (refreshPreview() skips it),
+    // so this also proves exportPdfTo() forces a render on its own.
+    window.setViewMode(hungryeditor::MainWindow::ViewMode::Editor);
+
+    const QString target = dir.filePath(QStringLiteral("note.pdf"));
+    QVERIFY(window.exportPdfTo(target));
+    QVERIFY(QFileInfo(target).size() > 0);
+}
+
+void TestMainWindow::copyAsRichTextPutsHtmlAndPlainTextOnTheClipboard()
+{
+    hungryeditor::MainWindow window;
+    window.editor()->setText(QStringLiteral("# Title\n\nSome *text* here.\n"));
+
+    window.findChild<QAction*>(QStringLiteral("action.copyAsRichText"))->trigger();
+    const QMimeData* mime = QApplication::clipboard()->mimeData();
+    QVERIFY(mime->hasHtml());
+    QVERIFY(mime->html().contains(QLatin1String("<h1")));
+    QVERIFY(mime->html().contains(QLatin1String("Some <em>text</em>")));
+    QCOMPARE(mime->text(), window.editor()->text());
+
+    // With a selection, only the selection is copied.
+    window.editor()->setCursorPosition(2, 6); // inside "text"
+    window.editor()->selectNextOccurrence();
+    QCOMPARE(window.editor()->selectedText(), QStringLiteral("text"));
+
+    window.findChild<QAction*>(QStringLiteral("action.copyAsRichText"))->trigger();
+    const QMimeData* selectionMime = QApplication::clipboard()->mimeData();
+    QCOMPARE(selectionMime->text(), QStringLiteral("text"));
+    QVERIFY(!selectionMime->html().contains(QLatin1String("<h1")));
 }
 
 void TestMainWindow::openPathReportsMissingFile()
@@ -572,6 +662,16 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
+    QTest::newRow("exportHtml") << QStringLiteral("action.exportHtml");
+    QTest::newRow("print") << QStringLiteral("action.print");
+    QTest::newRow("exportPdf") << QStringLiteral("action.exportPdf");
+    QTest::newRow("copyAsRichText") << QStringLiteral("action.copyAsRichText");
+    QTest::newRow("themeLight") << QStringLiteral("action.themeLight");
+    QTest::newRow("themeDark") << QStringLiteral("action.themeDark");
+    QTest::newRow("themeHighContrast") << QStringLiteral("action.themeHighContrast");
+    QTest::newRow("themeSepia") << QStringLiteral("action.themeSepia");
+    QTest::newRow("loadCustomTheme") << QStringLiteral("action.loadCustomTheme");
+    QTest::newRow("preferences") << QStringLiteral("action.preferences");
 }
 
 void TestMainWindow::hasNamedActions()
@@ -632,6 +732,186 @@ void TestMainWindow::viewModeActionsTogglePaneVisibility()
     QCOMPARE(window.viewMode(), hungryeditor::MainWindow::ViewMode::Editor);
     QVERIFY(window.editor()->isVisible());
     QVERIFY(!window.previewWidget()->isVisible());
+}
+
+void TestMainWindow::themeActionsSwitchThePreviewPalette()
+{
+    hungryeditor::MainWindow window;
+    QCOMPARE(window.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Light);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+
+    window.findChild<QAction*>(QStringLiteral("action.themeDark"))->trigger();
+
+    QCOMPARE(window.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Dark);
+    QCOMPARE(window.currentTheme().background,
+             hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark).background);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeDark"))->isChecked());
+    QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+}
+
+void TestMainWindow::themeSurvivesASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        first.setTheme(hungryeditor::Theme::Builtin::Sepia);
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+
+    QCOMPARE(second.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Sepia);
+    QVERIFY(second.findChild<QAction*>(QStringLiteral("action.themeSepia"))->isChecked());
+}
+
+void TestMainWindow::loadCustomThemeAppliesOverridesAndCustomCss()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString themePath = writeText(dir.filePath(QStringLiteral("theme.json")),
+                                        R"({"background": "#123456", "css": "* { margin: 0; }"})");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.loadCustomTheme(themePath));
+
+    QCOMPARE(window.currentTheme().background, QColor(QStringLiteral("#123456")));
+    QVERIFY(!window.findChild<QAction*>(QStringLiteral("action.themeLight"))->isChecked());
+}
+
+void TestMainWindow::pickingABuiltinThemeClearsAnActiveCustomTheme()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString themePath =
+        writeText(dir.filePath(QStringLiteral("theme.json")), R"({"background": "#123456"})");
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.loadCustomTheme(themePath));
+
+    window.findChild<QAction*>(QStringLiteral("action.themeDark"))->trigger();
+
+    QCOMPARE(window.currentBuiltinTheme(), hungryeditor::Theme::Builtin::Dark);
+    QCOMPARE(window.currentTheme().background,
+             hungryeditor::Theme::forBuiltin(hungryeditor::Theme::Builtin::Dark).background);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("action.themeDark"))->isChecked());
+}
+
+void TestMainWindow::customThemeSurvivesASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString themePath =
+        writeText(dir.filePath(QStringLiteral("theme.json")), R"({"background": "#123456"})");
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        QVERIFY(first.loadCustomTheme(themePath));
+        first.saveSession();
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+    second.restoreLastSession(/*askFirst=*/false);
+
+    QCOMPARE(second.currentTheme().background, QColor(QStringLiteral("#123456")));
+}
+
+void TestMainWindow::statusBarShowsCursorPositionAndSelection()
+{
+    hungryeditor::MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.editor()->setText(QStringLiteral("first\nsecond text\nthird\n"));
+
+    // Scintilla's UpdateUI notification (which drives the status label) is
+    // flushed from the next paint, not synchronously with the caret move.
+    window.editor()->setCursorPosition(1, 0);
+    QTRY_COMPARE(window.statusPositionText(), QStringLiteral("Ln 2, Col 1"));
+
+    window.editor()->setCursorPosition(1, 7); // inside "text"
+    window.editor()->selectNextOccurrence();
+    QCOMPARE(window.editor()->selectedText(), QStringLiteral("text"));
+    const QString expected = QStringLiteral("Ln %1, Col %2 (4 selected)")
+                                 .arg(window.editor()->cursorLine() + 1)
+                                 .arg(window.editor()->cursorColumn() + 1);
+    QTRY_COMPARE(window.statusPositionText(), expected);
+}
+
+void TestMainWindow::statusBarShowsWordAndCharCounts()
+{
+    hungryeditor::MainWindow window;
+    QCOMPARE(window.statusCountsText(), QStringLiteral("0 words, 0 chars"));
+
+    window.editor()->setText(QStringLiteral("one two three\n"));
+    QTRY_VERIFY_WITH_TIMEOUT(window.statusCountsText() == QStringLiteral("3 words, 14 chars"),
+                             2000);
+}
+
+void TestMainWindow::statusBarShowsEncodingAndLineEndingForTheCurrentDocument()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("crlf.md"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("one\r\ntwo\r\n");
+    file.close();
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(path));
+
+    QCOMPARE(window.statusLineEndingText(), QStringLiteral("CRLF"));
+    QCOMPARE(window.statusEncodingText(), QStringLiteral("UTF-8"));
+}
+
+void TestMainWindow::setPreferencesAppliesFontTabWidthAndWordWrap()
+{
+    hungryeditor::MainWindow window;
+
+    hungryeditor::Preferences preferences;
+    preferences.fontFamily = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    preferences.fontSize = 20;
+    preferences.tabWidth = 2;
+    preferences.wordWrap = true;
+    window.setPreferences(preferences);
+
+    QCOMPARE(window.preferences().fontSize, 20);
+    QCOMPARE(window.editor()->editorFont().pointSize(), 20);
+    QCOMPARE(window.editor()->tabWidth(), 2);
+    QVERIFY(window.editor()->wordWrap());
+}
+
+void TestMainWindow::preferencesSurviveASessionReload()
+{
+    QTemporaryDir state;
+    QVERIFY(state.isValid());
+
+    {
+        hungryeditor::MainWindow first;
+        first.setStateDirectory(state.path());
+        hungryeditor::Preferences preferences;
+        preferences.fontSize = 22;
+        preferences.tabWidth = 3;
+        preferences.wordWrap = true;
+        first.setPreferences(preferences);
+    }
+
+    hungryeditor::MainWindow second;
+    second.setStateDirectory(state.path());
+
+    QCOMPARE(second.preferences().fontSize, 22);
+    QCOMPARE(second.preferences().tabWidth, 3);
+    QVERIFY(second.preferences().wordWrap);
+    QCOMPARE(second.editor()->tabWidth(), 3);
+    QVERIFY(second.editor()->wordWrap());
 }
 
 void TestMainWindow::editorTextFlowsIntoThePreview()
