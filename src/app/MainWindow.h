@@ -103,6 +103,12 @@ public:
     /// The preview pane widget, for tests to check visibility.
     QWidget* previewWidget() const;
 
+    /// True once the preview engine has actually been built. Unlike
+    /// previewController()/previewBackend()/previewWidget(), this does NOT
+    /// force creation — it exists so the startup benchmark can assert that
+    /// constructing a MainWindow alone does not start Chromium.
+    bool previewIsCreated() const { return preview_ != nullptr; }
+
     /// The find-in-files results panel. Exposed for tests.
     SearchResultsPanel* searchResultsPanel() const { return searchResults_; }
 

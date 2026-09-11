@@ -167,6 +167,13 @@ hungryeditor_add_test(test_preview_controller
     SOURCES test_preview_controller.cpp
     LIBS hungryeditor::core)
 
+# No hungryeditor_test_needs_webengine: every case here either measures state
+# from before the preview is lazily built, or renders through a FakeBackend
+# to isolate our own render pipeline from Chromium — see test_benchmarks.cpp.
+hungryeditor_add_test(test_benchmarks
+    SOURCES test_benchmarks.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_preview
     SOURCES test_preview.cpp
     LIBS hungryeditor::core Qt6::PrintSupport)
