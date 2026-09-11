@@ -30,11 +30,10 @@ std::vector<CodeToken> highlightCode(std::string_view language, std::string_view
         return tokens;
     }
 
-    uint32_t errorOffset = 0;
-    TSQueryError errorType = TSQueryErrorNone;
-    TSQuery* query =
-        ts_query_new(grammar.language, grammar.highlights.data(),
-                     static_cast<uint32_t>(grammar.highlights.size()), &errorOffset, &errorType);
+    // Shared with HighlightWorker's injection highlighting: the same
+    // language means the same compiled query, so one process-lifetime cache
+    // replaces what used to be a fresh ts_query_new() per fenced block.
+    TSQuery* query = cachedHighlightsQuery(grammar.language, grammar.highlights);
     if (query == nullptr) {
         return tokens;
     }
@@ -60,7 +59,7 @@ std::vector<CodeToken> highlightCode(std::string_view language, std::string_view
         }
     }
     ts_query_cursor_delete(cursor);
-    ts_query_delete(query);
+    // query is owned by the cache (see cachedHighlightsQuery()) — not deleted.
 
     for (std::size_t i = 0; i < byteStyle.size();) {
         const int style = byteStyle[i];

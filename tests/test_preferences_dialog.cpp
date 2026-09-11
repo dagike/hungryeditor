@@ -35,6 +35,7 @@ void TestPreferencesDialog::seedsFromAndReadsBackPreferences()
     preferences.fontSize = 18;
     preferences.tabWidth = 8;
     preferences.wordWrap = true;
+    preferences.crashReportingEnabled = true;
 
     PreferencesDialog dialog;
     dialog.setPreferences(preferences);
@@ -44,6 +45,7 @@ void TestPreferencesDialog::seedsFromAndReadsBackPreferences()
     QCOMPARE(readBack.fontSize, 18);
     QCOMPARE(readBack.tabWidth, 8);
     QVERIFY(readBack.wordWrap);
+    QVERIFY(readBack.crashReportingEnabled);
 }
 
 void TestPreferencesDialog::anEmptyFontFamilyLeavesTheDefaultSelectionAlone()

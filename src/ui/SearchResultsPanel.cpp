@@ -27,6 +27,7 @@ SearchResultsPanel::SearchResultsPanel(QWidget* parent) : QWidget(parent)
     tree_->setHeaderHidden(true);
     tree_->setUniformRowHeights(true);
     tree_->header()->setStretchLastSection(true);
+    tree_->setAccessibleName(tr("Search results"));
     layout->addWidget(tree_, 1);
 
     connect(tree_, &QTreeWidget::itemActivated, this, &SearchResultsPanel::onItemActivated);

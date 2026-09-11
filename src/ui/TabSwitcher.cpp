@@ -27,6 +27,7 @@ TabSwitcher::TabSwitcher(QWidget* parent) : QFrame(parent)
     list_ = new QListWidget(this);
     list_->setUniformItemSizes(true);
     list_->setFocusPolicy(Qt::NoFocus); // the frame keeps focus so Ctrl-release lands here
+    list_->setAccessibleName(tr("Recent documents"));
     layout->addWidget(list_);
 
     hide();

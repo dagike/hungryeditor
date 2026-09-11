@@ -13,6 +13,10 @@ struct Preferences
     int fontSize = 11;
     int tabWidth = 4;
     bool wordWrap = false;
+    /// Opt-in, off by default: write a local crash report (see
+    /// diagnostics/CrashReporter.h) on a fatal signal/exception. Never
+    /// transmitted anywhere — the report only ever goes to a file on disk.
+    bool crashReportingEnabled = false;
 };
 
 /// Reads and writes the single preferences.json holding the user's settings.

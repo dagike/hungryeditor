@@ -10,8 +10,9 @@ class QSpinBox;
 
 namespace hungryeditor {
 
-/// A small settings dialog: editor font, tab width and word wrap. Reads and
-/// writes a plain Preferences value — MainWindow owns persisting it.
+/// A small settings dialog: editor font, tab width, word wrap and the opt-in
+/// local crash reporter. Reads and writes a plain Preferences value —
+/// MainWindow owns persisting it.
 class PreferencesDialog : public QDialog
 {
     Q_OBJECT
@@ -27,6 +28,7 @@ private:
     QSpinBox* fontSize_ = nullptr;
     QSpinBox* tabWidth_ = nullptr;
     QCheckBox* wordWrap_ = nullptr;
+    QCheckBox* crashReporting_ = nullptr;
 };
 
 } // namespace hungryeditor

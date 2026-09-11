@@ -22,13 +22,19 @@ FindReplaceBar::FindReplaceBar(QWidget* parent) : QWidget(parent)
     queryEdit_ = new QLineEdit(this);
     queryEdit_->setPlaceholderText(tr("Find"));
     queryEdit_->setClearButtonEnabled(true);
+    queryEdit_->setAccessibleName(tr("Find"));
 
+    // Each of these buttons' visible text is a decorative glyph, not a label
+    // a screen reader could read meaningfully — give each an explicit
+    // accessible name matching its tooltip.
     auto* prevButton = new QToolButton(this);
     prevButton->setText(QStringLiteral("▲"));
     prevButton->setToolTip(tr("Previous match (Shift+Enter)"));
+    prevButton->setAccessibleName(tr("Previous match"));
     auto* nextButton = new QToolButton(this);
     nextButton->setText(QStringLiteral("▼"));
     nextButton->setToolTip(tr("Next match (Enter)"));
+    nextButton->setAccessibleName(tr("Next match"));
 
     caseButton_ = addToggle(QStringLiteral("Aa"), tr("Match case"));
     wordButton_ = addToggle(QStringLiteral("W"), tr("Whole word"));
@@ -40,6 +46,7 @@ FindReplaceBar::FindReplaceBar(QWidget* parent) : QWidget(parent)
     auto* closeButton = new QToolButton(this);
     closeButton->setText(QStringLiteral("✕"));
     closeButton->setToolTip(tr("Close (Esc)"));
+    closeButton->setAccessibleName(tr("Close find bar"));
 
     findRow->addWidget(queryEdit_, 1);
     findRow->addWidget(prevButton);
@@ -60,11 +67,14 @@ FindReplaceBar::FindReplaceBar(QWidget* parent) : QWidget(parent)
     replaceEdit_ = new QLineEdit(replaceRow_);
     replaceEdit_->setPlaceholderText(tr("Replace"));
     replaceEdit_->setClearButtonEnabled(true);
+    replaceEdit_->setAccessibleName(tr("Replace"));
 
     auto* replaceOneButton = new QToolButton(replaceRow_);
     replaceOneButton->setText(tr("Replace"));
+    replaceOneButton->setAccessibleName(tr("Replace current match"));
     auto* replaceAllButton = new QToolButton(replaceRow_);
     replaceAllButton->setText(tr("All"));
+    replaceAllButton->setAccessibleName(tr("Replace all matches"));
 
     replaceLayout->addWidget(replaceEdit_, 1);
     replaceLayout->addWidget(replaceOneButton);
@@ -92,6 +102,7 @@ QToolButton* FindReplaceBar::addToggle(const QString& label, const QString& tool
     auto* button = new QToolButton(this);
     button->setText(label);
     button->setToolTip(tooltip);
+    button->setAccessibleName(tooltip); // the tooltip is already the real label
     button->setCheckable(true);
     return button;
 }

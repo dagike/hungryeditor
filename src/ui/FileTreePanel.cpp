@@ -61,6 +61,7 @@ FileTreePanel::FileTreePanel(QWidget* parent) : QWidget(parent)
     filter_ = new QLineEdit(this);
     filter_->setPlaceholderText(tr("Filter files…"));
     filter_->setClearButtonEnabled(true);
+    filter_->setAccessibleName(tr("Filter files"));
     layout->addWidget(filter_);
     connect(filter_, &QLineEdit::textChanged, this, &FileTreePanel::applyFilter);
 
@@ -74,6 +75,7 @@ FileTreePanel::FileTreePanel(QWidget* parent) : QWidget(parent)
     tree_->setHeaderHidden(true);
     tree_->setUniformRowHeights(true);
     tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    tree_->setAccessibleName(tr("File tree"));
     layout->addWidget(tree_, 1);
     connect(tree_, &QTreeWidget::itemActivated, this, &FileTreePanel::onItemActivated);
     connect(tree_, &QWidget::customContextMenuRequested, this, &FileTreePanel::showContextMenu);

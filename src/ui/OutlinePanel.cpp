@@ -27,6 +27,7 @@ OutlinePanel::OutlinePanel(QWidget* parent) : QWidget(parent)
     tree_->setHeaderHidden(true);
     tree_->setUniformRowHeights(true);
     tree_->setExpandsOnDoubleClick(false);
+    tree_->setAccessibleName(tr("Document outline"));
     layout->addWidget(tree_, 1);
 
     connect(tree_, &QTreeWidget::itemActivated, this, &OutlinePanel::onItemActivated);

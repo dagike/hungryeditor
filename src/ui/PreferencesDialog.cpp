@@ -24,11 +24,18 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent)
 
     wordWrap_ = new QCheckBox(tr("Wrap long lines"), this);
 
+    crashReporting_ = new QCheckBox(tr("Save a local crash report if the app crashes"), this);
+    crashReporting_->setToolTip(
+        tr("Off by default. When enabled, a plain-text report (timestamp, backtrace, app/Qt "
+           "version) is written to this app's local data folder on a crash — never sent "
+           "anywhere."));
+
     auto* form = new QFormLayout();
     form->addRow(tr("Editor font:"), fontFamily_);
     form->addRow(tr("Font size:"), fontSize_);
     form->addRow(tr("Tab width:"), tabWidth_);
     form->addRow(QString(), wordWrap_);
+    form->addRow(QString(), crashReporting_);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -47,6 +54,7 @@ void PreferencesDialog::setPreferences(const Preferences& preferences)
     fontSize_->setValue(preferences.fontSize);
     tabWidth_->setValue(preferences.tabWidth);
     wordWrap_->setChecked(preferences.wordWrap);
+    crashReporting_->setChecked(preferences.crashReportingEnabled);
 }
 
 Preferences PreferencesDialog::preferences() const
@@ -56,6 +64,7 @@ Preferences PreferencesDialog::preferences() const
     preferences.fontSize = fontSize_->value();
     preferences.tabWidth = tabWidth_->value();
     preferences.wordWrap = wordWrap_->isChecked();
+    preferences.crashReportingEnabled = crashReporting_->isChecked();
     return preferences;
 }
 

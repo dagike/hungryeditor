@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include <QMetaType>
@@ -78,16 +77,14 @@ private:
     void paintCaptures(TSQuery* query, const TSNode& root, quint32 baseOffset,
                        std::vector<qint32>& byteStyle) const;
     /// Walk the injection query and paint each recognised sub-grammar over the
-    /// bytes of its injection.content node.
+    /// bytes of its injection.content node. Each sub-grammar's own compiled
+    /// query comes from GrammarRegistry's process-wide cache (shared with
+    /// CodeHighlighter's preview rendering), not owned here.
     void paintInjections(std::string_view source, std::vector<qint32>& byteStyle) const;
-    /// Compiled highlights query for an injected grammar, compiled once and
-    /// cached (a null result is cached too, to avoid retrying).
-    TSQuery* subQueryFor(const TSLanguage* language, std::string_view scm) const;
 
     TreeSitterEngine engine_;
     TSQuery* query_ = nullptr;
     TSQuery* injectionQuery_ = nullptr;
-    mutable std::unordered_map<const TSLanguage*, TSQuery*> subQueries_;
     QTimer* debounce_ = nullptr;
     QString pendingText_;
     quint64 pendingRevision_ = 0;

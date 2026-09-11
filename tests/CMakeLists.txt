@@ -26,6 +26,18 @@ function(hungryeditor_test_needs_webengine name)
     set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "QTWEBENGINE_DISABLE_SANDBOX=1")
 endfunction()
 
+# A plain (non-CTest) helper binary that deliberately crashes after
+# installing the crash reporter, run via QProcess from test_crash_reporter —
+# never invoked directly by CTest, so it needs no hungryeditor_add_test.
+add_executable(crash_helper helpers/crash_helper.cpp)
+target_link_libraries(crash_helper PRIVATE hungryeditor::core)
+
+hungryeditor_add_test(test_crash_reporter
+    SOURCES test_crash_reporter.cpp
+    LIBS hungryeditor::core)
+target_compile_definitions(test_crash_reporter PRIVATE
+    CRASH_HELPER_PATH="$<TARGET_FILE:crash_helper>")
+
 hungryeditor_add_test(test_vendor
     SOURCES test_vendor.cpp
     LIBS hungryeditor::scintilla hungryeditor::lexilla hungryeditor::treesitter Qt6::Widgets)
@@ -99,6 +111,10 @@ hungryeditor_add_test(test_tab_bar
     SOURCES test_tab_bar.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_find_replace_bar
+    SOURCES test_find_replace_bar.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_theme
     SOURCES test_theme.cpp
     LIBS hungryeditor::core)
@@ -163,8 +179,22 @@ hungryeditor_add_test(test_md4c_renderer
     SOURCES test_md4c_renderer.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_md4c_fuzz
+    SOURCES test_md4c_fuzz.cpp
+    LIBS hungryeditor::core)
+# A generous, explicit backstop: a real hang (not just a slow run) fails this
+# job within a minute instead of blocking CI indefinitely.
+set_tests_properties(test_md4c_fuzz PROPERTIES TIMEOUT 60)
+
 hungryeditor_add_test(test_preview_controller
     SOURCES test_preview_controller.cpp
+    LIBS hungryeditor::core)
+
+# No hungryeditor_test_needs_webengine: every case here either measures state
+# from before the preview is lazily built, or renders through a FakeBackend
+# to isolate our own render pipeline from Chromium — see test_benchmarks.cpp.
+hungryeditor_add_test(test_benchmarks
+    SOURCES test_benchmarks.cpp
     LIBS hungryeditor::core)
 
 hungryeditor_add_test(test_preview
