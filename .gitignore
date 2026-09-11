@@ -29,3 +29,4 @@ desktop.ini
 *.AppImage
 *.msi
 *.zip
+/packaging/appimage/tools/

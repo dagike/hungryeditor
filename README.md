@@ -46,6 +46,5 @@ On Windows use the `windows-release` preset from a Developer prompt.
 
 ## License
 
-To be finalized. Qt is used under LGPLv3 (dynamic linking); third-party
-components retain their own licenses — see `THIRD_PARTY.md` (added in a later
-phase).
+MIT — see `LICENSE`. Qt is used under LGPLv3 (dynamic linking); third-party
+components retain their own licenses — see `THIRD_PARTY.md`.

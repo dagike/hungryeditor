@@ -36,6 +36,9 @@ if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
+# --- Packaging ---------------------------------------------------------------
+include(Packaging)
+
 # --- Summary ---------------------------------------------------------------
 message(STATUS "hungryeditor ${PROJECT_VERSION}")
 message(STATUS "  build type : ${CMAKE_BUILD_TYPE}")

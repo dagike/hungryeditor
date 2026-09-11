@@ -1,0 +1,45 @@
+# flatpak-builder manifest. Build locally with:
+#   flatpak-builder --user --install --force-clean build-dir \
+#       packaging/flatpak/io.github.dagike.Hungryeditor.yml
+#
+# Needs org.kde.Platform/Sdk installed first:
+#   flatpak install flathub org.kde.Platform//6.8 org.kde.Sdk//6.8
+#
+# Unverified locally (no flatpak-builder or KDE runtime available in the
+# sandbox this was written in) — written from documented flatpak-builder
+# and KDE runtime conventions. The runtime-version below tracks whatever
+# Qt6 minor version the KDE runtime ships; bump it if Flathub has moved on.
+app-id: io.github.dagike.Hungryeditor
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: hungryeditor
+
+finish-args:
+  # Windowing: both are listed so the app works on an X11 or a Wayland
+  # session without a rebuild; --share=ipc is needed alongside --socket=x11.
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  # GPU access for QtWebEngine's compositing.
+  - --device=dri
+  # Broad but the practical choice for an editor with its own file-tree
+  # sidebar and command-line file opening, not just a single-document
+  # portal dialog. --filesystem=host is the wider alternative if files
+  # outside $HOME (e.g. another mounted drive) need to be reachable too.
+  - --filesystem=home
+
+modules:
+  - name: hungryeditor
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+    sources:
+      # Building from the local checkout this manifest ships in. Swap for a
+      # `type: git, url: https://github.com/dagike/hungryeditor, tag: vX.Y.Z`
+      # source for an actual Flathub submission (see 10.6, release
+      # automation) — a real submission needs to build from a tagged commit,
+      # not whatever happens to be on disk.
+      - type: dir
+        path: ../..

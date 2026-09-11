@@ -76,5 +76,6 @@ Each grammar's `LICENSE` is kept alongside its sources.
   `qrc:/hungryeditor/preview/`, so `$…$` / `$$…$$` math renders offline. Not
   compiled, nothing links against it.
 - All components are used under permissive terms that require preserving the
-  copyright notice and permission text, reproduced in the license files above
-  and in the application's about box (added in a later phase).
+  copyright notice and permission text, reproduced in the license files above.
+  hungryeditor's own code is MIT-licensed — see `LICENSE`; its Help → About
+  box points back to this file for the third-party terms.
