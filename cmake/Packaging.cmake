@@ -1,10 +1,19 @@
 # install() rules and CPack configuration for distributable packages.
 # Included once from the top-level CMakeLists.txt after the `hungryeditor`
-# target exists. Grows across Phase 10 (deb/rpm here; AppImage/Flatpak,
-# Windows MSI/zip and release automation are later commits in the same
-# phase) rather than being one big packaging pass.
+# target exists. Grows across Phase 10 (deb/rpm and Windows msi/zip here;
+# AppImage/Flatpak are separate scripts/manifests, not CPack; release
+# automation is a later commit in the same phase).
 
 include(GNUInstallDirs)
+
+# --- Shared package identity -------------------------------------------------
+set(CPACK_PACKAGE_NAME "hungryeditor")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VENDOR "hungryeditor")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+# No CPACK_RESOURCE_FILE_LICENSE / *_PACKAGE_LICENSE yet: the project's own
+# license is still "to be finalized" (see README.md) — that and the LICENSE
+# file it depends on are 10.5's job, not this commit's to guess.
 
 if(UNIX AND NOT APPLE)
     install(TARGETS hungryeditor
@@ -25,15 +34,8 @@ if(UNIX AND NOT APPLE)
     # hungryeditor an available (and, once picked, default) handler for it.
 
     set(CPACK_GENERATOR "DEB;RPM")
-    set(CPACK_PACKAGE_NAME "hungryeditor")
-    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-    set(CPACK_PACKAGE_VENDOR "hungryeditor")
     set(CPACK_PACKAGE_CONTACT "dagike <dagike@users.noreply.github.com>")
-    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
-    # No CPACK_RESOURCE_FILE_LICENSE / *_PACKAGE_LICENSE yet: the project's
-    # own license is still "to be finalized" (see README.md) — that and the
-    # LICENSE file it depends on are 10.5's job, not this commit's to guess.
 
     # Runtime library names only (no -dev packages) — matches what
     # `ldd build/*/bin/hungryeditor` actually reports linked at runtime.
@@ -52,6 +54,58 @@ libqt6printsupport6, libqt6network6, libqt6positioning6, libqt6opengl6")
         "qt6-qtbase-gui, qt6-qt5compat, qt6-qtwebengine, qt6-qtwebchannel")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Editors")
     set(CPACK_RPM_PACKAGE_URL "https://github.com/dagike/hungryeditor")
+
+    include(CPack)
+elseif(WIN32)
+    # Flat layout (no bin/ subfolder): both the MSI's install directory and
+    # the portable ZIP's extracted folder should just be "the app", with the
+    # exe and its bundled Qt DLLs side by side.
+    install(TARGETS hungryeditor RUNTIME DESTINATION .)
+
+    # Qt ships no equivalent of Linux's dynamic linker search path here, so
+    # the exe needs its Qt DLLs (and platform/imageformats/etc. plugins)
+    # copied in next to it — windeployqt is Qt's own tool for exactly that.
+    # Entirely unverified locally: this repo has no Windows environment, so
+    # neither the windeployqt discovery below nor the packages it feeds have
+    # ever actually run; CI's windows-latest job is the first real test.
+    #
+    # Qt6::qmake is defined by find_package(Qt6 ...) in src/CMakeLists.txt,
+    # but that is a child directory scope — re-finding it here (a cheap,
+    # cached no-op) guarantees the target exists in this scope too, rather
+    # than relying on Qt's own CMake config happening to mark it GLOBAL.
+    find_package(Qt6 REQUIRED COMPONENTS Core)
+    get_target_property(_qt6_qmake_location Qt6::qmake IMPORTED_LOCATION)
+    if(_qt6_qmake_location)
+        get_filename_component(_qt6_bin_dir "${_qt6_qmake_location}" DIRECTORY)
+    endif()
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt6_bin_dir}")
+
+    if(WINDEPLOYQT_EXECUTABLE)
+        install(CODE "
+            execute_process(COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
+                --no-compiler-runtime
+                --no-translations
+                \"\${CMAKE_INSTALL_PREFIX}/hungryeditor.exe\")
+        ")
+    else()
+        message(WARNING
+            "windeployqt not found: the installed hungryeditor.exe will be "
+            "missing its Qt DLLs. Packaging will still produce an archive, "
+            "just not a runnable one.")
+    endif()
+
+    set(CPACK_GENERATOR "WIX;ZIP")
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "hungryeditor")
+    set(CPACK_PACKAGE_EXECUTABLES "hungryeditor;hungryeditor")
+    # Fixed and never to be regenerated: WIX/MSI uses this to recognise a new
+    # version as an upgrade of the same product rather than a separate,
+    # side-by-side install. Generated once with `python3 -c "import uuid;
+    # print(uuid.uuid4())"`.
+    set(CPACK_WIX_UPGRADE_GUID "A1ECFA45-6525-4652-A30A-EE2AD4312CDC")
+    # No CPACK_WIX_PRODUCT_ICON yet: it needs a multi-resolution .ico, and
+    # this sandbox has no SVG rasterizer to derive one from
+    # resources/icons/hungryeditor.svg (itself only a placeholder — see its
+    # own comment). WIX falls back to a generic installer icon until then.
 
     include(CPack)
 endif()
