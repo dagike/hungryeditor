@@ -99,6 +99,10 @@ hungryeditor_add_test(test_tab_bar
     SOURCES test_tab_bar.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_find_replace_bar
+    SOURCES test_find_replace_bar.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_theme
     SOURCES test_theme.cpp
     LIBS hungryeditor::core)

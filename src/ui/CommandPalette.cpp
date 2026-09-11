@@ -29,11 +29,13 @@ CommandPalette::CommandPalette(QWidget* parent) : QWidget(parent)
 
     query_ = new QLineEdit(this);
     query_->setPlaceholderText(tr("Run a command…"));
+    query_->setAccessibleName(tr("Command palette"));
     query_->installEventFilter(this);
     layout->addWidget(query_);
 
     list_ = new QListWidget(this);
     list_->setUniformItemSizes(true);
+    list_->setAccessibleName(tr("Command palette results"));
     layout->addWidget(list_);
 
     connect(query_, &QLineEdit::textChanged, this, &CommandPalette::refilter);
