@@ -104,10 +104,7 @@ elseif(WIN32)
     # side-by-side install. Generated once with `python3 -c "import uuid;
     # print(uuid.uuid4())"`.
     set(CPACK_WIX_UPGRADE_GUID "A1ECFA45-6525-4652-A30A-EE2AD4312CDC")
-    # No CPACK_WIX_PRODUCT_ICON yet: it needs a multi-resolution .ico, and
-    # this sandbox has no SVG rasterizer to derive one from
-    # resources/icons/hungryeditor.svg (itself only a placeholder — see its
-    # own comment). WIX falls back to a generic installer icon until then.
+    set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.ico")
 
     include(CPack)
 endif()

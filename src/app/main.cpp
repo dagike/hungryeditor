@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
 
 #include "app/CommandLine.h"
 #include "app/MainWindow.h"
@@ -19,6 +20,13 @@ int main(int argc, char** argv)
     QApplication::setApplicationName(QStringLiteral("hungryeditor"));
     QApplication::setApplicationVersion(QStringLiteral(HUNGRYEDITOR_VERSION));
     QApplication::setOrganizationName(QStringLiteral("hungryeditor"));
+
+    QIcon appIcon;
+    for (const char* size : {"16", "32", "48", "64", "128", "256"}) {
+        appIcon.addFile(QLatin1String(":/hungryeditor/icons/icon-") + QLatin1String(size) +
+                        QLatin1String(".png"));
+    }
+    QApplication::setWindowIcon(appIcon);
 
     QCommandLineParser parser;
     hungryeditor::configureCommandLineParser(parser);

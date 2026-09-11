@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SQL grammar for fenced code blocks (plus `postgresql`/`psql`/`mysql`
   aliases).
+- A real application icon (window/taskbar, the Windows `.exe`'s own icon,
+  and the WiX installer), replacing the placeholder Markdown-community mark.
+  The Linux desktop icon was already wired to the same SVG file, so it picks
+  up the new design with no packaging change.
 
 ### Fixed
 

@@ -192,3 +192,30 @@ target_compile_definitions(hungryeditor PRIVATE
 target_link_libraries(hungryeditor PRIVATE hungryeditor::core)
 
 hungryeditor_set_warnings(hungryeditor)
+
+# The window/taskbar icon, as plain PNGs at several sizes rather than the
+# hicolor SVG below: loading an SVG through QIcon needs the Qt SVG plugin,
+# which is not one of this project's dependencies, while PNG decoding is
+# always built into Qt. QApplication::setWindowIcon() in main.cpp picks the
+# closest size at runtime.
+qt_add_resources(hungryeditor "app_icon"
+    PREFIX "/hungryeditor/icons"
+    BASE "${CMAKE_SOURCE_DIR}/resources/icons/app"
+    FILES
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-16.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-32.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-48.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-64.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-128.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-256.png")
+
+# The .exe's own icon (Explorer, taskbar before the app has even started),
+# set via a classic Win32 resource script rather than a Qt mechanism.
+# WIN32_EXECUTABLE/MACOSX_BUNDLE above only pick the subsystem; they don't
+# touch the binary's icon resource.
+if(WIN32)
+    set(HUNGRYEDITOR_ICON_PATH "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.ico")
+    configure_file("${CMAKE_SOURCE_DIR}/resources/windows/hungryeditor.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/hungryeditor.rc" @ONLY)
+    target_sources(hungryeditor PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/hungryeditor.rc")
+endif()

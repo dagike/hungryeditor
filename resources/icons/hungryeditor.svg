@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder application icon: a bordered "M-down-arrow" mark, the
-     generic community symbol for Markdown, on a rounded dark square. Swap
-     this out for real branding whenever it's ready — nothing else in the
-     packaging depends on its exact appearance, only its file name. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- hungryeditor mark: a blocky lowercase "h" (the app name) with a
+       cursor bar beside it (the editor), on the same dark bordered-square
+       frame the placeholder used. Built from rects rather than font curves
+       so it stays crisp down to 16px. Note for future edits: keep the
+       "svg" tag within roughly the first 50 bytes of the file, since
+       gdk-pixbuf's format sniffer (used to rasterize this for the Windows
+       .ico) only reads a short prefix; a longer leading comment previously
+       pushed "svg" past that window and broke detection. -->
   <rect x="4" y="4" width="120" height="120" rx="22" fill="#1e1e1e"/>
   <rect x="16" y="16" width="96" height="96" rx="10" fill="none" stroke="#f6f8fa" stroke-width="5"/>
-  <path d="M32 84 V44 h11 l13 17 13-17 h11 v40 h-10 V60 l-14 18 -14-18 v24 z" fill="#f6f8fa"/>
-  <path d="M92 44 v24 M92 68 l-11-12 M92 68 l11-12" fill="none" stroke="#f6f8fa" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="40" y="32" width="12" height="64" fill="#f6f8fa"/>
+  <rect x="52" y="56" width="24" height="12" fill="#f6f8fa"/>
+  <rect x="76" y="56" width="12" height="40" fill="#f6f8fa"/>
+  <rect x="94" y="40" width="10" height="56" fill="#f4b942"/>
 </svg>
