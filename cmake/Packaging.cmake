@@ -1,8 +1,8 @@
 # install() rules and CPack configuration for distributable packages.
 # Included once from the top-level CMakeLists.txt after the `hungryeditor`
-# target exists. Grows across Phase 10 (deb/rpm and Windows msi/zip here;
-# AppImage/Flatpak are separate scripts/manifests, not CPack; release
-# automation is a later commit in the same phase).
+# target exists. Covers deb/rpm and Windows msi/zip; AppImage/Flatpak are
+# separate scripts/manifests, not CPack; release automation lives in
+# .github/workflows/release.yml.
 
 include(GNUInstallDirs)
 
@@ -11,9 +11,6 @@ set(CPACK_PACKAGE_NAME "hungryeditor")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "hungryeditor")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
-# No CPACK_RESOURCE_FILE_LICENSE / *_PACKAGE_LICENSE yet: the project's own
-# license is still "to be finalized" (see README.md) — that and the LICENSE
-# file it depends on are 10.5's job, not this commit's to guess.
 
 if(UNIX AND NOT APPLE)
     install(TARGETS hungryeditor

@@ -15,18 +15,14 @@ preview of Typora, and none of the browser weight.
   diagrams and math.
 - **Cross-platform.** Linux and Windows, both first-class.
 
-## Status
-
-Early development. See the build instructions below.
-
 ## Building
 
 Requirements:
 
 - CMake ≥ 3.24 and Ninja
 - A C++20 compiler (GCC 12+, Clang 16+, or MSVC 19.3+)
-- Qt 6.4+ — `Widgets` and `Core5Compat` now; `WebEngineWidgets` and
-  `WebChannel` from Phase 3
+- Qt 6.4+ — `Widgets`, `Core5Compat`, `WebEngineWidgets`, `WebChannel`,
+  `Concurrent`, `PrintSupport`
 
 On Debian/Ubuntu:
 
@@ -34,6 +30,8 @@ On Debian/Ubuntu:
 sudo apt install cmake ninja-build build-essential \
   qt6-base-dev qt6-5compat-dev qt6-webengine-dev qt6-webchannel-dev
 ```
+
+(`qt6-base-dev` already provides `Concurrent` and `PrintSupport`.)
 
 ```sh
 cmake --preset linux-debug

@@ -14,8 +14,8 @@ namespace hungryeditor {
 class PreviewBridge;
 
 /// PreviewBackend backed by Chromium via Qt WebEngine. Gives the preview full
-/// CSS and JavaScript, which later phases need for mermaid, KaTeX and the
-/// scroll-sync bridge.
+/// CSS and JavaScript, which mermaid diagrams, KaTeX math and the scroll-sync
+/// bridge all rely on.
 ///
 /// Live edits go through setContent(): the first call loads a fixed shell page
 /// that connects a QWebChannel back to a PreviewBridge, and every call after

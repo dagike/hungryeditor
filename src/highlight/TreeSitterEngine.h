@@ -12,8 +12,9 @@ namespace hungryeditor {
 /// document. The engine keeps its own UTF-8 copy of the source so that
 /// incremental reparses can reuse unchanged subtrees.
 ///
-/// This type knows nothing about Scintilla or Qt; the editor wiring lives in
-/// a later commit.
+/// This type knows nothing about Scintilla or Qt; that wiring lives in
+/// Editor, which owns a HighlightController/HighlightWorker pair driving an
+/// instance of this class on a background thread.
 class TreeSitterEngine
 {
 public:

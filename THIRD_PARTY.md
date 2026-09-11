@@ -63,7 +63,8 @@ Each grammar's `LICENSE` is kept alongside its sources.
 - **md4c** is compiled from its single `src/md4c.c` (its bundled HTML renderer
   and `entity.c` table are not vendored — `src/markdown/Md4cRenderer` renders
   the parser callbacks directly so it can add `data-src-line` anchors for
-  scroll sync). CommonMark only for now; GFM flags are enabled in a later phase.
+  scroll sync). Parses `MD_DIALECT_GITHUB` (tables, task lists, strikethrough,
+  autolinks) plus `MD_FLAG_LATEXMATHSPANS` for `$…$` / `$$…$$` math.
 - **mermaid** is the pre-built UMD bundle (`dist/mermaid.min.js`), kept as a
   data file — not compiled. It is embedded in the binary as a Qt resource
   (`qrc:/hungryeditor/preview/mermaid.min.js`) and loaded by the preview shell
