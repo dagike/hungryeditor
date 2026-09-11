@@ -165,6 +165,19 @@ public:
     /// from the aboutToQuit hook; exposed for tests.
     void saveSession();
 
+    /// Title an export of the current buffer should carry: its first heading,
+    /// else its display name (without extension), else "Untitled". Exposed
+    /// for tests.
+    QString exportTitle() const;
+
+    /// The current buffer rendered as a standalone HTML document, per
+    /// htmlexport::build(). Exposed for tests.
+    QString buildHtmlExport() const;
+
+    /// Write buildHtmlExport() to `path`. Returns false on an I/O error (see
+    /// lastError()).
+    bool exportHtmlTo(const QString& path);
+
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -179,6 +192,7 @@ private slots:
     void closeCurrentDocument();
     void nextDocument();
     void previousDocument();
+    void exportHtmlDialog();
 
 private:
     void buildMenus();

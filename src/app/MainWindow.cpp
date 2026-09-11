@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardPaths>
@@ -32,6 +33,7 @@
 #include "editor/Document.h"
 #include "editor/DocumentManager.h"
 #include "editor/Editor.h"
+#include "export/HtmlDocument.h"
 #include "io/AssetWriter.h"
 #include "io/DraftStore.h"
 #include "io/RecentFiles.h"
@@ -342,6 +344,13 @@ void MainWindow::buildMenus()
         fileMenu->addAction(tr("Previous Rece&nt Document"), this, [this] { quickSwitch(-1); });
     prevTabAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab));
     prevTabAction->setObjectName(QStringLiteral("action.previousTab"));
+
+    fileMenu->addSeparator();
+
+    QMenu* exportMenu = fileMenu->addMenu(tr("&Export"));
+    QAction* exportHtmlAction =
+        exportMenu->addAction(tr("As &HTML…"), this, &MainWindow::exportHtmlDialog);
+    exportHtmlAction->setObjectName(QStringLiteral("action.exportHtml"));
 
     fileMenu->addSeparator();
 
@@ -1534,6 +1543,60 @@ void MainWindow::saveAsDialog()
     }
     if (!savePath(path)) {
         QMessageBox::warning(this, tr("Save Failed"), lastError_);
+    }
+}
+
+QString MainWindow::exportTitle() const
+{
+    const QVector<outline::Heading> headings = outline::parse(editor_->text());
+    if (!headings.isEmpty()) {
+        return headings.first().text;
+    }
+    const Document* document = documents_->current();
+    if (document == nullptr || document->isUntitled()) {
+        return tr("Untitled");
+    }
+    return QFileInfo(document->displayName()).completeBaseName();
+}
+
+QString MainWindow::buildHtmlExport() const
+{
+    const QString current = currentPath();
+    const htmlexport::Options options{
+        exportTitle(), current.isEmpty() ? QString() : QFileInfo(current).absolutePath()};
+    return htmlexport::build(editor_->text(), options);
+}
+
+bool MainWindow::exportHtmlTo(const QString& path)
+{
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        lastError_ = file.errorString();
+        return false;
+    }
+    file.write(buildHtmlExport().toUtf8());
+    if (!file.commit()) {
+        lastError_ = file.errorString();
+        return false;
+    }
+    lastError_.clear();
+    return true;
+}
+
+void MainWindow::exportHtmlDialog()
+{
+    const QFileInfo current(currentPath());
+    const QString dir = current.exists() ? current.absolutePath() : QDir::homePath();
+    const QString suggested =
+        QDir(dir).filePath(exportTitle().isEmpty() ? QStringLiteral("export") : exportTitle()) +
+        QStringLiteral(".html");
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export as HTML"), suggested,
+                                                      tr("HTML files (*.html)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    if (!exportHtmlTo(path)) {
+        QMessageBox::warning(this, tr("Export Failed"), lastError_);
     }
 }
 

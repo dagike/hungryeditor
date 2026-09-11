@@ -54,6 +54,7 @@ private slots:
     void saveActionFollowsDirtyState();
     void openPathLoadsFileAndClearsDirty();
     void savePathWritesBufferPreservingLineEnding();
+    void exportHtmlWritesAStandaloneFile();
     void openPathReportsMissingFile();
     void openFilesOpensEachActivatingTheFirst();
     void openFilesReportsFailuresAndOpensTheRest();
@@ -195,6 +196,32 @@ void TestMainWindow::savePathWritesBufferPreservingLineEnding()
     QFile written(target);
     QVERIFY(written.open(QIODevice::ReadOnly));
     QCOMPARE(written.readAll(), QByteArray("one\r\ntwo\r\nthree\r\n"));
+}
+
+void TestMainWindow::exportHtmlWritesAStandaloneFile()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString source = dir.filePath(QStringLiteral("note.md"));
+    {
+        QFile file(source);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("# Note\n\nSome *text*.\n");
+    }
+
+    hungryeditor::MainWindow window;
+    QVERIFY(window.openPath(source));
+    QCOMPARE(window.exportTitle(), QStringLiteral("Note"));
+
+    const QString target = dir.filePath(QStringLiteral("note.html"));
+    QVERIFY(window.exportHtmlTo(target));
+
+    QFile written(target);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QString html = QString::fromUtf8(written.readAll());
+    QVERIFY(html.startsWith(QLatin1String("<!doctype html>")));
+    QVERIFY(html.contains(QLatin1String("<title>Note</title>")));
+    QVERIFY(html.contains(QLatin1String("Some <em>text</em>")));
 }
 
 void TestMainWindow::openPathReportsMissingFile()
@@ -572,6 +599,7 @@ void TestMainWindow::hasNamedActions_data()
     QTest::newRow("viewEditor") << QStringLiteral("action.viewEditor");
     QTest::newRow("viewSplit") << QStringLiteral("action.viewSplit");
     QTest::newRow("viewPreview") << QStringLiteral("action.viewPreview");
+    QTest::newRow("exportHtml") << QStringLiteral("action.exportHtml");
 }
 
 void TestMainWindow::hasNamedActions()
