@@ -90,6 +90,10 @@ int HighlightWorker::debounceIntervalMs()
 
 void HighlightWorker::clearQueries()
 {
+    // query_/injectionQuery_ are markdown's own top-level queries, compiled
+    // directly and owned here. Per-language sub-grammar queries come from
+    // the shared cache (see cachedHighlightsQuery()) and outlive this
+    // instance, so there is nothing else to release.
     if (query_ != nullptr) {
         ts_query_delete(query_);
         query_ = nullptr;
@@ -98,12 +102,6 @@ void HighlightWorker::clearQueries()
         ts_query_delete(injectionQuery_);
         injectionQuery_ = nullptr;
     }
-    for (const auto& entry : subQueries_) {
-        if (entry.second != nullptr) {
-            ts_query_delete(entry.second);
-        }
-    }
-    subQueries_.clear();
 }
 
 void HighlightWorker::configure(const TSLanguage* language, const QString& highlightQuery,
@@ -258,7 +256,10 @@ void HighlightWorker::paintInjections(std::string_view source, std::vector<qint3
             continue;
         }
 
-        TSQuery* subQuery = subQueryFor(grammar.language, grammar.highlights);
+        // Shared with CodeHighlighter's preview rendering: the same language
+        // means the same compiled query, cached once for the process rather
+        // than per HighlightWorker instance.
+        TSQuery* subQuery = cachedHighlightsQuery(grammar.language, grammar.highlights);
         if (subQuery == nullptr) {
             continue;
         }
@@ -273,18 +274,6 @@ void HighlightWorker::paintInjections(std::string_view source, std::vector<qint3
         }
     }
     ts_query_cursor_delete(cursor);
-}
-
-TSQuery* HighlightWorker::subQueryFor(const TSLanguage* language, std::string_view scm) const
-{
-    const auto it = subQueries_.find(language);
-    if (it != subQueries_.end()) {
-        return it->second;
-    }
-    const QByteArray queryText(scm.data(), static_cast<qsizetype>(scm.size()));
-    TSQuery* query = newQuery(language, queryText);
-    subQueries_.emplace(language, query);
-    return query;
 }
 
 } // namespace hungryeditor

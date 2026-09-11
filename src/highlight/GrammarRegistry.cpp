@@ -1,7 +1,9 @@
 #include "highlight/GrammarRegistry.h"
 
 #include <cctype>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "HighlightQueries.h" // generated: hungryeditor::queries::*
@@ -107,6 +109,31 @@ Grammar grammarForName(std::string_view name)
         }
     }
     return {};
+}
+
+TSQuery* cachedHighlightsQuery(const TSLanguage* language, std::string_view highlights)
+{
+    if (language == nullptr) {
+        return nullptr;
+    }
+
+    static std::mutex mutex;
+    static std::unordered_map<const TSLanguage*, TSQuery*> cache;
+
+    const std::lock_guard<std::mutex> lock(mutex);
+    const auto it = cache.find(language);
+    if (it != cache.end()) {
+        return it->second;
+    }
+
+    uint32_t errorOffset = 0;
+    TSQueryError errorType = TSQueryErrorNone;
+    // A malformed query simply disables that layer of highlighting; not fatal.
+    TSQuery* query =
+        ts_query_new(language, highlights.data(), static_cast<uint32_t>(highlights.size()),
+                     &errorOffset, &errorType);
+    cache.emplace(language, query);
+    return query;
 }
 
 } // namespace hungryeditor
