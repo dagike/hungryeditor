@@ -39,8 +39,12 @@ add_library(hungryeditor_core STATIC
     app/CommandLine.h
     app/MainWindow.cpp
     app/MainWindow.h
+    app/StatePaths.cpp
+    app/StatePaths.h
     app/TabBar.cpp
     app/TabBar.h
+    diagnostics/CrashReporter.cpp
+    diagnostics/CrashReporter.h
     editor/CaretHistory.cpp
     editor/CaretHistory.h
     editor/Document.cpp

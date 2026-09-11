@@ -36,6 +36,8 @@ Preferences PreferencesStore::load() const
         preferences.tabWidth = root.value(QStringLiteral("tabWidth")).toInt(preferences.tabWidth);
     }
     preferences.wordWrap = root.value(QStringLiteral("wordWrap")).toBool(preferences.wordWrap);
+    preferences.crashReportingEnabled = root.value(QStringLiteral("crashReportingEnabled"))
+                                            .toBool(preferences.crashReportingEnabled);
     return preferences;
 }
 
@@ -46,6 +48,7 @@ bool PreferencesStore::save(const Preferences& preferences) const
     root.insert(QStringLiteral("fontSize"), preferences.fontSize);
     root.insert(QStringLiteral("tabWidth"), preferences.tabWidth);
     root.insert(QStringLiteral("wordWrap"), preferences.wordWrap);
+    root.insert(QStringLiteral("crashReportingEnabled"), preferences.crashReportingEnabled);
 
     QDir().mkpath(QFileInfo(filePath_).absolutePath());
     QSaveFile file(filePath_);

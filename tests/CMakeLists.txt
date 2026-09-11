@@ -26,6 +26,18 @@ function(hungryeditor_test_needs_webengine name)
     set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "QTWEBENGINE_DISABLE_SANDBOX=1")
 endfunction()
 
+# A plain (non-CTest) helper binary that deliberately crashes after
+# installing the crash reporter, run via QProcess from test_crash_reporter —
+# never invoked directly by CTest, so it needs no hungryeditor_add_test.
+add_executable(crash_helper helpers/crash_helper.cpp)
+target_link_libraries(crash_helper PRIVATE hungryeditor::core)
+
+hungryeditor_add_test(test_crash_reporter
+    SOURCES test_crash_reporter.cpp
+    LIBS hungryeditor::core)
+target_compile_definitions(test_crash_reporter PRIVATE
+    CRASH_HELPER_PATH="$<TARGET_FILE:crash_helper>")
+
 hungryeditor_add_test(test_vendor
     SOURCES test_vendor.cpp
     LIBS hungryeditor::scintilla hungryeditor::lexilla hungryeditor::treesitter Qt6::Widgets)

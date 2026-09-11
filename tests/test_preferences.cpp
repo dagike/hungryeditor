@@ -28,6 +28,7 @@ void TestPreferences::loadFromAMissingFileReturnsDefaults()
     QCOMPARE(preferences.fontSize, 11);
     QCOMPARE(preferences.tabWidth, 4);
     QVERIFY(!preferences.wordWrap);
+    QVERIFY(!preferences.crashReportingEnabled);
 }
 
 void TestPreferences::saveThenLoadRoundTrips()
@@ -42,6 +43,7 @@ void TestPreferences::saveThenLoadRoundTrips()
     preferences.fontSize = 14;
     preferences.tabWidth = 2;
     preferences.wordWrap = true;
+    preferences.crashReportingEnabled = true;
     QVERIFY(store.save(preferences));
 
     const Preferences loaded = store.load();
@@ -49,6 +51,7 @@ void TestPreferences::saveThenLoadRoundTrips()
     QCOMPARE(loaded.fontSize, 14);
     QCOMPARE(loaded.tabWidth, 2);
     QVERIFY(loaded.wordWrap);
+    QVERIFY(loaded.crashReportingEnabled);
 }
 
 QTEST_APPLESS_MAIN(TestPreferences)

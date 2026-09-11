@@ -31,13 +31,13 @@
 #include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSplitter>
-#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "app/StatePaths.h"
 #include "app/TabBar.h"
 #include "editor/CaretHistory.h"
 #include "editor/Document.h"
@@ -92,17 +92,6 @@ QStringList localFilesFromMime(const QMimeData* mime)
         }
     }
     return paths;
-}
-
-/// Base directory for this app's persisted state — recovery drafts and the
-/// session file. Falls back to a temp path when the platform offers none.
-QString defaultStateDirectory()
-{
-    QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    if (base.isEmpty()) {
-        base = QDir::tempPath() + QLatin1String("/hungryeditor");
-    }
-    return base;
 }
 
 /// A whitespace-delimited word count of the raw buffer (markdown syntax
