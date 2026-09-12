@@ -132,6 +132,15 @@ add_library(hungryeditor::core ALIAS hungryeditor_core)
 
 set_target_properties(hungryeditor_core PROPERTIES AUTOMOC ON)
 
+# The preview shell page itself: a real .html file rather than an inlined
+# C++ string literal, so a future preview backend (see PreviewBackend.h) can
+# load the identical file instead of forking its mermaid/KaTeX lazy-render
+# logic, error surfaces and scroll-sync math.
+qt_add_resources(hungryeditor_core "preview_shell"
+    PREFIX "/hungryeditor/preview"
+    BASE "${CMAKE_SOURCE_DIR}/src/preview/shell"
+    FILES "${CMAKE_SOURCE_DIR}/src/preview/shell/shell.html")
+
 # Preview-page assets, served to the QtWebEngine shell over qrc: so diagrams and
 # math render with no network access. Vendored under third_party/.
 qt_add_resources(hungryeditor_core "preview_assets"
