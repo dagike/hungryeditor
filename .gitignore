@@ -30,3 +30,6 @@ desktop.ini
 *.msi
 *.zip
 /packaging/appimage/tools/
+
+# Portfolio demo clips (tests/helpers/record_demo.sh) — regeneratable
+/demo-recordings/
