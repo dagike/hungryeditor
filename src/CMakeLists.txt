@@ -35,6 +35,12 @@ hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueri
     "kLangTypeScript|${_gr}/javascript/queries/highlights.scm|${_gr}/typescript/queries/highlights.scm"
     "kLangYaml|${_gr}/yaml/queries/highlights.scm")
 
+# Empty today: no WebView2 backend source exists yet (a follow-on branch,
+# not this phase — see PreviewBackendFactory.cpp), so there is nothing to
+# add even when HUNGRYEDITOR_PREVIEW_BACKEND=webview2. This is the point
+# where its sources will join the target once that branch lands.
+set(_webview2_backend_sources)
+
 add_library(hungryeditor_core STATIC
     app/CommandLine.cpp
     app/CommandLine.h
@@ -131,6 +137,7 @@ add_library(hungryeditor_core STATIC
     workspace/FileSearch.h
     workspace/WorkspaceStore.cpp
     workspace/WorkspaceStore.h
+    ${_webview2_backend_sources}
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 
@@ -188,6 +195,13 @@ target_link_libraries(hungryeditor_core PRIVATE
     Qt6::PrintSupport
     hungryeditor::md4c
 )
+
+# Header-only today: no WebView2 backend source links against it yet (see
+# _webview2_backend_sources above), but the include directory is proven to
+# resolve as soon as it is fetched.
+if(HUNGRYEDITOR_PREVIEW_BACKEND STREQUAL "webview2")
+    target_link_libraries(hungryeditor_core PRIVATE hungryeditor::webview2_sdk)
+endif()
 
 hungryeditor_set_warnings(hungryeditor_core)
 

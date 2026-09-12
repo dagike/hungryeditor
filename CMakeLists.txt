@@ -33,6 +33,7 @@ option(HUNGRYEDITOR_STRICT_BENCHMARKS
 include(CTest)  # defines BUILD_TESTING (ON by default)
 
 include(CompilerWarnings)
+include(WebView2)
 
 # --- Vendored dependencies -----------------------------------------------
 add_subdirectory(third_party)

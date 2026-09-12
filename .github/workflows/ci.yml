@@ -130,6 +130,33 @@ jobs:
             Write-Host "::endgroup::"
           }
 
+  webview2-sdk-configure:
+    name: configure webview2 backend (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # Configure-only: proves cmake/WebView2.cmake's pinned FetchContent
+      # actually resolves and the SDK's include directory wires up. No
+      # WebView2 backend source exists yet (see
+      # src/preview/PreviewBackendFactory.cpp), so there is nothing to build
+      # or test on this path today.
+      - name: Configure with the webview2 backend
+        run: cmake --preset windows-release -DHUNGRYEDITOR_PREVIEW_BACKEND=webview2
+
   release-benchmarks:
     name: release benchmarks
     runs-on: ubuntu-latest
