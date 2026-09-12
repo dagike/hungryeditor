@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the WiX installer), replacing the placeholder Markdown-community mark.
   The Linux desktop icon was already wired to the same SVG file, so it picks
   up the new design with no packaging change.
+- AppImage and Flatpak builds now run in the release workflow and upload
+  their artifacts alongside the deb/rpm/msi/zip, rather than existing only
+  as unexercised scripts/manifests. `packaging/appimage/build.sh`'s three
+  tool downloads are now pinned to specific releases instead of the
+  `continuous` tag, and an AppStream metainfo file is installed on Linux
+  (a Flathub requirement the flatpak manifest previously had no source for).
 
 ### Fixed
 

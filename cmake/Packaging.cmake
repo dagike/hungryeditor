@@ -20,6 +20,9 @@ if(UNIX AND NOT APPLE)
     install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/hungryeditor.desktop"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
 
+    install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/hungryeditor.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
+
     # A single scalable SVG in the hicolor theme is enough for every modern
     # Linux desktop environment — no need to hand-generate fixed PNG sizes.
     install(FILES "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.svg"

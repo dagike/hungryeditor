@@ -65,6 +65,64 @@ jobs:
             build/linux-release/hungryeditor-*.deb
             build/linux-release/hungryeditor-*.rpm
 
+  appimage-package:
+    name: package (appimage)
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.4.2
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      # patchelf: used by linuxdeploy to rewrite bundled binaries' RPATHs.
+      # FUSE is not needed -- packaging/appimage/build.sh already runs the
+      # downloaded AppImage tools with --appimage-extract-and-run.
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+
+      - name: Build the AppImage
+        run: packaging/appimage/build.sh
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/appimage/hungryeditor-*.AppImage
+
+  flatpak-package:
+    name: package (flatpak)
+    needs: check-version
+    runs-on: ubuntu-latest
+    container:
+      # No kde-6.8 tag exists yet for this image (6.7 is the newest as of
+      # writing); the action still fetches the manifest's actual
+      # runtime-version (6.8) from Flathub at build time regardless; the
+      # tag just picks the container's own toolchain/glibc base.
+      image: bilelmoussaoui/flatpak-github-actions:kde-6.7
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.8
+        with:
+          bundle: hungryeditor.flatpak
+          manifest-path: packaging/flatpak/io.github.dagike.Hungryeditor.yml
+          cache: false
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: hungryeditor.flatpak
+
   windows-packages:
     name: package (windows-latest)
     needs: check-version

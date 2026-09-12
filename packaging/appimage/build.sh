@@ -29,13 +29,18 @@ fetch() {
     fi
 }
 
-fetch "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" \
+# Pinned to specific tags, not the "continuous" rolling release: neither
+# linuxdeploy project publishes stable SemVer tags, only dated alpha
+# snapshots, but even those are still a fixed, reproducible target — an
+# upstream rebuild of "continuous" can otherwise change what CI fetches
+# without any change on our side. Bump these deliberately when needed.
+fetch "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage" \
     "$TOOLS_DIR/linuxdeploy-x86_64.AppImage"
 # Saved without the usual "-x86_64.AppImage" suffix: linuxdeploy discovers
 # plugins by looking for a "linuxdeploy-plugin-<name>" executable on PATH.
-fetch "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" \
+fetch "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage" \
     "$TOOLS_DIR/linuxdeploy-plugin-qt"
-fetch "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
+fetch "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage" \
     "$TOOLS_DIR/appimagetool-x86_64.AppImage"
 
 cmake -S "$ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
