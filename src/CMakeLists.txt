@@ -93,6 +93,8 @@ add_library(hungryeditor_core STATIC
     markdown/Md4cRenderer.cpp
     markdown/Md4cRenderer.h
     preview/PreviewBackend.h
+    preview/PreviewBackendFactory.cpp
+    preview/PreviewBackendFactory.h
     preview/PreviewBridge.cpp
     preview/PreviewBridge.h
     preview/PreviewController.cpp

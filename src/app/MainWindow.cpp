@@ -52,8 +52,8 @@
 #include "io/TextFile.h"
 #include "markdown/Outline.h"
 #include "preview/PreviewBackend.h"
+#include "preview/PreviewBackendFactory.h"
 #include "preview/PreviewController.h"
-#include "preview/QtWebEnginePreview.h"
 #include "theme/Theme.h"
 #include "theme/ThemeFile.h"
 #include "ui/CommandPalette.h"
@@ -976,7 +976,7 @@ void MainWindow::ensurePreviewCreated() const
         return;
     }
 
-    preview_ = std::make_unique<QtWebEnginePreview>();
+    preview_ = createPreviewBackend();
     previewController_ = std::make_unique<PreviewController>(preview_.get());
     QWidget* previewWidget = preview_->widget();
     previewWidget->setMinimumWidth(160);

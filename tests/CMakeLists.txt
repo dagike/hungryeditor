@@ -215,6 +215,10 @@ hungryeditor_add_test(test_preview_protocol
     SOURCES test_preview_protocol.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_preview_backend_factory
+    SOURCES test_preview_backend_factory.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_html_document
     SOURCES test_html_document.cpp
     LIBS hungryeditor::core)
