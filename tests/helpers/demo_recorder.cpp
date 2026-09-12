@@ -138,8 +138,16 @@ private:
 class Director
 {
 public:
+    // previewReady_ must attach before MainWindow::show() ever pumps an
+    // event loop: the constructor defaults to Split view and creates the
+    // preview via a deferred QTimer::singleShot(0, ...), so a spy built
+    // later (e.g. lazily inside waitForPreviewReady()) can easily attach
+    // after ready() already fired and then hang for its full timeout.
+    // previewBackend() forces creation immediately and deterministically
+    // instead of waiting for that timer.
     Director(hungryeditor::MainWindow& window, Recorder& recorder)
-        : window_(window), recorder_(recorder)
+        : window_(window), recorder_(recorder),
+          previewReady_(window_.previewBackend(), &hungryeditor::PreviewBackend::ready)
     {
     }
 
@@ -197,13 +205,15 @@ public:
     void loadDocument(const QString& markdown) { editor()->setText(markdown); }
 
     /// Waits for the preview shell's one-time "connected and applied initial
-    /// content" signal. Must be called soon after first switching to a view
-    /// mode that shows the preview -- see tests/test_main_window.cpp's own
-    /// QSignalSpy-before-the-triggering-call pattern, which this mirrors.
+    /// content" signal, using the spy attached at construction time so it
+    /// cannot miss an emission that happened before a scene got around to
+    /// calling this.
     bool waitForPreviewReady(int timeoutMs = 20000)
     {
-        QSignalSpy ready(window_.previewBackend(), &hungryeditor::PreviewBackend::ready);
-        return ready.wait(timeoutMs);
+        if (previewReady_.count() > 0) {
+            return true;
+        }
+        return previewReady_.wait(timeoutMs);
     }
 
     /// Polls the preview's JS context for `expr` to become truthy -- the
@@ -250,6 +260,7 @@ public:
 private:
     hungryeditor::MainWindow& window_;
     Recorder& recorder_;
+    QSignalSpy previewReady_;
 };
 
 using SceneFn = void (*)(Director&);
@@ -379,14 +390,19 @@ int main(int argc, char** argv)
     hungryeditor::MainWindow window;
     window.setStateDirectory(state.path());
     window.resize(width, height);
+
+    Recorder recorder(&window, outDir, QSize(width, height), fps, maxFrames);
+    // Constructed before show(): Director's ctor attaches the preview-ready
+    // spy immediately, before any event loop pump can run MainWindow's
+    // deferred Split-view preview creation and its ready() signal.
+    Director director(window, recorder);
+
     window.show();
     if (!QTest::qWaitForWindowExposed(&window)) {
         std::fprintf(stderr, "window never exposed\n");
         return 1;
     }
 
-    Recorder recorder(&window, outDir, QSize(width, height), fps, maxFrames);
-    Director director(window, recorder);
     recorder.start();
     scene->run(director);
     recorder.stop();
