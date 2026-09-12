@@ -34,6 +34,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Groundwork for the planned WebView2 preview backend (not yet built):
+      # answers, empirically and on every run, whether the Evergreen runtime
+      # is present on this image and what the SDK nupkg's header/lib layout
+      # looks like, so the eventual FetchContent pin targets a version whose
+      # shape is actually known rather than assumed from docs. Informational
+      # only — never fails the job.
+      - name: Probe the WebView2 runtime and SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Write-Host "::group::Evergreen WebView2 runtime (registry)"
+          $clientId = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          $keys = @(
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$clientId",
+            "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$clientId",
+            "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$clientId"
+          )
+          $found = $false
+          foreach ($key in $keys) {
+            $entry = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+            if ($entry) {
+              $found = $true
+              Write-Host "$key -> pv=$($entry.pv)"
+            }
+          }
+          if (-not $found) {
+            Write-Host "no Evergreen runtime registration found under any of the usual keys"
+          }
+          Write-Host "::endgroup::"
+
+          Write-Host "::group::WebView2 SDK nupkg layout (pinned 1.0.4191.47)"
+          $nupkg = "$env:RUNNER_TEMP\webview2.nupkg.zip"
+          $extractDir = "$env:RUNNER_TEMP\webview2-sdk"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg" -OutFile $nupkg
+          Expand-Archive -Path $nupkg -DestinationPath $extractDir -Force
+          Get-ChildItem -Recurse $extractDir | Select-Object -ExpandProperty FullName
+          Write-Host "::endgroup::"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
