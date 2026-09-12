@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-12
+
+### Fixed
+
+- The Windows `.msi`/`.zip` release build failed outright: CPack's WiX
+  generator only accepts a `.txt` or `.rtf` license file, and 0.2.0 pointed
+  it at the plain, extensionless `LICENSE` file (DEB/RPM don't care about
+  the extension, so this was never caught there).
+- The AppImage release build failed outright: `linuxdeploy-plugin-qt`
+  bundles every Qt Positioning backend plugin it finds, including one that
+  depends on a library (`libQt6SerialPort.so.6`) the CI image never
+  installed, even though hungryeditor itself has no use for serial ports.
+- The Flatpak release build failed outright: the manifest targeted the
+  plain KDE runtime, which does not include Qt WebEngine, so the build
+  failed before reaching hungryeditor's own CMakeLists.txt. Now builds on
+  the `io.qt.qtwebengine.BaseApp` base app, the standard way Flathub apps
+  (e.g. Falkon, KDevelop) get Qt WebEngine on the KDE runtime.
+
+  None of the three had ever actually been built before 0.2.0's own
+  release run, which is what first caught them — the packages this fixes
+  were never successfully published.
+
 ## [0.2.0] - 2026-09-12
 
 ### Added
@@ -106,6 +128,7 @@ First tagged release.
   for Windows, an AppImage build script and a Flatpak manifest, and a
   tag-triggered release workflow that builds and publishes all of the above.
 
-[Unreleased]: https://github.com/dagike/hungryeditor/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dagike/hungryeditor/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/dagike/hungryeditor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dagike/hungryeditor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dagike/hungryeditor/releases/tag/v0.1.0
