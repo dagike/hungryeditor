@@ -1611,7 +1611,7 @@ hungryeditor::HighlightRange viewportByteRangeWithMargin(Scintilla::ScintillaCal
         static_cast<quint32>(call.PositionFromLine(static_cast<Scintilla::Line>(fromLine)));
     const auto end =
         toLine < lastLine
-            ? static_cast<quint32>(call.PositionFromLine(static_cast<Scintilla::Line>(toLine + 1)))
+            ? static_cast<quint32>(call.PositionFromLine(static_cast<Scintilla::Line>(toLine) + 1))
             : static_cast<quint32>(call.TextLength());
     return hungryeditor::HighlightRange{start, end};
 }

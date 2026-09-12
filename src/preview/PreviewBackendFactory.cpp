@@ -22,14 +22,11 @@ PreviewEngine selectedPreviewEngine()
 
 std::unique_ptr<PreviewBackend> createPreviewBackend(QObject* parent)
 {
-    switch (selectedPreviewEngine()) {
-    case PreviewEngine::WebView2:
-        // Unreachable today: selectedPreviewEngine() only returns this when
-        // isWebView2Available() is true, which it never is yet.
-        break;
-    case PreviewEngine::QtWebEngine:
-        break;
-    }
+    // Always QtWebEnginePreview today: selectedPreviewEngine() only returns
+    // PreviewEngine::WebView2 when isWebView2Available() is true, which it
+    // never is yet. That branch will be added here once the COM backend
+    // (a follow-on branch) lands.
+    Q_ASSERT(selectedPreviewEngine() == PreviewEngine::QtWebEngine);
     return std::make_unique<QtWebEnginePreview>(parent);
 }
 
