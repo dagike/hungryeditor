@@ -360,6 +360,39 @@ void sceneCommandPalette(Director& director)
     director.beat(8000);
 }
 
+void sceneMultiCursor(Director& director)
+{
+    director.loadDocument(QStringLiteral("# Multi-cursor demo\n\n"
+                                         "The editor is fast.\n"
+                                         "The editor is native.\n"
+                                         "The editor is offline.\n"
+                                         "The editor is yours.\n"));
+    director.beat(3000);
+
+    // Land the caret inside the first "editor" -- selectNextOccurrence()
+    // takes the word under the caret when nothing is selected yet.
+    director.editor()->setCursorPosition(2, 6);
+    director.beat(1500);
+
+    for (int i = 0; i < 4; ++i) {
+        director.act("action.selectNext");
+        director.beat(700);
+    }
+    director.beat(2500);
+
+    // All four selections get replaced together, one keystroke at a time.
+    director.typeInEditor(QStringLiteral("hungryeditor"), 120);
+    director.beat(7000);
+
+    // Back to a single caret for a quick line-ops flourish.
+    director.editor()->setCursorPosition(2, 0);
+    director.beat(1000);
+    director.act("action.duplicateLine");
+    director.beat(1500);
+    director.act("action.moveLineDown");
+    director.beat(5000);
+}
+
 constexpr Scene kScenes[] = {
     {"smoke", "Minimal end-to-end pipeline check (split view, static content, a pause)",
      &sceneSmoke},
@@ -367,6 +400,7 @@ constexpr Scene kScenes[] = {
      &sceneLivePreview},
     {"command-palette", "Fuzzy-searching and running commands with Ctrl+Shift+P",
      &sceneCommandPalette},
+    {"multi-cursor", "Select-next-occurrence multi-cursor editing and line ops", &sceneMultiCursor},
 };
 
 const Scene* findScene(const QString& name)
