@@ -119,9 +119,18 @@ On Windows use the `windows-release` preset from a Developer prompt.
 
 ## Demo clips
 
+| Live preview | Command palette |
+| --- | --- |
+| ![Live preview: typing markdown with mermaid and KaTeX rendering live](docs/demo/live-preview.gif) | ![Command palette: fuzzy-searching and running commands](docs/demo/command-palette.gif) |
+
+| Multi-cursor editing | Themes |
+| --- | --- |
+| ![Multi-cursor editing with select-next-occurrence](docs/demo/multi-cursor.gif) | ![Cycling the four built-in themes](docs/demo/themes.gif) |
+
 `tests/helpers/record_demo.sh` drives the real app headless (offscreen
-rendering, no display needed) through a few scripted scenes and encodes
-each to an MP4 and a GIF under `demo-recordings/` (git-ignored):
+rendering, no display needed) through these scripted scenes and encodes
+each to an MP4 and a GIF under `demo-recordings/` (git-ignored); the GIFs
+above are copied from there into `docs/demo/`:
 
 ```sh
 cmake --preset linux-release
