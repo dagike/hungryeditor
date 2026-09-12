@@ -109,5 +109,13 @@ elseif(WIN32)
     set(CPACK_WIX_UPGRADE_GUID "A1ECFA45-6525-4652-A30A-EE2AD4312CDC")
     set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.ico")
 
+    # WiX only accepts a .txt or .rtf license file -- unlike DEB/RPM, which
+    # don't care about the extension -- so the shared CPACK_RESOURCE_FILE_LICENSE
+    # set above (plain "LICENSE", no extension) fails WiX with "unsupported
+    # WiX License file extension ''". Feed it a copy with the extension it
+    # needs instead of renaming the repo's actual LICENSE file.
+    configure_file("${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.txt" COPYONLY)
+    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_BINARY_DIR}/LICENSE.txt")
+
     include(CPack)
 endif()

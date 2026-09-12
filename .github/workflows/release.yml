@@ -85,10 +85,17 @@ jobs:
       # patchelf: used by linuxdeploy to rewrite bundled binaries' RPATHs.
       # FUSE is not needed -- packaging/appimage/build.sh already runs the
       # downloaded AppImage tools with --appimage-extract-and-run.
+      # libqt6serialport6: nothing in hungryeditor uses serial ports, but
+      # linuxdeploy-plugin-qt unconditionally bundles every Qt Positioning
+      # backend plugin it finds (Positioning is pulled in transitively by
+      # WebEngine's Geolocation API), including the NMEA-GPS one, which
+      # links against it -- without it installed, deployment aborts with
+      # "Could not find dependency: libQt6SerialPort.so.6" rather than just
+      # skipping that one plugin.
       - name: Install packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y patchelf
+          sudo apt-get install -y patchelf libqt6serialport6
 
       - name: Build the AppImage
         run: packaging/appimage/build.sh
