@@ -97,6 +97,8 @@ add_library(hungryeditor_core STATIC
     preview/PreviewBridge.h
     preview/PreviewController.cpp
     preview/PreviewController.h
+    preview/PreviewProtocol.cpp
+    preview/PreviewProtocol.h
     preview/QtWebEnginePreview.cpp
     preview/QtWebEnginePreview.h
     theme/Theme.cpp

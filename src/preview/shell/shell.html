@@ -31,7 +31,6 @@
 </head>
 <body>
 <div id="hungryeditor-content"></div>
-<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <script src="qrc:///hungryeditor/preview/mermaid.min.js"></script>
 <script src="qrc:///hungryeditor/preview/katex.min.js"></script>
 <script>
@@ -45,179 +44,229 @@
   var katexReady = typeof katex !== "undefined";
 
   window.addEventListener("load", function () {
-    new QWebChannel(qt.webChannelTransport, function (channel) {
-      var bridge = channel.objects.bridge;
-      var target = document.getElementById("hungryeditor-content");
+    var target = document.getElementById("hungryeditor-content");
 
-      // Bumped on every apply() so a diagram that finishes rendering after the
-      // body has moved on is dropped instead of painted over fresh content.
-      var renderToken = 0;
-      var lazyObserver = null;
+    // Bumped on every apply() so a diagram that finishes rendering after the
+    // body has moved on is dropped instead of painted over fresh content.
+    var renderToken = 0;
+    var lazyObserver = null;
 
-      // Swap a failed diagram/math node for a labelled error surface, keeping
-      // its source line so scroll-sync still lands on it. Inline math gets an
-      // inline span so we never nest a <div> inside a <p>.
-      function renderError(el, kind, err, block) {
-        var message = String((err && err.message) || err || "unknown error");
-        if (!block) {
-          var span = document.createElement("span");
-          span.className = "he-render-error-inline";
-          span.title = kind + " error: " + message;
-          span.textContent = el.textContent;
-          el.replaceWith(span);
-          return;
+    // Swap a failed diagram/math node for a labelled error surface, keeping
+    // its source line so scroll-sync still lands on it. Inline math gets an
+    // inline span so we never nest a <div> inside a <p>.
+    function renderError(el, kind, err, block) {
+      var message = String((err && err.message) || err || "unknown error");
+      if (!block) {
+        var span = document.createElement("span");
+        span.className = "he-render-error-inline";
+        span.title = kind + " error: " + message;
+        span.textContent = el.textContent;
+        el.replaceWith(span);
+        return;
+      }
+      var box = document.createElement("div");
+      box.className = "he-render-error";
+      if (el.hasAttribute("data-src-line")) {
+        box.setAttribute("data-src-line", el.getAttribute("data-src-line"));
+      }
+      var label = document.createElement("strong");
+      label.textContent = kind + " error";
+      var body = document.createElement("pre");
+      body.textContent = message;
+      box.appendChild(label);
+      box.appendChild(body);
+      el.replaceWith(box);
+    }
+
+    function renderMermaidHolder(holder) {
+      if (!mermaidReady) { holder.classList.remove("mermaid-pending"); return; }
+      var id = holder.dataset.mermaidId;
+      var src = holder.dataset.src || "";
+      function fail(err) {
+        renderError(holder, "Diagram", err, true);
+        var orphan = document.getElementById("d" + id);
+        if (orphan) orphan.remove();
+      }
+      try {
+        mermaid.render(id, src).then(function (out) {
+          if (!holder.isConnected) return;
+          holder.classList.remove("mermaid-pending");
+          holder.innerHTML = out.svg;
+        }, fail);
+      } catch (err) {
+        fail(err);
+      }
+    }
+
+    function renderMathSpan(span) {
+      if (!katexReady) return;
+      var display = span.classList.contains("math-display");
+      try {
+        katex.render(span.textContent, span, { displayMode: display, throwOnError: true });
+      } catch (err) {
+        renderError(span, "Math", err, display);
+      }
+    }
+
+    function renderLazily(el) {
+      if (el.dataset.heRendered) return;
+      el.dataset.heRendered = "1";
+      if (el.classList.contains("mermaid-diagram")) {
+        renderMermaidHolder(el);
+      } else {
+        renderMathSpan(el);
+      }
+    }
+
+    // Diagrams and math are the slow part of a render — a page with dozens
+    // would stall on apply(). Swap each mermaid fence for a stable holder up
+    // front (so scroll-sync keeps its source line) but defer the actual
+    // mermaid/katex work until the block nears the viewport.
+    function scheduleRenders() {
+      var token = ++renderToken;
+      if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+
+      var codes = target.querySelectorAll("code.language-mermaid");
+      for (var i = 0; i < codes.length; i++) {
+        var pre = codes[i].closest("pre");
+        if (!pre) continue;
+        var holder = document.createElement("div");
+        holder.className = "mermaid-diagram mermaid-pending";
+        if (pre.hasAttribute("data-src-line")) {
+          holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
         }
-        var box = document.createElement("div");
-        box.className = "he-render-error";
-        if (el.hasAttribute("data-src-line")) {
-          box.setAttribute("data-src-line", el.getAttribute("data-src-line"));
-        }
-        var label = document.createElement("strong");
-        label.textContent = kind + " error";
-        var body = document.createElement("pre");
-        body.textContent = message;
-        box.appendChild(label);
-        box.appendChild(body);
-        el.replaceWith(box);
+        holder.dataset.src = codes[i].textContent;
+        holder.dataset.mermaidId = "he-mermaid-" + token + "-" + i;
+        pre.replaceWith(holder);
       }
 
-      function renderMermaidHolder(holder) {
-        if (!mermaidReady) { holder.classList.remove("mermaid-pending"); return; }
-        var id = holder.dataset.mermaidId;
-        var src = holder.dataset.src || "";
-        function fail(err) {
-          renderError(holder, "Diagram", err, true);
-          var orphan = document.getElementById("d" + id);
-          if (orphan) orphan.remove();
-        }
-        try {
-          mermaid.render(id, src).then(function (out) {
-            if (!holder.isConnected) return;
-            holder.classList.remove("mermaid-pending");
-            holder.innerHTML = out.svg;
-          }, fail);
-        } catch (err) {
-          fail(err);
-        }
+      var items = target.querySelectorAll(".mermaid-diagram, .math-inline, .math-display");
+      if (!("IntersectionObserver" in window)) {
+        for (var j = 0; j < items.length; j++) renderLazily(items[j]);
+        return;
       }
-
-      function renderMathSpan(span) {
-        if (!katexReady) return;
-        var display = span.classList.contains("math-display");
-        try {
-          katex.render(span.textContent, span, { displayMode: display, throwOnError: true });
-        } catch (err) {
-          renderError(span, "Math", err, display);
+      lazyObserver = new IntersectionObserver(function (entries) {
+        for (var k = 0; k < entries.length; k++) {
+          if (entries[k].isIntersecting) {
+            lazyObserver.unobserve(entries[k].target);
+            renderLazily(entries[k].target);
+          }
         }
-      }
+      }, { rootMargin: "800px 0px" });
+      for (var m = 0; m < items.length; m++) lazyObserver.observe(items[m]);
+    }
 
-      function renderLazily(el) {
-        if (el.dataset.heRendered) return;
-        el.dataset.heRendered = "1";
-        if (el.classList.contains("mermaid-diagram")) {
-          renderMermaidHolder(el);
+    function apply(html) { target.innerHTML = html; scheduleRenders(); }
+    function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
+
+    function blocks() { return target.querySelectorAll("[data-src-line]"); }
+    function lineOf(el) { return parseInt(el.getAttribute("data-src-line"), 10) || 0; }
+
+    // Ignore the scroll events our own scrollToLine() triggers.
+    var muteReportUntil = 0;
+
+    function scrollToLine(line) {
+      var list = blocks();
+      var chosen = null;
+      for (var i = 0; i < list.length; i++) {
+        if (lineOf(list[i]) >= line) { chosen = list[i]; break; }
+      }
+      muteReportUntil = Date.now() + 250;
+      var y = chosen ? Math.max(0, chosen.offsetTop - 8) : document.body.scrollHeight;
+      window.scrollTo(0, y);
+    }
+
+    // The wire protocol to the host: every message, either direction, is a
+    // JSON string shaped { type: "...", ...payload }. `transport` is the one
+    // thing that differs between hosts this file can be loaded by — Qt
+    // WebEngine's QWebChannel today, a future WebView2 host's
+    // window.chrome.webview eventually — reduced to send()/onMessage, the
+    // only shape both can do. See PreviewProtocol.h for the C++ side and the
+    // transport setup at the bottom of this script for the two adapters.
+    var transport = null;
+
+    function send(type, payload) {
+      var message = payload ? Object.assign({ type: type }, payload) : { type: type };
+      transport.send(JSON.stringify(message));
+    }
+
+    function handleMessage(json) {
+      var message;
+      try {
+        message = JSON.parse(json);
+      } catch (err) {
+        return;
+      }
+      switch (message.type) {
+      case "theme":
+        applyTheme(message.css);
+        break;
+      case "content":
+        apply(message.html);
+        send("ready");
+        break;
+      case "scrollToLine":
+        scrollToLine(message.line);
+        break;
+      }
+    }
+
+    function reportScroll() {
+      if (Date.now() < muteReportUntil) return;
+      var list = blocks();
+      var line = 0;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].getBoundingClientRect().top <= 4) {
+          line = lineOf(list[i]);
         } else {
-          renderMathSpan(el);
+          break;
         }
       }
+      send("scroll", { line: line });
+    }
 
-      // Diagrams and math are the slow part of a render — a page with dozens
-      // would stall on apply(). Swap each mermaid fence for a stable holder up
-      // front (so scroll-sync keeps its source line) but defer the actual
-      // mermaid/katex work until the block nears the viewport.
-      function scheduleRenders() {
-        var token = ++renderToken;
-        if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
-
-        var codes = target.querySelectorAll("code.language-mermaid");
-        for (var i = 0; i < codes.length; i++) {
-          var pre = codes[i].closest("pre");
-          if (!pre) continue;
-          var holder = document.createElement("div");
-          holder.className = "mermaid-diagram mermaid-pending";
-          if (pre.hasAttribute("data-src-line")) {
-            holder.setAttribute("data-src-line", pre.getAttribute("data-src-line"));
-          }
-          holder.dataset.src = codes[i].textContent;
-          holder.dataset.mermaidId = "he-mermaid-" + token + "-" + i;
-          pre.replaceWith(holder);
-        }
-
-        var items = target.querySelectorAll(".mermaid-diagram, .math-inline, .math-display");
-        if (!("IntersectionObserver" in window)) {
-          for (var j = 0; j < items.length; j++) renderLazily(items[j]);
-          return;
-        }
-        lazyObserver = new IntersectionObserver(function (entries) {
-          for (var k = 0; k < entries.length; k++) {
-            if (entries[k].isIntersecting) {
-              lazyObserver.unobserve(entries[k].target);
-              renderLazily(entries[k].target);
-            }
-          }
-        }, { rootMargin: "800px 0px" });
-        for (var m = 0; m < items.length; m++) lazyObserver.observe(items[m]);
+    function reportHeadingClick(event) {
+      var el = event.target.closest("h1, h2, h3, h4, h5, h6");
+      if (el && el.hasAttribute("data-src-line")) {
+        send("headingClick", { line: lineOf(el) });
       }
+    }
 
-      function apply(html) { target.innerHTML = html; scheduleRenders(); }
-      function applyTheme(css) { document.getElementById("he-theme").textContent = css; }
+    function reportTaskToggle(event) {
+      var box = event.target;
+      if (box.tagName !== "INPUT" || box.type !== "checkbox") return;
+      var li = box.closest("[data-src-line]");
+      if (li) send("taskToggle", { line: lineOf(li), checked: box.checked });
+    }
 
-      function blocks() { return target.querySelectorAll("[data-src-line]"); }
-      function lineOf(el) { return parseInt(el.getAttribute("data-src-line"), 10) || 0; }
+    window.addEventListener("scroll", reportScroll, { passive: true });
+    target.addEventListener("click", reportHeadingClick);
+    target.addEventListener("change", reportTaskToggle);
 
-      // Ignore the scroll events our own scrollToLine() triggers.
-      var muteReportUntil = 0;
-
-      function scrollToLine(line) {
-        var list = blocks();
-        var chosen = null;
-        for (var i = 0; i < list.length; i++) {
-          if (lineOf(list[i]) >= line) { chosen = list[i]; break; }
-        }
-        muteReportUntil = Date.now() + 250;
-        var y = chosen ? Math.max(0, chosen.offsetTop - 8) : document.body.scrollHeight;
-        window.scrollTo(0, y);
-      }
-
-      function reportScroll() {
-        if (Date.now() < muteReportUntil) return;
-        var list = blocks();
-        var line = 0;
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].getBoundingClientRect().top <= 4) {
-            line = lineOf(list[i]);
-          } else {
-            break;
-          }
-        }
-        bridge.reportScroll(line);
-      }
-
-      function reportHeadingClick(event) {
-        var el = event.target.closest("h1, h2, h3, h4, h5, h6");
-        if (el && el.hasAttribute("data-src-line")) {
-          bridge.reportClick(lineOf(el));
-        }
-      }
-
-      function reportTaskToggle(event) {
-        var box = event.target;
-        if (box.tagName !== "INPUT" || box.type !== "checkbox") return;
-        var li = box.closest("[data-src-line]");
-        if (li) bridge.reportTaskToggle(lineOf(li), box.checked);
-      }
-
-      bridge.contentChanged.connect(apply);
-      bridge.themeCssChanged.connect(applyTheme);
-      bridge.scrollToLineRequested.connect(scrollToLine);
-      window.addEventListener("scroll", reportScroll, { passive: true });
-      target.addEventListener("click", reportHeadingClick);
-      target.addEventListener("change", reportTaskToggle);
-
-      applyTheme(bridge.themeCss);
-      apply(bridge.content);
-      bridge.notifyReady();
-    });
+    // window.chrome.webview exists only inside a WebView2 host; Qt WebEngine
+    // defines no such global, so this check alone picks the right adapter.
+    if (window.chrome && window.chrome.webview) {
+      transport = { send: function (json) { window.chrome.webview.postMessage(json); } };
+      window.chrome.webview.addEventListener("message", function (event) {
+        handleMessage(typeof event.data === "string" ? event.data : JSON.stringify(event.data));
+      });
+      send("hello");
+    } else {
+      // Loaded on demand rather than as a static <script> tag: a future
+      // WebView2 load of this same file has no qrc: scheme to fetch it from,
+      // and it is only needed on this branch.
+      var script = document.createElement("script");
+      script.src = "qrc:///qtwebchannel/qwebchannel.js";
+      script.onload = function () {
+        new QWebChannel(qt.webChannelTransport, function (channel) {
+          var bridge = channel.objects.bridge;
+          transport = { send: function (json) { bridge.postMessage(json); } };
+          bridge.messageForPage.connect(handleMessage);
+          send("hello");
+        });
+      };
+      document.head.appendChild(script);
+    }
   });
 </script>
 </body>

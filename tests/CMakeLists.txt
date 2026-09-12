@@ -211,6 +211,10 @@ hungryeditor_add_test(test_preview
     LIBS hungryeditor::core Qt6::PrintSupport)
 hungryeditor_test_needs_webengine(test_preview)
 
+hungryeditor_add_test(test_preview_protocol
+    SOURCES test_preview_protocol.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_html_document
     SOURCES test_html_document.cpp
     LIBS hungryeditor::core)
