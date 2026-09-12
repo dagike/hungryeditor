@@ -3,7 +3,7 @@
 # Every test runs headless: hungryeditor_add_test() forces the "offscreen"
 # QPA platform so the suite needs no display on CI or over SSH.
 
-find_package(Qt6 REQUIRED COMPONENTS Test Widgets PrintSupport)
+find_package(Qt6 REQUIRED COMPONENTS Test Widgets PrintSupport QuickWidgets)
 
 # hungryeditor_add_test(<name> SOURCES <files...> [LIBS <targets...>])
 function(hungryeditor_add_test name)
@@ -31,6 +31,16 @@ endfunction()
 # never invoked directly by CTest, so it needs no hungryeditor_add_test.
 add_executable(crash_helper helpers/crash_helper.cpp)
 target_link_libraries(crash_helper PRIVATE hungryeditor::core)
+
+# Manually-invoked dev tools for tests/helpers/record_demo.sh (portfolio demo
+# clips) — like crash_helper, neither is a CTest case: plain add_executable,
+# no hungryeditor_add_test, no add_test. Qt6::QuickWidgets is needed because
+# QWebEngineView's render widget is a QQuickWidget internally, which is what
+# demo_probe checks grab() can actually see.
+add_executable(demo_probe helpers/demo_probe.cpp)
+set_target_properties(demo_probe PROPERTIES AUTOMOC ON)
+target_link_libraries(demo_probe PRIVATE hungryeditor::core Qt6::Test Qt6::QuickWidgets)
+hungryeditor_set_warnings(demo_probe)
 
 hungryeditor_add_test(test_crash_reporter
     SOURCES test_crash_reporter.cpp
