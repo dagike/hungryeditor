@@ -34,6 +34,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Groundwork for the planned WebView2 preview backend (not yet built):
+      # answers, empirically and on every run, whether the Evergreen runtime
+      # is present on this image and what the SDK nupkg's header/lib layout
+      # looks like, so the eventual FetchContent pin targets a version whose
+      # shape is actually known rather than assumed from docs. Informational
+      # only — never fails the job.
+      - name: Probe the WebView2 runtime and SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Write-Host "::group::Evergreen WebView2 runtime (registry)"
+          $clientId = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          $keys = @(
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$clientId",
+            "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$clientId",
+            "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$clientId"
+          )
+          $found = $false
+          foreach ($key in $keys) {
+            $entry = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+            if ($entry) {
+              $found = $true
+              Write-Host "$key -> pv=$($entry.pv)"
+            }
+          }
+          if (-not $found) {
+            Write-Host "no Evergreen runtime registration found under any of the usual keys"
+          }
+          Write-Host "::endgroup::"
+
+          Write-Host "::group::WebView2 SDK nupkg layout (pinned 1.0.4191.47)"
+          $nupkg = "$env:RUNNER_TEMP\webview2.nupkg.zip"
+          $extractDir = "$env:RUNNER_TEMP\webview2-sdk"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4191.47/microsoft.web.webview2.1.0.4191.47.nupkg" -OutFile $nupkg
+          Expand-Archive -Path $nupkg -DestinationPath $extractDir -Force
+          Get-ChildItem -Recurse $extractDir | Select-Object -ExpandProperty FullName
+          Write-Host "::endgroup::"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -90,6 +129,73 @@ jobs:
               Select-String -NotMatch 'PASS   :|SKIP   :|QDEBUG :'
             Write-Host "::endgroup::"
           }
+
+  webview2-sdk-configure:
+    name: configure webview2 backend (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # Configure-only: proves cmake/WebView2.cmake's pinned FetchContent
+      # actually resolves and the SDK's include directory wires up. No
+      # WebView2 backend source exists yet (see
+      # src/preview/PreviewBackendFactory.cpp), so there is nothing to build
+      # or test on this path today.
+      - name: Configure with the webview2 backend
+        run: cmake --preset windows-release -DHUNGRYEDITOR_PREVIEW_BACKEND=webview2
+
+  release-benchmarks:
+    name: release benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.4.2
+          modules: qtwebengine qtwebchannel qtpositioning qt5compat
+          cache: true
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install WebEngine runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libxdamage1 libxkbcommon-x11-0 libxkbfile1 \
+            libxcomposite1 libxrandr2 libxtst6 libasound2t64 \
+            libgstreamer-gl1.0-0 libgstreamer-plugins-base1.0-0
+
+      - name: Configure
+        run: cmake --preset linux-release -DHUNGRYEDITOR_STRICT_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build --preset linux-release
+
+      # Only test_benchmarks: the rest of the suite is already covered by
+      # the ordinary build job above, and a release build changes nothing
+      # about correctness — just the numbers this job exists to check.
+      - name: Run benchmarks against the plan's real targets
+        run: ctest --preset linux-release --output-on-failure -R '^test_benchmarks$'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-dev-shm-usage
+          QTWEBENGINE_DISABLE_SANDBOX: 1
 
   format:
     name: clang-format

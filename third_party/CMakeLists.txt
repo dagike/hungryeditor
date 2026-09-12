@@ -8,7 +8,7 @@
 #   lexilla          5.4.0  (HPND-style, see lexilla/License.txt)
 #   tree-sitter      0.24.7 (MIT, see tree-sitter/LICENSE)
 #   tree-sitter-md   0.4.1  (MIT, see tree-sitter-markdown/LICENSE)
-#   grammars/*       18 language grammars (all MIT, see THIRD_PARTY.md)
+#   grammars/*       19 language grammars (all MIT, see THIRD_PARTY.md)
 #   md4c             0.5.2  (MIT, see md4c/LICENSE.md)
 #   mermaid          10.9.1 (MIT, see mermaid/LICENSE) — data file, embedded as a
 #                           Qt resource for the preview; no build target here
@@ -100,7 +100,7 @@ set(_gr   "${CMAKE_CURRENT_SOURCE_DIR}/grammars")
 # Language grammars with a flat src/ layout.
 set(_gr_langs
     bash c cpp c-sharp css go html java javascript json
-    python ruby rust toml yaml)
+    python ruby rust sql toml yaml)
 set(_gr_sources "")
 foreach(_lang IN LISTS _gr_langs)
     file(GLOB _lang_c CONFIGURE_DEPENDS "${_gr}/${_lang}/src/*.c")

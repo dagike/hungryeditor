@@ -58,6 +58,10 @@ hungryeditor_add_test(test_grammar_registry
     SOURCES test_grammar_registry.cpp
     LIBS hungryeditor::core)
 
+hungryeditor_add_test(test_query_predicates
+    SOURCES test_query_predicates.cpp
+    LIBS hungryeditor::core)
+
 hungryeditor_add_test(test_command_line
     SOURCES test_command_line.cpp
     LIBS hungryeditor::core)
@@ -196,11 +200,24 @@ hungryeditor_add_test(test_preview_controller
 hungryeditor_add_test(test_benchmarks
     SOURCES test_benchmarks.cpp
     LIBS hungryeditor::core)
+if(HUNGRYEDITOR_STRICT_BENCHMARKS)
+    target_compile_definitions(test_benchmarks PRIVATE
+        HUNGRYEDITOR_STRICT_BENCHMARKS
+        HUNGRYEDITOR_EXECUTABLE_PATH="$<TARGET_FILE:hungryeditor>")
+endif()
 
 hungryeditor_add_test(test_preview
     SOURCES test_preview.cpp
     LIBS hungryeditor::core Qt6::PrintSupport)
 hungryeditor_test_needs_webengine(test_preview)
+
+hungryeditor_add_test(test_preview_protocol
+    SOURCES test_preview_protocol.cpp
+    LIBS hungryeditor::core)
+
+hungryeditor_add_test(test_preview_backend_factory
+    SOURCES test_preview_backend_factory.cpp
+    LIBS hungryeditor::core)
 
 hungryeditor_add_test(test_html_document
     SOURCES test_html_document.cpp

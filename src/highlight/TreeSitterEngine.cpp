@@ -81,22 +81,37 @@ void TreeSitterEngine::setText(std::string source)
 
 void TreeSitterEngine::applyEdit(const TSInputEdit& edit, std::string newSource)
 {
+    noteEdit(edit);
+    reparse(std::move(newSource));
+}
+
+void TreeSitterEngine::noteEdit(const TSInputEdit& edit)
+{
+    if (tree_ != nullptr) {
+        ts_tree_edit(tree_, &edit);
+    }
+}
+
+void TreeSitterEngine::reparse(std::string newSource)
+{
     source_ = std::move(newSource);
 
     if (language_ == nullptr) {
-        return;
-    }
-    if (tree_ == nullptr) {
-        // Nothing to reuse — fall back to a full parse.
-        tree_ = ts_parser_parse_string(parser_, nullptr, source_.data(),
-                                       static_cast<uint32_t>(source_.size()));
+        if (tree_ != nullptr) {
+            ts_tree_delete(tree_);
+            tree_ = nullptr;
+        }
         return;
     }
 
-    ts_tree_edit(tree_, &edit);
+    // ts_parser_parse_string() accepts a null old tree as "nothing to
+    // reuse, parse from scratch" — the same case setText() and the no-tree
+    // branch this replaced both handled explicitly.
     TSTree* reparsed = ts_parser_parse_string(parser_, tree_, source_.data(),
                                               static_cast<uint32_t>(source_.size()));
-    ts_tree_delete(tree_);
+    if (tree_ != nullptr) {
+        ts_tree_delete(tree_);
+    }
     tree_ = reparsed;
 }
 
@@ -121,6 +136,20 @@ TSPoint TreeSitterEngine::pointAt(std::string_view text, uint32_t byteOffset)
         }
     }
     return TSPoint{row, column};
+}
+
+TSPoint TreeSitterEngine::pointAfter(TSPoint start, std::string_view span)
+{
+    TSPoint point = start;
+    for (const char c : span) {
+        if (c == '\n') {
+            ++point.row;
+            point.column = 0;
+        } else {
+            ++point.column;
+        }
+    }
+    return point;
 }
 
 } // namespace hungryeditor

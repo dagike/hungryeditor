@@ -5,20 +5,18 @@
 
 namespace hungryeditor {
 
-/// The object the preview page talks to over QWebChannel. The host pushes
-/// rendered HTML and scroll requests down; the page reports back when it is
-/// wired up and when the viewer scrolls it.
+/// The object the preview page talks to over a single bidirectional string
+/// channel (see PreviewProtocol.h for the wire format). Deliberately reduced
+/// to one slot and one signal rather than QWebChannel's usual properties and
+/// typed slots: a future WebView2 host has no equivalent of either, only a
+/// postMessage(string)/message-event pair, so this is the intersection both
+/// hosts can implement identically.
 class PreviewBridge : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QString content READ content NOTIFY contentChanged)
-    Q_PROPERTY(QString themeCss READ themeCss NOTIFY themeCssChanged)
 
 public:
     explicit PreviewBridge(QObject* parent = nullptr) : QObject(parent) {}
-
-    QString content() const { return content_; }
-    QString themeCss() const { return themeCss_; }
 
     /// Push a new rendered body to the page. A no-op if it is unchanged.
     void setContent(const QString& html);
@@ -27,16 +25,14 @@ public:
     void setThemeCss(const QString& css);
 
     /// Ask the page to scroll the block from source line `line` to the top.
-    void requestScrollToLine(int line) { emit scrollToLineRequested(line); }
+    void requestScrollToLine(int line);
 
 signals:
-    void contentChanged(const QString& html);
-    void themeCssChanged(const QString& css);
+    /// A message for the page to apply, encoded per PreviewProtocol.h.
+    void messageForPage(const QString& json);
 
-    /// Host wants the page scrolled so `line`'s block is at the top.
-    void scrollToLineRequested(int line);
-
-    /// The page's script has connected and applied the initial content.
+    /// The page's transport connected, sent its "hello" and (in response to
+    /// that) applied the current theme and content.
     void pageReady();
 
     /// The viewer scrolled the page; `line` is the source line now at the top.
@@ -50,17 +46,9 @@ signals:
     void taskToggled(int line, bool checked);
 
 public slots:
-    /// Called from the page once its QWebChannel handshake completes.
-    void notifyReady() { emit pageReady(); }
-
-    /// Called from the page's scroll handler.
-    void reportScroll(int line) { emit viewerScrolled(line); }
-
-    /// Called from the page's heading click handler.
-    void reportClick(int line) { emit headingClicked(line); }
-
-    /// Called from the page's task-checkbox change handler.
-    void reportTaskToggle(int line, bool checked) { emit taskToggled(line, checked); }
+    /// Called with every message the page sends up the channel. Dispatches
+    /// on its decoded type; an unrecognised message is silently ignored.
+    void postMessage(const QString& json);
 
 private:
     QString content_;

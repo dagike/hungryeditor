@@ -30,9 +30,16 @@ hungryeditor_embed_queries("${CMAKE_CURRENT_BINARY_DIR}/generated/HighlightQueri
     "kLangPython|${_gr}/python/queries/highlights.scm"
     "kLangRuby|${_gr}/ruby/queries/highlights.scm"
     "kLangRust|${_gr}/rust/queries/highlights.scm"
+    "kLangSql|${_gr}/sql/queries/highlights.scm"
     "kLangToml|${_gr}/toml/queries/highlights.scm"
     "kLangTypeScript|${_gr}/javascript/queries/highlights.scm|${_gr}/typescript/queries/highlights.scm"
     "kLangYaml|${_gr}/yaml/queries/highlights.scm")
+
+# Empty today: no WebView2 backend source exists yet (a follow-on branch,
+# not this phase — see PreviewBackendFactory.cpp), so there is nothing to
+# add even when HUNGRYEDITOR_PREVIEW_BACKEND=webview2. This is the point
+# where its sources will join the target once that branch lands.
+set(_webview2_backend_sources)
 
 add_library(hungryeditor_core STATIC
     app/CommandLine.cpp
@@ -63,6 +70,8 @@ add_library(hungryeditor_core STATIC
     highlight/CodeHighlighter.h
     highlight/GrammarRegistry.cpp
     highlight/GrammarRegistry.h
+    highlight/QueryPredicates.cpp
+    highlight/QueryPredicates.h
     highlight/TreeSitterEngine.cpp
     highlight/TreeSitterEngine.h
     highlight/HighlightWorker.cpp
@@ -90,10 +99,14 @@ add_library(hungryeditor_core STATIC
     markdown/Md4cRenderer.cpp
     markdown/Md4cRenderer.h
     preview/PreviewBackend.h
+    preview/PreviewBackendFactory.cpp
+    preview/PreviewBackendFactory.h
     preview/PreviewBridge.cpp
     preview/PreviewBridge.h
     preview/PreviewController.cpp
     preview/PreviewController.h
+    preview/PreviewProtocol.cpp
+    preview/PreviewProtocol.h
     preview/QtWebEnginePreview.cpp
     preview/QtWebEnginePreview.h
     theme/Theme.cpp
@@ -124,10 +137,20 @@ add_library(hungryeditor_core STATIC
     workspace/FileSearch.h
     workspace/WorkspaceStore.cpp
     workspace/WorkspaceStore.h
+    ${_webview2_backend_sources}
 )
 add_library(hungryeditor::core ALIAS hungryeditor_core)
 
 set_target_properties(hungryeditor_core PROPERTIES AUTOMOC ON)
+
+# The preview shell page itself: a real .html file rather than an inlined
+# C++ string literal, so a future preview backend (see PreviewBackend.h) can
+# load the identical file instead of forking its mermaid/KaTeX lazy-render
+# logic, error surfaces and scroll-sync math.
+qt_add_resources(hungryeditor_core "preview_shell"
+    PREFIX "/hungryeditor/preview"
+    BASE "${CMAKE_SOURCE_DIR}/src/preview/shell"
+    FILES "${CMAKE_SOURCE_DIR}/src/preview/shell/shell.html")
 
 # Preview-page assets, served to the QtWebEngine shell over qrc: so diagrams and
 # math render with no network access. Vendored under third_party/.
@@ -173,13 +196,20 @@ target_link_libraries(hungryeditor_core PRIVATE
     hungryeditor::md4c
 )
 
+# Header-only today: no WebView2 backend source links against it yet (see
+# _webview2_backend_sources above), but the include directory is proven to
+# resolve as soon as it is fetched.
+if(HUNGRYEDITOR_PREVIEW_BACKEND STREQUAL "webview2")
+    target_link_libraries(hungryeditor_core PRIVATE hungryeditor::webview2_sdk)
+endif()
+
 hungryeditor_set_warnings(hungryeditor_core)
 
 # --- entry point ---------------------------------------------------------
 add_executable(hungryeditor app/main.cpp)
 
 set_target_properties(hungryeditor PROPERTIES
-    WIN32_EXECUTABLE OFF
+    WIN32_EXECUTABLE ON
     MACOSX_BUNDLE OFF)
 
 target_compile_definitions(hungryeditor PRIVATE
@@ -189,3 +219,30 @@ target_compile_definitions(hungryeditor PRIVATE
 target_link_libraries(hungryeditor PRIVATE hungryeditor::core)
 
 hungryeditor_set_warnings(hungryeditor)
+
+# The window/taskbar icon, as plain PNGs at several sizes rather than the
+# hicolor SVG below: loading an SVG through QIcon needs the Qt SVG plugin,
+# which is not one of this project's dependencies, while PNG decoding is
+# always built into Qt. QApplication::setWindowIcon() in main.cpp picks the
+# closest size at runtime.
+qt_add_resources(hungryeditor "app_icon"
+    PREFIX "/hungryeditor/icons"
+    BASE "${CMAKE_SOURCE_DIR}/resources/icons/app"
+    FILES
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-16.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-32.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-48.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-64.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-128.png"
+        "${CMAKE_SOURCE_DIR}/resources/icons/app/icon-256.png")
+
+# The .exe's own icon (Explorer, taskbar before the app has even started),
+# set via a classic Win32 resource script rather than a Qt mechanism.
+# WIN32_EXECUTABLE/MACOSX_BUNDLE above only pick the subsystem; they don't
+# touch the binary's icon resource.
+if(WIN32)
+    set(HUNGRYEDITOR_ICON_PATH "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.ico")
+    configure_file("${CMAKE_SOURCE_DIR}/resources/windows/hungryeditor.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/hungryeditor.rc" @ONLY)
+    target_sources(hungryeditor PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/hungryeditor.rc")
+endif()

@@ -1,8 +1,8 @@
 # install() rules and CPack configuration for distributable packages.
 # Included once from the top-level CMakeLists.txt after the `hungryeditor`
-# target exists. Grows across Phase 10 (deb/rpm and Windows msi/zip here;
-# AppImage/Flatpak are separate scripts/manifests, not CPack; release
-# automation is a later commit in the same phase).
+# target exists. Covers deb/rpm and Windows msi/zip; AppImage/Flatpak are
+# separate scripts/manifests, not CPack; release automation lives in
+# .github/workflows/release.yml.
 
 include(GNUInstallDirs)
 
@@ -11,9 +11,7 @@ set(CPACK_PACKAGE_NAME "hungryeditor")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "hungryeditor")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
-# No CPACK_RESOURCE_FILE_LICENSE / *_PACKAGE_LICENSE yet: the project's own
-# license is still "to be finalized" (see README.md) — that and the LICENSE
-# file it depends on are 10.5's job, not this commit's to guess.
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 
 if(UNIX AND NOT APPLE)
     install(TARGETS hungryeditor
@@ -21,6 +19,9 @@ if(UNIX AND NOT APPLE)
 
     install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/hungryeditor.desktop"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
+
+    install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/hungryeditor.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo")
 
     # A single scalable SVG in the hicolor theme is enough for every modern
     # Linux desktop environment — no need to hand-generate fixed PNG sizes.
@@ -57,6 +58,7 @@ libqt6printsupport6, libqt6network6, libqt6positioning6, libqt6opengl6")
         "qt6-qtbase-gui, qt6-qt5compat, qt6-qtwebengine, qt6-qtwebchannel")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Editors")
     set(CPACK_RPM_PACKAGE_URL "https://github.com/dagike/hungryeditor")
+    set(CPACK_RPM_PACKAGE_LICENSE "MIT")
 
     include(CPack)
 elseif(WIN32)
@@ -91,10 +93,10 @@ elseif(WIN32)
                 \"\${CMAKE_INSTALL_PREFIX}/hungryeditor.exe\")
         ")
     else()
-        message(WARNING
-            "windeployqt not found: the installed hungryeditor.exe will be "
-            "missing its Qt DLLs. Packaging will still produce an archive, "
-            "just not a runnable one.")
+        message(FATAL_ERROR
+            "windeployqt not found: the installed hungryeditor.exe would be "
+            "missing its Qt DLLs, producing an installable but unrunnable "
+            "package.")
     endif()
 
     set(CPACK_GENERATOR "WIX;ZIP")
@@ -105,10 +107,7 @@ elseif(WIN32)
     # side-by-side install. Generated once with `python3 -c "import uuid;
     # print(uuid.uuid4())"`.
     set(CPACK_WIX_UPGRADE_GUID "A1ECFA45-6525-4652-A30A-EE2AD4312CDC")
-    # No CPACK_WIX_PRODUCT_ICON yet: it needs a multi-resolution .ico, and
-    # this sandbox has no SVG rasterizer to derive one from
-    # resources/icons/hungryeditor.svg (itself only a placeholder — see its
-    # own comment). WIX falls back to a generic installer icon until then.
+    set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/resources/icons/hungryeditor.ico")
 
     include(CPack)
 endif()

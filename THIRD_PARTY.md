@@ -34,6 +34,7 @@ Each grammar's `LICENSE` is kept alongside its sources.
 | python | v0.23.6 | https://github.com/tree-sitter/tree-sitter-python |
 | ruby | v0.23.1 | https://github.com/tree-sitter/tree-sitter-ruby |
 | rust | v0.23.2 | https://github.com/tree-sitter/tree-sitter-rust |
+| sql | v0.3.11 | https://github.com/DerekStride/tree-sitter-sql |
 | toml | v0.7.0 | https://github.com/tree-sitter-grammars/tree-sitter-toml |
 | typescript + tsx | v0.23.2 | https://github.com/tree-sitter/tree-sitter-typescript |
 | yaml | v0.7.1 | https://github.com/tree-sitter-grammars/tree-sitter-yaml |
@@ -58,12 +59,33 @@ Each grammar's `LICENSE` is kept alongside its sources.
   `src/tree_sitter/*.h`, and `queries/highlights.scm` are compiled or read;
   a dialect that layers on a base language (C++ on C, TypeScript on
   JavaScript) has the base query concatenated ahead of its own at build time.
-  Predicate directives in the queries (`#match?`, `#eq?`) are not yet
-  evaluated, so a few captures over-fire slightly.
+  Filtering predicate directives in the queries (`#eq?`, `#not-eq?`,
+  `#match?`, `#not-match?`, `#any-of?`, `#not-any-of?`) are evaluated
+  (`src/highlight/QueryPredicates`); the `#is?`/`#is-not?` local-variable
+  scope hints a few grammars carry are not, since that needs a locals.scm
+  scope-tracking pass this highlighter doesn't have, so a handful of
+  identifier captures can still over-fire. **sql**'s own `highlights.scm` has
+  a separate, upstream quirk: its `@number`/`@float` rules use Lua-pattern
+  syntax in their `#match?` (`"^[-+]?%d+$"`) rather than the ECMAScript-style
+  regex every other vendored grammar's queries use and this evaluator speaks
+  — apparently written for Neovim, whose own `#match?` is Lua-based. `%d`
+  never matches a digit here, so those two rules never fire and numeric SQL
+  literals fall through to the generic `(literal) @string` rule ahead of
+  them — they highlight as strings, not numbers. Vendored byte-for-byte
+  rather than patched, per this file's own "as close to upstream as
+  practical" policy. Its `parser.c` is *not* the one in the upstream release
+  tarball, though: that one targets tree-sitter ABI 15, one version ahead of
+  what this project's vendored runtime (tree-sitter 0.24.7, ABI 14) can
+  compile a query against — `ts_query_new()` fails outright with
+  `TSQueryErrorLanguage` otherwise. Regenerated instead with `tree-sitter
+  generate --abi=14` (tree-sitter-cli 0.24.7, matching the runtime) from the
+  same v0.3.11 `grammar.js`; every other vendored file (`highlights.scm`,
+  `LICENSE`, ...) is the unmodified upstream release asset.
 - **md4c** is compiled from its single `src/md4c.c` (its bundled HTML renderer
   and `entity.c` table are not vendored — `src/markdown/Md4cRenderer` renders
   the parser callbacks directly so it can add `data-src-line` anchors for
-  scroll sync). CommonMark only for now; GFM flags are enabled in a later phase.
+  scroll sync). Parses `MD_DIALECT_GITHUB` (tables, task lists, strikethrough,
+  autolinks) plus `MD_FLAG_LATEXMATHSPANS` for `$…$` / `$$…$$` math.
 - **mermaid** is the pre-built UMD bundle (`dist/mermaid.min.js`), kept as a
   data file — not compiled. It is embedded in the binary as a Qt resource
   (`qrc:/hungryeditor/preview/mermaid.min.js`) and loaded by the preview shell

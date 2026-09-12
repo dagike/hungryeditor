@@ -24,6 +24,7 @@ const TSLanguage* tree_sitter_php(void);
 const TSLanguage* tree_sitter_python(void);
 const TSLanguage* tree_sitter_ruby(void);
 const TSLanguage* tree_sitter_rust(void);
+const TSLanguage* tree_sitter_sql(void);
 const TSLanguage* tree_sitter_toml(void);
 const TSLanguage* tree_sitter_typescript(void);
 const TSLanguage* tree_sitter_tsx(void);
@@ -82,6 +83,10 @@ const std::vector<Entry>& entries()
         {"rb", tree_sitter_ruby(), queries::kLangRuby},
         {"rust", tree_sitter_rust(), queries::kLangRust},
         {"rs", tree_sitter_rust(), queries::kLangRust},
+        {"sql", tree_sitter_sql(), queries::kLangSql},
+        {"postgresql", tree_sitter_sql(), queries::kLangSql},
+        {"psql", tree_sitter_sql(), queries::kLangSql},
+        {"mysql", tree_sitter_sql(), queries::kLangSql},
         {"toml", tree_sitter_toml(), queries::kLangToml},
         {"typescript", tree_sitter_typescript(), queries::kLangTypeScript},
         {"ts", tree_sitter_typescript(), queries::kLangTypeScript},

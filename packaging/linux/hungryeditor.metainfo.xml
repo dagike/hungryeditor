@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo, read by software centers (GNOME Software, KDE
+  Discover, Flathub's listing page) to show a description, screenshots and
+  release notes instead of just a name and icon.
+
+  The component id matches the desktop file actually installed today
+  (hungryeditor.desktop) rather than the flatpak manifest's reverse-DNS
+  app-id (io.github.dagike.Hungryeditor) -- a real Flathub submission needs
+  the desktop file, this id, and the app-id all renamed to match, which is
+  part of the same follow-up the flatpak manifest's own source-type comment
+  already calls out.
+-->
+<component type="desktop-application">
+  <id>hungryeditor.desktop</id>
+  <name>hungryeditor</name>
+  <summary>A fast native Markdown editor</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.dagike">
+    <name>dagike</name>
+  </developer>
+  <description>
+    <p>
+      hungryeditor is a native, non-Electron Markdown editor built on Qt
+      Widgets and Scintilla. It highlights fenced code blocks with real
+      tree-sitter grammars, renders a live preview with mermaid diagrams
+      and KaTeX math, and includes a command palette, file tree, tabs with
+      session restore, and find/replace with regex -- with no IDE features
+      and no network access from the preview.
+    </p>
+  </description>
+  <launchable type="desktop-id">hungryeditor.desktop</launchable>
+  <url type="homepage">https://github.com/dagike/hungryeditor</url>
+  <url type="bugtracker">https://github.com/dagike/hungryeditor/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-11"/>
+  </releases>
+</component>

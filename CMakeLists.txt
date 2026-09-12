@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(hungryeditor
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "A fast native Markdown editor"
     LANGUAGES C CXX)
 
@@ -22,9 +22,18 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # --- Options -----------------------------------------------------------------
 option(HUNGRYEDITOR_WERROR "Treat compiler warnings as errors" OFF)
+# Off by default (and for the ordinary linux-debug/windows-release CI matrix):
+# test_benchmarks' thresholds stay the loose, gross-regression-only ones an
+# unoptimized, noisy CI VM can meet. The dedicated release-benchmarks CI job
+# turns this on to assert the plan's real performance targets instead — see
+# tests/test_benchmarks.cpp.
+option(HUNGRYEDITOR_STRICT_BENCHMARKS
+    "Assert the plan's real performance targets in test_benchmarks, not just a gross-regression guard"
+    OFF)
 include(CTest)  # defines BUILD_TESTING (ON by default)
 
 include(CompilerWarnings)
+include(WebView2)
 
 # --- Vendored dependencies -----------------------------------------------
 add_subdirectory(third_party)
@@ -44,3 +53,4 @@ message(STATUS "hungryeditor ${PROJECT_VERSION}")
 message(STATUS "  build type : ${CMAKE_BUILD_TYPE}")
 message(STATUS "  werror     : ${HUNGRYEDITOR_WERROR}")
 message(STATUS "  testing    : ${BUILD_TESTING}")
+message(STATUS "  strict benchmarks : ${HUNGRYEDITOR_STRICT_BENCHMARKS}")
