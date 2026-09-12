@@ -22,6 +22,7 @@
 #include <QFile>
 #include <QImage>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QPainter>
 #include <QSignalSpy>
 #include <QSplitter>
@@ -33,6 +34,7 @@
 #include "app/MainWindow.h"
 #include "editor/Editor.h"
 #include "preview/PreviewBackend.h"
+#include "ui/CommandPalette.h"
 
 namespace {
 
@@ -330,11 +332,41 @@ $$\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}$$
     director.beat(7000);
 }
 
+void sceneCommandPalette(Director& director)
+{
+    director.loadDocument(QStringLiteral("# Overview\n\nA quick tour of the command palette.\n\n"
+                                         "## Features\n\nFuzzy search over every action.\n\n"
+                                         "## Usage\n\nCtrl+Shift+P from anywhere.\n"));
+    director.beat(2500);
+
+    auto* palette = director.window().findChild<hungryeditor::CommandPalette*>();
+    QLineEdit* query = palette != nullptr ? palette->findChild<QLineEdit*>() : nullptr;
+    if (query == nullptr) {
+        qFatal("demo_recorder: command palette query field not found");
+    }
+
+    director.act("action.commandPalette");
+    director.beat(1000);
+    director.type(query, QStringLiteral("outline"), 100);
+    director.beat(2500);
+    director.key(query, Qt::Key_Return, Qt::NoModifier, 1200);
+    director.beat(5000);
+
+    director.act("action.commandPalette");
+    director.beat(1000);
+    director.type(query, QStringLiteral("dark"), 100);
+    director.beat(2500);
+    director.key(query, Qt::Key_Return, Qt::NoModifier, 1200);
+    director.beat(8000);
+}
+
 constexpr Scene kScenes[] = {
     {"smoke", "Minimal end-to-end pipeline check (split view, static content, a pause)",
      &sceneSmoke},
     {"live-preview", "Typing markdown with mermaid + KaTeX rendering live in the split preview",
      &sceneLivePreview},
+    {"command-palette", "Fuzzy-searching and running commands with Ctrl+Shift+P",
+     &sceneCommandPalette},
 };
 
 const Scene* findScene(const QString& name)
