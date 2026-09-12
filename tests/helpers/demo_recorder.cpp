@@ -393,6 +393,37 @@ void sceneMultiCursor(Director& director)
     director.beat(5000);
 }
 
+void sceneThemes(Director& director)
+{
+    director.act("action.viewSplit");
+    director.balanceSplitter();
+    director.waitForPreviewReady();
+
+    director.loadDocument(QStringLiteral("# Themes\n\n"
+                                         "hungryeditor ships four built-in themes.\n\n"
+                                         "```rust\n"
+                                         "fn greet(name: &str) -> String {\n"
+                                         "    format!(\"Hello, {name}!\")\n"
+                                         "}\n"
+                                         "```\n\n"
+                                         "- [x] Light\n"
+                                         "- [x] Dark\n"
+                                         "- [x] High Contrast\n"
+                                         "- [x] Sepia\n"));
+    director.beat(3000);
+
+    director.act("action.themeLight");
+    director.beat(3500);
+    director.act("action.themeDark");
+    director.beat(3500);
+    director.act("action.themeHighContrast");
+    director.beat(3500);
+    director.act("action.themeSepia");
+    director.beat(3500);
+    director.act("action.themeDark");
+    director.beat(8000);
+}
+
 constexpr Scene kScenes[] = {
     {"smoke", "Minimal end-to-end pipeline check (split view, static content, a pause)",
      &sceneSmoke},
@@ -401,6 +432,7 @@ constexpr Scene kScenes[] = {
     {"command-palette", "Fuzzy-searching and running commands with Ctrl+Shift+P",
      &sceneCommandPalette},
     {"multi-cursor", "Select-next-occurrence multi-cursor editing and line ops", &sceneMultiCursor},
+    {"themes", "Cycling the four built-in themes in split view", &sceneThemes},
 };
 
 const Scene* findScene(const QString& name)
