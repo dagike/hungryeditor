@@ -42,6 +42,11 @@ set_target_properties(demo_probe PROPERTIES AUTOMOC ON)
 target_link_libraries(demo_probe PRIVATE hungryeditor::core Qt6::Test Qt6::QuickWidgets)
 hungryeditor_set_warnings(demo_probe)
 
+add_executable(demo_recorder helpers/demo_recorder.cpp)
+set_target_properties(demo_recorder PROPERTIES AUTOMOC ON)
+target_link_libraries(demo_recorder PRIVATE hungryeditor::core Qt6::Test Qt6::QuickWidgets)
+hungryeditor_set_warnings(demo_recorder)
+
 hungryeditor_add_test(test_crash_reporter
     SOURCES test_crash_reporter.cpp
     LIBS hungryeditor::core)
