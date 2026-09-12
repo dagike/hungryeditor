@@ -282,9 +282,59 @@ void sceneSmoke(Director& director)
     director.beat(5000);
 }
 
+void sceneLivePreview(Director& director)
+{
+    director.act("action.viewSplit");
+    director.balanceSplitter();
+    director.waitForPreviewReady();
+    director.beat(2500);
+
+    const QString intro = QStringLiteral("# hungryeditor\n\n"
+                                         "A fast, native, offline Markdown editor.\n");
+    director.typeInEditor(intro, 55);
+    director.beat(2000);
+
+    // setText() replaces the whole buffer, but this text starts with the
+    // identical prefix just typed, so the doc visibly grows in place rather
+    // than flashing to something new.
+    const QString richDoc = intro + QStringLiteral(R"(
+```mermaid
+graph TD;
+Edit[Edit Markdown] --> Render[Live Preview];
+Render --> Diagrams[Mermaid Diagrams];
+Render --> Math[KaTeX Math];
+```
+
+$$\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}$$
+)");
+    director.loadDocument(richDoc);
+    director.beat(3000);
+
+    director.waitForJs(QStringLiteral("document.querySelector('.mermaid-diagram svg') !== null"),
+                       8000);
+    director.beat(1800);
+    director.waitForJs(QStringLiteral("document.querySelector('.katex') !== null"), 5000);
+    director.beat(2000);
+
+    // Scroll the editor; scroll-sync follows in the preview.
+    for (int i = 0; i < 14; ++i) {
+        director.key(director.editor(), Qt::Key_Down, Qt::NoModifier, 150);
+    }
+    director.beat(1200);
+    director.key(director.editor(), Qt::Key_Home, Qt::ControlModifier, 300);
+    director.beat(1500);
+
+    // A live edit at the end, typed on camera.
+    director.key(director.editor(), Qt::Key_End, Qt::ControlModifier, 300);
+    director.typeInEditor(QStringLiteral("\n- [ ] Record more demo clips"), 55);
+    director.beat(7000);
+}
+
 constexpr Scene kScenes[] = {
     {"smoke", "Minimal end-to-end pipeline check (split view, static content, a pause)",
      &sceneSmoke},
+    {"live-preview", "Typing markdown with mermaid + KaTeX rendering live in the split preview",
+     &sceneLivePreview},
 };
 
 const Scene* findScene(const QString& name)
