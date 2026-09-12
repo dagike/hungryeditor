@@ -2,18 +2,40 @@
 #   flatpak-builder --user --install --force-clean build-dir \
 #       packaging/flatpak/io.github.dagike.Hungryeditor.yml
 #
-# Needs org.kde.Platform/Sdk installed first:
-#   flatpak install flathub org.kde.Platform//6.8 org.kde.Sdk//6.8
+# Needs org.kde.Platform/Sdk and the QtWebEngine base app installed first:
+#   flatpak install flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 \
+#       io.qt.qtwebengine.BaseApp//6.8
 #
-# Unverified locally (no flatpak-builder or KDE runtime available in the
-# sandbox this was written in) — written from documented flatpak-builder
-# and KDE runtime conventions. The runtime-version below tracks whatever
-# Qt6 minor version the KDE runtime ships; bump it if Flathub has moved on.
+# The plain org.kde.Platform/Sdk runtime does NOT include QtWebEngine (it's
+# a separate, Chromium-sized build Flathub ships once as a shared "base app"
+# rather than having every Qt WebEngine app rebuild it) -- omitting `base`
+# below fails find_package(Qt6 ... WebEngineWidgets) before hungryeditor's
+# own CMakeLists.txt is ever reached. `base`/`base-version` must track
+# `runtime-version` (io.qt.qtwebengine.BaseApp publishes one branch per KDE
+# runtime line, confirmed against https://github.com/flathub/org.kde.falkon
+# and https://github.com/flathub/org.kde.kdevelop, two real Flathub apps
+# using QtWebEngine on the KDE runtime the same way); bump all three
+# together if Flathub moves the runtime on.
 app-id: io.github.dagike.Hungryeditor
 runtime: org.kde.Platform
 runtime-version: '6.8'
 sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.8'
 command: hungryeditor
+
+# Strips build-only files the base app's SDK layer leaves behind (headers,
+# CMake/pkg-config files, static libs) — the same cleanup falkon and
+# kdevelop both run for the same reason.
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /mkspecs
+  - '*.la'
+  - '*.a'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
 
 finish-args:
   # Windowing: both are listed so the app works on an X11 or a Wayland
