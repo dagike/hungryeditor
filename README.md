@@ -117,6 +117,19 @@ ctest --preset linux-debug
 
 On Windows use the `windows-release` preset from a Developer prompt.
 
+## Demo clips
+
+`tests/helpers/record_demo.sh` drives the real app headless (offscreen
+rendering, no display needed) through a few scripted scenes and encodes
+each to an MP4 and a GIF under `demo-recordings/` (git-ignored):
+
+```sh
+cmake --preset linux-release
+cmake --build --preset linux-release --target demo_recorder
+tests/helpers/record_demo.sh            # every scene
+tests/helpers/record_demo.sh themes     # just one
+```
+
 ## License
 
 MIT — see `LICENSE`. Qt is used under LGPLv3 (dynamic linking); third-party
