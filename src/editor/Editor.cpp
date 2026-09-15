@@ -51,6 +51,15 @@ Scintilla::Colour sciColour(const QColor& c)
     return c.red() | (c.green() << 8) | (c.blue() << 16);
 }
 
+/// Element colours are ColourRGBA (0xAABBGGRR), not the legacy 0x00BBGGRR —
+/// and both are plain `int` aliases, so passing the wrong one compiles and
+/// silently paints nothing. Alpha 0 is invisible; force opaque.
+Scintilla::ColourAlpha sciElementColour(const QColor& c)
+{
+    return static_cast<Scintilla::ColourAlpha>(static_cast<unsigned int>(sciColour(c)) |
+                                               0xff000000U);
+}
+
 /// The editor's own chrome colours, derived from the active Theme so the
 /// editor and preview panes always agree.
 struct Palette
@@ -99,9 +108,9 @@ void applyChromeColours(Scintilla::ScintillaCall& call, const Palette& palette)
     call.StyleSetFore(STYLE_LINENUMBER, sciColour(palette.lineNumberText));
     call.StyleSetBack(STYLE_LINENUMBER, sciColour(palette.lineNumberBackground));
 
-    call.SetElementColour(Scintilla::Element::Caret, sciColour(palette.caret));
+    call.SetElementColour(Scintilla::Element::Caret, sciElementColour(palette.caret));
     call.SetSelBack(true, sciColour(palette.selection));
-    call.SetCaretLineBack(sciColour(palette.currentLine));
+    call.SetElementColour(Scintilla::Element::CaretLineBack, sciElementColour(palette.currentLine));
 
     call.StyleSetBack(STYLE_BRACELIGHT, sciColour(palette.braceMatch));
     call.StyleSetBold(STYLE_BRACELIGHT, true);
@@ -110,7 +119,7 @@ void applyChromeColours(Scintilla::ScintillaCall& call, const Palette& palette)
 
     call.SetAdditionalCaretFore(sciColour(palette.caret));
     call.SetElementColour(Scintilla::Element::SelectionAdditionalBack,
-                          sciColour(palette.selection));
+                          sciElementColour(palette.selection));
 
     call.IndicSetFore(kFindIndicator, sciColour(palette.findMatch));
 }

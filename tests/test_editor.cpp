@@ -22,12 +22,12 @@ Scintilla::Colour packColour(const QColor& c)
     return static_cast<Scintilla::Colour>(c.red() | (c.green() << 8) | (c.blue() << 16));
 }
 
-// Element colours (as opposed to style colours) carry an alpha byte that
-// Scintilla may default to opaque before anything ever sets it explicitly;
-// only the RGB bits reflect what setTheme() actually pushed.
-int rgbOnly(int packed)
+// Element colours are ColourRGBA (0xAABBGGRR). A zero alpha byte paints
+// nothing at all, so the alpha is the half worth asserting.
+Scintilla::ColourAlpha packElementColour(const QColor& c)
 {
-    return packed & 0x00ffffff;
+    return static_cast<Scintilla::ColourAlpha>(static_cast<unsigned int>(packColour(c)) |
+                                               0xff000000U);
 }
 
 // A large, plain-prose document — big enough that its own viewport (a few
@@ -82,6 +82,7 @@ private slots:
     void foldsFrontMatterOnRequest();
     void noFrontMatterLeavesTheFoldMarginHidden();
     void visualDefaultsAreApplied();
+    void caretChromeIsOpaqueInEveryBuiltinTheme();
     void lineNumberMarginGrowsWithLineCount();
     void changingFontReappliesStyling();
     void setTabWidthChangesScintillaTabWidth();
@@ -673,11 +674,11 @@ void TestEditor::setThemeRecolorsChromeAndSyntaxStyles()
              packColour(dark.keyword));
     QCOMPARE(editor.call().StyleGetFore(static_cast<int>(hungryeditor::StyleComment)),
              packColour(dark.comment));
-    QCOMPARE(rgbOnly(editor.call().ElementColour(Scintilla::Element::Caret)),
-             rgbOnly(packColour(dark.text)));
-    QCOMPARE(rgbOnly(editor.call().ElementColour(Scintilla::Element::SelectionBack)),
-             rgbOnly(packColour(dark.selection)));
-    QCOMPARE(editor.call().CaretLineBack(), packColour(dark.currentLine));
+    QCOMPARE(editor.call().ElementColour(Scintilla::Element::Caret), packElementColour(dark.text));
+    QCOMPARE(editor.call().ElementColour(Scintilla::Element::SelectionBack),
+             packElementColour(dark.selection));
+    QCOMPARE(editor.call().ElementColour(Scintilla::Element::CaretLineBack),
+             packElementColour(dark.currentLine));
     QCOMPARE(editor.call().StyleGetBack(STYLE_BRACELIGHT), packColour(dark.braceMatch));
     QCOMPARE(editor.call().StyleGetFore(STYLE_BRACEBAD), packColour(dark.error));
 }
@@ -700,10 +701,32 @@ void TestEditor::setThemeRecolorsChromeWhileInTheLexillaTier()
     QCOMPARE(editor.call().StyleGetFore(STYLE_LINENUMBER), packColour(dark.muted));
 
     // So do the chrome settings shared with the tree-sitter tier.
-    QCOMPARE(rgbOnly(editor.call().ElementColour(Scintilla::Element::Caret)),
-             rgbOnly(packColour(dark.text)));
-    QCOMPARE(editor.call().CaretLineBack(), packColour(dark.currentLine));
+    QCOMPARE(editor.call().ElementColour(Scintilla::Element::Caret), packElementColour(dark.text));
+    QCOMPARE(editor.call().ElementColour(Scintilla::Element::CaretLineBack),
+             packElementColour(dark.currentLine));
     QCOMPARE(editor.call().StyleGetBack(STYLE_BRACELIGHT), packColour(dark.braceMatch));
+}
+
+void TestEditor::caretChromeIsOpaqueInEveryBuiltinTheme()
+{
+    hungryeditor::Editor editor;
+    const auto builtins = {
+        hungryeditor::Theme::Builtin::Light,
+        hungryeditor::Theme::Builtin::Dark,
+        hungryeditor::Theme::Builtin::HighContrast,
+        hungryeditor::Theme::Builtin::Sepia,
+    };
+    for (const auto builtin : builtins) {
+        editor.setTheme(hungryeditor::Theme::forBuiltin(builtin));
+
+        constexpr auto opaqueMask = static_cast<Scintilla::ColourAlpha>(0xff000000U);
+        QCOMPARE(editor.call().ElementColour(Scintilla::Element::Caret) & opaqueMask, opaqueMask);
+        QCOMPARE(editor.call().ElementColour(Scintilla::Element::CaretLineBack) & opaqueMask,
+                 opaqueMask);
+        QCOMPARE(editor.call().ElementColour(Scintilla::Element::SelectionAdditionalBack) &
+                     opaqueMask,
+                 opaqueMask);
+    }
 }
 
 void TestEditor::headingsAndCodeGetSyntaxStyles()
