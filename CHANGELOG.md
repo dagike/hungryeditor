@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-15
+
+### Fixed
+
+- The text caret, the current-line highlight, and the shading on additional
+  selections in multi-cursor editing were all invisible in every built-in
+  theme. Scintilla's element-color APIs expect an alpha byte, and the
+  editor's color-packing helper always left it at zero, so those three
+  elements were being painted fully transparent.
+
 ## [0.2.1] - 2026-09-12
 
 ### Fixed
@@ -128,7 +138,8 @@ First tagged release.
   for Windows, an AppImage build script and a Flatpak manifest, and a
   tag-triggered release workflow that builds and publishes all of the above.
 
-[Unreleased]: https://github.com/dagike/hungryeditor/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/dagike/hungryeditor/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/dagike/hungryeditor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/dagike/hungryeditor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/dagike/hungryeditor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dagike/hungryeditor/releases/tag/v0.1.0
