@@ -3,9 +3,11 @@
 # Application logic lives in the `hungryeditor_core` static library so that it
 # can be exercised by the test tree; `hungryeditor` is a thin entry point.
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent PrintSupport)
+find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel Concurrent PrintSupport LinguistTools)
 
-qt_standard_project_setup()
+qt_standard_project_setup(REQUIRES 6.6
+                          I18N_SOURCE_LANGUAGE en
+                          I18N_TRANSLATED_LANGUAGES en ru)
 
 # Embed the tree-sitter highlight queries as C++ string literals.
 include(EmbedQueries)
@@ -170,7 +172,6 @@ qt_add_resources(hungryeditor_core "katex_assets"
         "${CMAKE_SOURCE_DIR}/third_party/katex/katex.min.js"
         "${CMAKE_SOURCE_DIR}/third_party/katex/katex.min.css"
         ${_katex_fonts})
-
 target_include_directories(hungryeditor_core
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -207,6 +208,12 @@ hungryeditor_set_warnings(hungryeditor_core)
 
 # --- entry point ---------------------------------------------------------
 add_executable(hungryeditor app/main.cpp)
+
+qt_add_translations(hungryeditor
+    TS_FILE_BASE hungryeditor
+    TS_FILE_DIR ${CMAKE_SOURCE_DIR}/translations/
+    RESOURCE_PREFIX "/i18n"
+)
 
 set_target_properties(hungryeditor PROPERTIES
     WIN32_EXECUTABLE ON

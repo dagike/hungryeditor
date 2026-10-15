@@ -1,6 +1,8 @@
 // hungryeditor — a fast native Markdown editor.
 
 #include <QApplication>
+#include <QTranslator>
+#include <QLocale>
 #include <QCommandLineParser>
 #include <QIcon>
 
@@ -20,6 +22,11 @@ int main(int argc, char** argv)
     QApplication::setApplicationName(QStringLiteral("hungryeditor"));
     QApplication::setApplicationVersion(QStringLiteral(HUNGRYEDITOR_VERSION));
     QApplication::setOrganizationName(QStringLiteral("hungryeditor"));
+
+    QTranslator appTranslator;
+    if (appTranslator.load(QStringLiteral("hungryeditor_") + QLocale::system().name(), QStringLiteral(":/i18n/"))) {
+        QApplication::installTranslator(&appTranslator);
+    }
 
     QIcon appIcon;
     for (const char* size : {"16", "32", "48", "64", "128", "256"}) {
